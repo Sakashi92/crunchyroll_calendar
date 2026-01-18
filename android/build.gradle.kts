@@ -3,6 +3,12 @@ allprojects {
         google()
         mavenCentral()
     }
+    
+    tasks.withType<JavaCompile> {
+        sourceCompatibility = JavaVersion.VERSION_17.toString()
+        targetCompatibility = JavaVersion.VERSION_17.toString()
+        options.compilerArgs.addAll(listOf("-Xlint:-options"))
+    }
 }
 
 val newBuildDir: Directory =

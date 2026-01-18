@@ -50,3 +50,12 @@ dependencies {
     // Core Library Desugaring für Java 8+ Features (z.B. java.time in flutter_local_notifications)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
+
+// Setze explizit Source/Target für alle JavaCompile Tasks auf Java 17
+// und unterdrücke Warnungen zu veralteten Optionen (-Xlint:-options).
+// Hilft wenn Plugins noch standardmäßig 1.8 verwenden.
+tasks.withType<JavaCompile> {
+    sourceCompatibility = "17"
+    targetCompatibility = "17"
+    options.compilerArgs.addAll(listOf("-Xlint:-options"))
+}

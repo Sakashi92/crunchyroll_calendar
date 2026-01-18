@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
-import 'package:path_provider/path_provider.dart';
+//import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import '../models/favorite_anime.dart';
 import 'package:flutter/foundation.dart';
@@ -236,12 +236,16 @@ class FavoritesRepository {
       final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
       final suggestedFileName = 'crunchyroll_favorites_$timestamp.json';
       
-      // Lasse User den Speicherort wählen
+      // Konvertiere JSON zu Bytes
+      final bytes = utf8.encode(jsonString);
+      
+      // Lasse User den Speicherort wählen (mit Bytes!)
       final outputPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Favoriten exportieren',
         fileName: suggestedFileName,
         type: FileType.custom,
         allowedExtensions: ['json'],
+        bytes: bytes,
       );
       
       // User hat abgebrochen
@@ -250,12 +254,8 @@ class FavoritesRepository {
         return null;
       }
       
-      // Speichere Datei am gewählten Ort
-      final file = File(outputPath);
-      await file.writeAsString(jsonString);
-      
-      if (kDebugMode) print('✅ Exported ${favorites.length} favorites to: ${file.path}');
-      return file.path;
+      if (kDebugMode) print('✅ Exported ${favorites.length} favorites to: $outputPath');
+      return outputPath;
     } catch (e) {
       if (kDebugMode) print('❌ Error exporting favorites: $e');
       rethrow;

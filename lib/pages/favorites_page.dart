@@ -356,11 +356,23 @@ class _FavoritesPageState extends State<FavoritesPage> {
 
         // Teilen wenn gewünscht
         if (result == 'share') {
-          await Share.shareXFiles(
-            [XFile(filePath)],
-            subject: 'Meine Crunchyroll Favoriten',
-            text: 'Crunchyroll Favoriten-Liste (${_favorites.length} Anime)',
-          );
+          try {
+            await Share.shareXFiles(
+              [XFile(filePath)],
+              subject: 'Meine Crunchyroll Favoriten',
+              text: 'Crunchyroll Favoriten-Liste (${_favorites.length} Anime)',
+            );
+          } catch (e) {
+            if (kDebugMode) print('Share error: $e');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('❌ Fehler beim Teilen: $e'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          }
         }
       }
     } catch (e) {
