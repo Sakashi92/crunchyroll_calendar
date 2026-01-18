@@ -1,0 +1,18 @@
+{
+    "sourceFile": "migrate_debug.py",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768744361644,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768744361644,
+            "name": "Commit-0",
+            "content": "#!/usr/bin/env python3\r\n\r\nwith open('lib/services/crunchyroll_service.dart', 'r', encoding='utf-8') as f:\r\n    content = f.read()\r\n\r\n# Ersetze alle if (_debugPrint) mit if (kDebugMode)\r\ncontent = content.replace('if (_debugPrint) print(', 'if (kDebugMode) print(')\r\n\r\nwith open('lib/services/crunchyroll_service.dart', 'w', encoding='utf-8') as f:\r\n    f.write(content)\r\n\r\nprint('✓ Replaced all _debugPrint with kDebugMode')\r\n\r\n# Auch main.dart\r\nwith open('lib/main.dart', 'r', encoding='utf-8') as f:\r\n    content = f.read()\r\n\r\n# Entferne die const _debugPrint und ersetze durch import\r\ncontent = content.replace('// Debug-Modus - auf false setzen für Release-Build\\nconst bool _debugPrint = bool.fromEnvironment(\\'DEBUG\\', defaultValue: false);\\n\\n', '')\r\ncontent = content.replace('import \\'package:flutter/material.dart\\';', 'import \\'package:flutter/material.dart\\';\\nimport \\'package:flutter/foundation.dart\\';')\r\ncontent = content.replace('if (_debugPrint) print(', 'if (kDebugMode) print(')\r\n\r\nwith open('lib/main.dart', 'w', encoding='utf-8') as f:\r\n    f.write(content)\r\n\r\nprint('✓ Updated main.dart - removed custom _debugPrint, using kDebugMode')\r\n"
+        }
+    ]
+}

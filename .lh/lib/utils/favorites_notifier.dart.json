@@ -1,0 +1,18 @@
+{
+    "sourceFile": "lib/utils/favorites_notifier.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768751221485,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768751221485,
+            "name": "Commit-0",
+            "content": "import 'package:flutter/material.dart';\r\n\r\n/// Global ValueNotifier für Favoriten-Änderungen\r\n/// Wird verwendet um alle Widgets zu benachrichtigen wenn sich Favoriten ändern\r\nfinal favoritesChangeNotifier = ValueNotifier<int>(0);\r\n"
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+{
+    "sourceFile": "lib/models/notification_log.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768745785178,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768745785178,
+            "name": "Commit-0",
+            "content": "/// Modell für eine Benachrichtigungs-Historie\r\n/// Speichert alle gesendeten Benachrichtigungen zur Vermeidung von Duplikaten\r\nclass NotificationLog {\r\n  final int? id;\r\n  final int? favoriteId;\r\n  final String favoriteTitle;\r\n  final String releaseTitle;\r\n  final String? episodeNumber;\r\n  final DateTime notifyTime;\r\n  final bool isShown;\r\n  \r\n  NotificationLog({\r\n    this.id,\r\n    this.favoriteId,\r\n    required this.favoriteTitle,\r\n    required this.releaseTitle,\r\n    this.episodeNumber,\r\n    required this.notifyTime,\r\n    this.isShown = false,\r\n  });\r\n  \r\n  /// Konvertiert das Modell zu JSON für Speicherung\r\n  Map<String, dynamic> toJson() {\r\n    return {\r\n      'id': id,\r\n      'favoriteId': favoriteId,\r\n      'favoriteTitle': favoriteTitle,\r\n      'releaseTitle': releaseTitle,\r\n      'episodeNumber': episodeNumber,\r\n      'notifyTime': notifyTime.toIso8601String(),\r\n      'isShown': isShown ? 1 : 0,\r\n    };\r\n  }\r\n  \r\n  /// Erstellt ein NotificationLog-Objekt aus JSON\r\n  factory NotificationLog.fromJson(Map<String, dynamic> json) {\r\n    return NotificationLog(\r\n      id: json['id'] as int?,\r\n      favoriteId: json['favoriteId'] as int?,\r\n      favoriteTitle: json['favoriteTitle'] as String,\r\n      releaseTitle: json['releaseTitle'] as String,\r\n      episodeNumber: json['episodeNumber'] as String?,\r\n      notifyTime: DateTime.parse(json['notifyTime'] as String),\r\n      isShown: (json['isShown'] as int?) == 1,\r\n    );\r\n  }\r\n  \r\n  /// Erstellt eine Kopie mit optionalen Änderungen\r\n  NotificationLog copyWith({\r\n    int? id,\r\n    int? favoriteId,\r\n    String? favoriteTitle,\r\n    String? releaseTitle,\r\n    String? episodeNumber,\r\n    DateTime? notifyTime,\r\n    bool? isShown,\r\n  }) {\r\n    return NotificationLog(\r\n      id: id ?? this.id,\r\n      favoriteId: favoriteId ?? this.favoriteId,\r\n      favoriteTitle: favoriteTitle ?? this.favoriteTitle,\r\n      releaseTitle: releaseTitle ?? this.releaseTitle,\r\n      episodeNumber: episodeNumber ?? this.episodeNumber,\r\n      notifyTime: notifyTime ?? this.notifyTime,\r\n      isShown: isShown ?? this.isShown,\r\n    );\r\n  }\r\n  \r\n  @override\r\n  String toString() => 'NotificationLog('\r\n      'favoriteTitle: $favoriteTitle, '\r\n      'releaseTitle: $releaseTitle, '\r\n      'episodeNumber: $episodeNumber, '\r\n      'notifyTime: $notifyTime'\r\n      ')';\r\n}\r\n"
+        }
+    ]
+}

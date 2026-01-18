@@ -1,0 +1,18 @@
+{
+    "sourceFile": "fix_debug.py",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768743906920,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768743906920,
+            "name": "Commit-0",
+            "content": "#!/usr/bin/env python3\r\nimport re\r\nimport os\r\n\r\n# Dateien zum Bearbeiten\r\nfiles_to_fix = [\r\n    'lib/services/crunchyroll_service.dart',\r\n    'lib/main.dart',\r\n]\r\n\r\nfor file_path in files_to_fix:\r\n    if not os.path.exists(file_path):\r\n        print(f\"⚠️  {file_path} nicht gefunden\")\r\n        continue\r\n    \r\n    with open(file_path, 'r', encoding='utf-8') as f:\r\n        content = f.read()\r\n    \r\n    # Ersetze alle print()-Aufrufe mit if (_debugPrint) print()\r\n    # Pattern: \"    print(\" oder \"      print(\" etc (mit Einrückung)\r\n    content = re.sub(r'^(\\s+)print\\(', r'\\1if (_debugPrint) print(', content, flags=re.MULTILINE)\r\n    \r\n    with open(file_path, 'w', encoding='utf-8') as f:\r\n        f.write(content)\r\n    \r\n    print(f\"✓ Updated {file_path}\")\r\n\r\nprint(\"\\n✓ Done - all print() calls are now wrapped with if (_debugPrint)\")\r\n"
+        }
+    ]
+}

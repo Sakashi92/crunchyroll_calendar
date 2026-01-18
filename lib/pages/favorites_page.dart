@@ -1,0 +1,877 @@
+//import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:translator/translator.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import '../repositories/favorites_repository.dart';
+import '../models/favorite_anime.dart';
+import '../models/anime_release.dart';
+import '../services/crunchyroll_service.dart';
+import '../settings.dart'; // Für AppSettings 
+import '../utils/favorites_notifier.dart'; // Für favoritesChangeNotifier
+
+class FavoritesPage extends StatefulWidget {
+  final VoidCallback? onAccentColorChanged;
+
+  const FavoritesPage({super.key, this.onAccentColorChanged});
+
+  @override
+  State<FavoritesPage> createState() => _FavoritesPageState();
+}
+
+class _FavoritesPageState extends State<FavoritesPage> {
+  late final FavoritesRepository _favoritesRepo;
+  late final CrunchyrollService _crunchyrollService;
+  List<FavoriteAnime> _favorites = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _favoritesRepo = FavoritesRepository();
+    _crunchyrollService = CrunchyrollService();
+    _loadFavorites();
+  }
+
+  Future<void> _loadFavorites() async {
+    setState(() => _isLoading = true);
+    final favorites = await _favoritesRepo.getAllFavorites();
+    setState(() {
+      _favorites = favorites;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _removeFavorite(FavoriteAnime anime) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Aus Favoriten entfernen?'),
+        content: Text('Möchtest du "${anime.title}" wirklich aus deinen Favoriten entfernen?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Entfernen'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _favoritesRepo.removeFavorite(anime.title);
+      
+      // Benachrichtige alle Cards im Kalender über die Änderung
+      favoritesChangeNotifier.value++;
+      
+      _loadFavorites(); // Reload list
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✓ ${anime.title} aus Favoriten entfernt'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Meine Favoriten'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        toolbarHeight: 48,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Optionen',
+            onSelected: (value) {
+              if (value == 'export') {
+                _exportFavorites();
+              } else if (value == 'import') {
+                _importFavorites();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    Icon(Icons.upload_file),
+                    SizedBox(width: 12),
+                    Text('Exportieren'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.download),
+                    SizedBox(width: 12),
+                    Text('Importieren'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _favorites.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.favorite_border,
+                        size: 80,
+                        color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Keine Favoriten',
+                        style: Theme.of(context).textTheme.headlineSmall,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Füge Anime zu deinen Favoriten hinzu,\num Benachrichtigungen zu erhalten.',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                              color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                            ),
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  itemCount: _favorites.length,
+                  itemBuilder: (context, index) {
+                    final anime = _favorites[index];
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      child: InkWell(
+                        onTap: () => _showAnimeDetails(anime),
+                        child: ListTile(
+                        contentPadding: const EdgeInsets.all(12),
+                        leading: ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: anime.imageUrl != null && anime.imageUrl!.isNotEmpty
+                              ? CachedNetworkImage(
+                                  imageUrl: anime.imageUrl!,
+                                  width: 50,
+                                  height: 70,
+                                  fit: BoxFit.cover,
+                                  placeholder: (context, url) => Container(
+                                    width: 50,
+                                    height: 70,
+                                    color: Colors.grey.shade300,
+                                    child: const Icon(Icons.image),
+                                  ),
+                                  errorWidget: (context, url, error) => Container(
+                                    width: 50,
+                                    height: 70,
+                                    color: Colors.grey.shade300,
+                                    child: const Icon(Icons.broken_image),
+                                  ),
+                                )
+                              : Container(
+                                  width: 50,
+                                  height: 70,
+                                  color: Colors.grey.shade300,
+                                  child: const Icon(Icons.image),
+                                ),
+                        ),
+                        title: Text(
+                          anime.title,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        subtitle: Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.favorite,
+                                size: 14,
+                                color: Colors.red.shade400,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                'Hinzugefügt: ${_formatDate(anime.addedDate)}',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.delete_outline, color: Colors.red),
+                          tooltip: 'Aus Favoriten entfernen',
+                          onPressed: () => _removeFavorite(anime),
+                        ),
+                      ),
+                    ),
+                    );
+                  },
+                ),
+    );
+  }
+
+  void _showAnimeDetails(FavoriteAnime anime) {
+    // Erstelle ein AnimeRelease aus dem Favoriten
+    final release = AnimeRelease(
+      title: anime.title,
+      episodeTitle: '',
+      episodeNumber: '',
+      episodeUrl: '',
+      releaseTime: DateTime.now(),
+      seriesUrl: anime.seriesUrl ?? '',
+      isPremiere: false,
+      imageUrl: anime.imageUrl,
+    );
+
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return _FavoriteAnimeDetailsDialog(
+          anime: anime,
+          release: release,
+          crunchyrollService: _crunchyrollService,
+          onFavoriteRemoved: () {
+            favoritesChangeNotifier.value++;
+            _loadFavorites();
+          },
+        );
+      },
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    final now = DateTime.now();
+    final diff = now.difference(date);
+    
+    if (diff.inDays == 0) {
+      return 'Heute';
+    } else if (diff.inDays == 1) {
+      return 'Gestern';
+    } else if (diff.inDays < 7) {
+      return 'vor ${diff.inDays} Tagen';
+    } else if (diff.inDays < 30) {
+      final weeks = (diff.inDays / 7).floor();
+      return 'vor $weeks ${weeks == 1 ? 'Woche' : 'Wochen'}';
+    } else {
+      return '${date.day}.${date.month}.${date.year}';
+    }
+  }
+
+  Future<void> _exportFavorites() async {
+    if (_favorites.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Keine Favoriten zum Exportieren'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    try {
+      // Exportiere - User wählt Speicherort
+      final filePath = await _favoritesRepo.exportFavoritesToJson();
+
+      // User hat abgebrochen
+      if (filePath == null) {
+        return;
+      }
+
+      // Zeige Erfolgs-Dialog mit Share-Option
+      if (mounted) {
+        final result = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Export erfolgreich'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${_favorites.length} Favoriten exportiert'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Gespeichert unter:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  filePath,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey.shade700,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'close'),
+                child: const Text('Schließen'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context, 'share'),
+                icon: const Icon(Icons.share),
+                label: const Text('Teilen'),
+              ),
+            ],
+          ),
+        );
+
+        // Teilen wenn gewünscht
+        if (result == 'share') {
+          await Share.shareXFiles(
+            [XFile(filePath)],
+            subject: 'Meine Crunchyroll Favoriten',
+            text: 'Crunchyroll Favoriten-Liste (${_favorites.length} Anime)',
+          );
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('Export error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Exportieren: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _importFavorites() async {
+    try {
+      // Datei auswählen
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Favoriten-Datei auswählen',
+      );
+
+      if (result == null || result.files.isEmpty) {
+        return; // User hat abgebrochen
+      }
+
+      final filePath = result.files.single.path;
+      if (filePath == null) {
+        throw Exception('Kein Dateipfad erhalten');
+      }
+
+      // Zeige Lade-Dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Importiere Favoriten...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Importiere
+      final importedCount = await _favoritesRepo.importFavoritesFromJson(filePath);
+
+      // Schließe Lade-Dialog
+      if (mounted) Navigator.pop(context);
+
+      // Lade Favoriten neu
+      await _loadFavorites();
+
+      // Benachrichtige andere Cards
+      favoritesChangeNotifier.value++;
+
+      // Zeige Erfolgs-Dialog
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Import erfolgreich'),
+              ],
+            ),
+            content: Text(
+              importedCount == 1
+                  ? '1 neuer Favorit wurde importiert'
+                  : '$importedCount neue Favoriten wurden importiert',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      // Schließe Lade-Dialog falls noch offen
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+
+      if (kDebugMode) print('Import error: $e');
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Import fehlgeschlagen'),
+              ],
+            ),
+            content: Text(
+              'Fehler beim Importieren:\n\n$e',
+              style: const TextStyle(fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+}
+
+/// Dialog für Anime-Details in der Favoriten-Liste
+class _FavoriteAnimeDetailsDialog extends StatefulWidget {
+  final FavoriteAnime anime;
+  final AnimeRelease release;
+  final CrunchyrollService crunchyrollService;
+  final VoidCallback onFavoriteRemoved;
+
+  const _FavoriteAnimeDetailsDialog({
+    required this.anime,
+    required this.release,
+    required this.crunchyrollService,
+    required this.onFavoriteRemoved,
+  });
+
+  @override
+  State<_FavoriteAnimeDetailsDialog> createState() => _FavoriteAnimeDetailsDialogState();
+}
+
+class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog> {
+  final FavoritesRepository _favoritesRepository = FavoritesRepository();
+  final GoogleTranslator _translator = GoogleTranslator();
+  String? _descriptionOriginal;
+  String? _descriptionTranslated;
+  bool _isLoadingDescription = true;
+  bool _isTranslating = false;
+  bool _showGerman = true;
+  bool _isFavorite = true; // Immer true, da es aus Favoriten kommt
+  bool _isLoadingFavorite = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDescription();
+  }
+
+  Future<void> _loadDescription() async {
+    final description = await widget.crunchyrollService.fetchDescription(
+      widget.release,
+    );
+    if (mounted) {
+      setState(() {
+        _descriptionOriginal = description;
+        _isLoadingDescription = false;
+      });
+      // Automatisch übersetzen nur wenn Setting aktiviert ist
+      final autoTranslate = await AppSettings.getAutoTranslate();
+      if (autoTranslate) {
+        _translateDescription();
+      } else {
+        setState(() {
+          _showGerman = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _translateDescription() async {
+    if (_descriptionOriginal == null || 
+        _descriptionOriginal == 'Keine Beschreibung verfügbar' ||
+        _descriptionTranslated != null) {
+      return;
+    }
+    
+    setState(() {
+      _isTranslating = true;
+    });
+    
+    try {
+      final translation = await _translator.translate(
+        _descriptionOriginal!,
+        from: 'en',
+        to: 'de',
+      );
+      if (mounted) {
+        setState(() {
+          _descriptionTranslated = translation.text;
+          _isTranslating = false;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('Translation error: $e');
+      if (mounted) {
+        setState(() {
+          _isTranslating = false;
+        });
+      }
+    }
+  }
+
+  void _toggleLanguage() {
+    setState(() {
+      _showGerman = !_showGerman;
+    });
+  }
+
+  String get _currentDescription {
+    if (_showGerman && _descriptionTranslated != null) {
+      return _descriptionTranslated!;
+    }
+    return _descriptionOriginal ?? 'Keine Beschreibung verfügbar';
+  }
+
+  Future<void> _toggleFavorite() async {
+    setState(() => _isLoadingFavorite = true);
+    
+    try {
+      // Aus Favoriten entfernen
+      await _favoritesRepository.removeFavorite(widget.anime.title);
+      
+      if (mounted) {
+        setState(() {
+          _isFavorite = false;
+          _isLoadingFavorite = false;
+        });
+        
+        // Callback ausführen
+        widget.onFavoriteRemoved();
+        
+        // Dialog schließen
+        Navigator.of(context).pop();
+        
+        // Snackbar anzeigen
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('💔 ${widget.anime.title} aus Favoriten entfernt'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error toggling favorite: $e');
+      if (mounted) {
+        setState(() => _isLoadingFavorite = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('❌ Fehler beim Speichern')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openCrunchyrollSeries() async {
+    try {
+      final seriesUrl = widget.anime.seriesUrl;
+      if (seriesUrl == null || seriesUrl.isEmpty) {
+        if (kDebugMode) print('No series URL available');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Keine Crunchyroll-URL verfügbar')),
+          );
+        }
+        return;
+      }
+      
+      final Uri url = Uri.parse(seriesUrl);
+      if (await canLaunchUrl(url)) {
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (mounted) {
+          Navigator.of(context).pop();
+        }
+      } else {
+        if (kDebugMode) print('Cannot launch $url');
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error opening URL: $e');
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.85,
+            maxWidth: MediaQuery.of(context).size.width * 0.95,
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header mit Bild
+                Stack(
+                  children: [
+                    if (widget.anime.imageUrl != null &&
+                        widget.anime.imageUrl!.isNotEmpty)
+                      CachedNetworkImage(
+                        imageUrl: widget.anime.imageUrl!,
+                        height: 220,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                        placeholder: (context, url) => Container(
+                          height: 220,
+                          color: Colors.grey.shade300,
+                          child: const Center(
+                            child: CircularProgressIndicator(),
+                          ),
+                        ),
+                        errorWidget: (context, url, error) =>
+                            Container(height: 220, color: Colors.grey.shade300),
+                      )
+                    else
+                      Container(height: 220, color: Colors.grey.shade300),
+                    // Favorit Button (oben links)
+                    Positioned(
+                      top: 8,
+                      left: 8,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black54,
+                        radius: 22,
+                        child: _isLoadingFavorite
+                            ? const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                    Colors.white,
+                                  ),
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : IconButton(
+                                icon: Icon(
+                                  _isFavorite
+                                      ? Icons.favorite
+                                      : Icons.favorite_border,
+                                  color: _isFavorite ? Colors.red : Colors.white,
+                                  size: 24,
+                                ),
+                                onPressed: _toggleFavorite,
+                                padding: EdgeInsets.zero,
+                              ),
+                      ),
+                    ),
+                    // Close Button
+                    Positioned(
+                      top: 8,
+                      right: 8,
+                      child: CircleAvatar(
+                        backgroundColor: Colors.black54,
+                        radius: 18,
+                        child: IconButton(
+                          icon: const Icon(
+                            Icons.close,
+                            color: Colors.white,
+                            size: 18,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                          padding: EdgeInsets.zero,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+
+                // Content
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Titel
+                      Text(
+                        widget.anime.title,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // Plot/Beschreibung mit Sprachwechsel
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Handlung:',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                            ),
+                          ),
+                          if (!_isLoadingDescription && _descriptionOriginal != 'Keine Beschreibung verfügbar')
+                            TextButton.icon(
+                              onPressed: _isTranslating ? null : _toggleLanguage,
+                              icon: Icon(
+                                Icons.translate,
+                                size: 18,
+                                color: _isTranslating ? Colors.grey : Theme.of(context).colorScheme.primary,
+                              ),
+                              label: Text(
+                                _showGerman ? 'EN' : 'DE',
+                                style: TextStyle(
+                                  color: _isTranslating ? Colors.grey : Theme.of(context).colorScheme.primary,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              style: TextButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(horizontal: 8),
+                                minimumSize: Size.zero,
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      if (_isLoadingDescription)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Center(
+                            child: SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          ),
+                        )
+                      else if (_isTranslating && _showGerman)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Row(
+                            children: [
+                              const SizedBox(
+                                width: 16,
+                                height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'Übersetze...',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey.shade600,
+                                  fontStyle: FontStyle.italic,
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Text(
+                          _currentDescription,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade700,
+                            height: 1.4,
+                          ),
+                        ),
+                      const SizedBox(height: 20),
+
+                      // Button zu Crunchyroll
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: _openCrunchyrollSeries,
+                          icon: const Icon(Icons.play_circle),
+                          label: const Text('Auf Crunchyroll ansehen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                ? Colors.black
+                                : Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

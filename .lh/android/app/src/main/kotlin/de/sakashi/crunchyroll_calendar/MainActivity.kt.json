@@ -1,0 +1,18 @@
+{
+    "sourceFile": "android/app/src/main/kotlin/de/sakashi/crunchyroll_calendar/MainActivity.kt",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768776271641,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768776271641,
+            "name": "Commit-0",
+            "content": "package de.sakashi.crunchyroll_calendar\r\n\r\nimport io.flutter.embedding.android.FlutterActivity\r\n\r\nclass MainActivity : FlutterActivity()\r\n"
+        }
+    ]
+}

@@ -1,0 +1,18 @@
+{
+    "sourceFile": "ios/Runner/Info.plist",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1768746107091,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1768746107091,
+            "name": "Commit-0",
+            "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\r\n<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\r\n<plist version=\"1.0\">\r\n<dict>\r\n\t<key>CFBundleDevelopmentRegion</key>\r\n\t<string>$(DEVELOPMENT_LANGUAGE)</string>\r\n\t<key>CFBundleDisplayName</key>\r\n\t<string>Crunchyroll Calendar</string>\r\n\t<key>CFBundleExecutable</key>\r\n\t<string>$(EXECUTABLE_NAME)</string>\r\n\t<key>CFBundleIdentifier</key>\r\n\t<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>\r\n\t<key>CFBundleInfoDictionaryVersion</key>\r\n\t<string>6.0</string>\r\n\t<key>CFBundleName</key>\r\n\t<string>crunchyroll_calendar</string>\r\n\t<key>CFBundlePackageType</key>\r\n\t<string>APPL</string>\r\n\t<key>CFBundleShortVersionString</key>\r\n\t<string>$(FLUTTER_BUILD_NAME)</string>\r\n\t<key>CFBundleSignature</key>\r\n\t<string>????</string>\r\n\t<key>CFBundleVersion</key>\r\n\t<string>$(FLUTTER_BUILD_NUMBER)</string>\r\n\t<key>LSRequiresIPhoneOS</key>\r\n\t<true/>\r\n\t<key>UILaunchStoryboardName</key>\r\n\t<string>LaunchScreen</string>\r\n\t<key>UIMainStoryboardFile</key>\r\n\t<string>Main</string>\r\n\t<key>UISupportedInterfaceOrientations</key>\r\n\t<array>\r\n\t\t<string>UIInterfaceOrientationPortrait</string>\r\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\r\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\r\n\t</array>\r\n\t<key>UISupportedInterfaceOrientations~ipad</key>\r\n\t<array>\r\n\t\t<string>UIInterfaceOrientationPortrait</string>\r\n\t\t<string>UIInterfaceOrientationPortraitUpsideDown</string>\r\n\t\t<string>UIInterfaceOrientationLandscapeLeft</string>\r\n\t\t<string>UIInterfaceOrientationLandscapeRight</string>\r\n\t</array>\r\n\t<key>CADisableMinimumFrameDurationOnPhone</key>\r\n\t<true/>\r\n\t<key>UIApplicationSupportsIndirectInputEvents</key>\r\n\t<true/>\r\n\t\r\n\t<!-- Background Task Scheduler für iOS 13+ -->\r\n\t<!-- Benötigt für periodische Background Tasks mit Workmanager -->\r\n\t<key>BGTaskSchedulerPermittedIdentifiers</key>\r\n\t<array>\r\n\t\t<string>de.patrikneubert.crunchyroll_calendar.scraper</string>\r\n\t</array>\r\n\t\r\n\t<!-- Timezone Support für Notifications -->\r\n\t<key>NSBonjourServices</key>\r\n\t<array/>\r\n</dict>\r\n</plist>\r\n"
+        }
+    ]
+}
