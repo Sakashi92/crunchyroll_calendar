@@ -83,6 +83,37 @@ class _FavoritesPageState extends State<FavoritesPage> {
     }
   }
 
+  Future<void> _toggleNotifications(FavoriteAnime anime, bool enabled) async {
+    final index = _favorites.indexWhere((f) => f.title == anime.title);
+    if (index == -1) return;
+
+    // Optimistic update
+    setState(() {
+      _favorites[index] = anime.copyWith(notificationsEnabled: enabled);
+    });
+
+    final success = await _favoritesRepo.setNotificationsEnabled(anime.title, enabled);
+
+    if (!success && mounted) {
+      // Rollback on failure
+      setState(() {
+        _favorites[index] = anime;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('❌ Konnte Push-Einstellung nicht speichern')),
+      );
+    } else if (mounted) {
+   //   ScaffoldMessenger.of(context).showSnackBar(
+   //     SnackBar(
+   //       content: Text(enabled
+   //           ? '🔔 Push-Benachrichtigungen aktiviert'
+   //          : '🔕 Push-Benachrichtigungen deaktiviert'),
+   //       duration: const Duration(seconds: 2),
+  //      ),
+   //   );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,7 +242,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             children: [
                               Icon(
                                 Icons.favorite,
-                                size: 14,
+                                size: 10,
                                 color: Colors.red.shade400,
                               ),
                               const SizedBox(width: 4),
@@ -225,10 +256,76 @@ class _FavoritesPageState extends State<FavoritesPage> {
                             ],
                           ),
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline, color: Colors.red),
-                          tooltip: 'Aus Favoriten entfernen',
-                          onPressed: () => _removeFavorite(anime),
+                        trailing: SizedBox(
+                          width: 100,
+                          height: 56,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              SizedBox(
+                                width: 52,
+                                height: 56,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    SizedBox(
+                                      width: 37,
+                                      height: 37,
+                                      child: IconButton(
+                                        icon: Icon(
+                                          anime.notificationsEnabled
+                                              ? Icons.notifications_active
+                                              : Icons.notifications_off,
+                                          color: anime.notificationsEnabled
+                                              ? Theme.of(context).colorScheme.primary
+                                              : Colors.grey,
+                                          size: 22,
+                                        ),
+                                        tooltip: anime.notificationsEnabled ? 'Push deaktivieren' : 'Push aktivieren',
+                                        onPressed: () => _toggleNotifications(anime, !anime.notificationsEnabled),
+                                        padding: const EdgeInsets.all(4),
+                                        constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                      decoration: BoxDecoration(
+                                        color: anime.notificationsEnabled
+                                            ? Theme.of(context).colorScheme.primary.withOpacity(0.12)
+                                            : Colors.grey.withOpacity(0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Text(
+                                        anime.notificationsEnabled ? 'Ein' : 'Aus',
+                                        style: TextStyle(
+                                          fontSize: 10,
+                                          color: anime.notificationsEnabled
+                                              ? Theme.of(context).colorScheme.primary
+                                              : Colors.grey.shade700,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              SizedBox(
+                                width: 40,
+                                height: 40,
+                                child: IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.red, size: 22),
+                                  tooltip: 'Aus Favoriten entfernen',
+                                  onPressed: () => _removeFavorite(anime),
+                                  padding: const EdgeInsets.all(4),
+                                  constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -267,23 +364,27 @@ class _FavoritesPageState extends State<FavoritesPage> {
     );
   }
 
-  String _formatDate(DateTime date) {
-    final now = DateTime.now();
-    final diff = now.difference(date);
-    
-    if (diff.inDays == 0) {
-      return 'Heute';
-    } else if (diff.inDays == 1) {
-      return 'Gestern';
-    } else if (diff.inDays < 7) {
-      return 'vor ${diff.inDays} Tagen';
-    } else if (diff.inDays < 30) {
-      final weeks = (diff.inDays / 7).floor();
-      return 'vor $weeks ${weeks == 1 ? 'Woche' : 'Wochen'}';
-    } else {
-      return '${date.day}.${date.month}.${date.year}';
-    }
+String _formatDate(DateTime date) {
+  final now = DateTime.now();
+  final today = DateTime(now.year, now.month, now.day);
+  final aDate = DateTime(date.year, date.month, date.day);
+
+  final diff = today.difference(aDate).inDays;
+
+  if (diff == 0) {
+    return 'Heute';
+  } else if (diff == 1) {
+    return 'Gestern';
+  } else {
+    // Genaues Datum anzeigen mit führenden Nullen
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final year = date.year.toString();
+    return '$day.$month.$year';
   }
+}
+
+
 
   Future<void> _exportFavorites() async {
     if (_favorites.isEmpty) {
@@ -547,13 +648,16 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
         _descriptionOriginal = description;
         _isLoadingDescription = false;
       });
-      // Automatisch übersetzen nur wenn Setting aktiviert ist
+      
+      // Starte Übersetzung (unabhängig von autoTranslate-Einstellung)
+      // damit User zwischen Sprachen wechseln kann
+      await _translateDescription();
+      
+      // Zeige automatisch Deutsche Version nur wenn Setting aktiviert
       final autoTranslate = await AppSettings.getAutoTranslate();
-      if (autoTranslate) {
-        _translateDescription();
-      } else {
+      if (mounted) {
         setState(() {
-          _showGerman = false;
+          _showGerman = autoTranslate;
         });
       }
     }

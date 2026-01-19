@@ -7,11 +7,13 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
+import 'dart:io';
 import 'models/anime_release.dart';
 import 'services/crunchyroll_service.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'services/permission_service.dart';
+import 'services/battery_optimization_service.dart';
 import 'repositories/favorites_repository.dart';
 import 'models/favorite_anime.dart';
 import 'settings.dart';
@@ -26,9 +28,9 @@ void main() async {
   // Notification Service initialisieren
   await NotificationService().initialize();
   
-  // Background Service initialisieren und Task starten
+  // Background Service initialisieren und Task starten (alle 20 Minuten)
   await BackgroundService.initialize();
-  await BackgroundService().startPeriodicScraperTask(intervalMinutes: 30);
+  await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
   
   runApp(const MainApp());
 }
@@ -94,7 +96,6 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime? _selectedDay;
   Map<DateTime, List<AnimeRelease>> _releases = {};
   final CrunchyrollService _crunchyrollService = CrunchyrollService();
-  bool _isLoading = false;
   bool _isLoadingImages = false;
   int _imagesLoaded = 0;
   int _imagesToLoad = 0;
@@ -159,6 +160,14 @@ class _CalendarPageState extends State<CalendarPage> {
     try {
       await PermissionService().requestInitialPermissions();
       if (kDebugMode) print('✓ Berechtigungen angefragt');
+      
+      // Zeige Akku-Optimierung Dialog beim ersten Start (nur Android)
+      if (Platform.isAndroid && mounted) {
+        final hasShown = await BatteryOptimizationService.hasShownDialog();
+        if (!hasShown && mounted) {
+          await BatteryOptimizationService.showBatteryOptimizationDialog(context);
+        }
+      }
     } catch (e) {
       if (kDebugMode) print('❌ Fehler beim Anfragen der Berechtigungen: $e');
     }
@@ -169,16 +178,12 @@ class _CalendarPageState extends State<CalendarPage> {
     await prefs.setInt('calendar_format', format.index);
   }
 
-  Future<void> _loadReleases() async {
+  Future<void> _loadReleases({bool showMessage = false}) async {
     // Lade beim Start alle gecachten Daten (Bilder, verarbeitete Titel) - nur einmal
     if (!_cacheLoaded) {
       await _crunchyrollService.loadCacheOnStartup();
       _cacheLoaded = true;
     }
-    
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
       // Laden des aktuellen fokussierten Monats
@@ -206,8 +211,12 @@ class _CalendarPageState extends State<CalendarPage> {
 
       setState(() {
         _releases = releasesByDay;
-        _isLoading = false;
       });
+      
+      // Zeige Meldung wenn gewünscht und eingestellt
+      if (showMessage && mounted) {
+        _showRefreshSuccessMessage();
+      }
       
       // Nach dem aktuellen Monat: lade benachbarte Monate nacheinander
       _preloadAdjacentMonths(dateToLoad);
@@ -217,9 +226,6 @@ class _CalendarPageState extends State<CalendarPage> {
       _loadAllCachedMonths();
     } catch (e) {
       if (kDebugMode) print('Error loading releases: $e');
-      setState(() {
-        _isLoading = false;
-      });
     }
   }
   
@@ -304,10 +310,6 @@ class _CalendarPageState extends State<CalendarPage> {
       _showFrozenMonthMessage();
       return;
     }
-    
-    setState(() {
-      _isLoading = true;
-    });
 
     try {
       // Übergebe den angezeigten Monat für den Refresh
@@ -329,13 +331,26 @@ class _CalendarPageState extends State<CalendarPage> {
 
       setState(() {
         _releases = releasesByDay;
-        _isLoading = false;
       });
+      
+      // Zeige Erfolgsmeldung
+      _showRefreshSuccessMessage();
     } catch (e) {
       if (kDebugMode) print('Error during force refresh: $e');
-      setState(() {
-        _isLoading = false;
-      });
+    }
+  }
+  
+  /// Zeigt eine Meldung an, dass die Einträge aktualisiert wurden
+  Future<void> _showRefreshSuccessMessage() async {
+    final showMessage = await AppSettings.getShowRefreshMessage();
+    if (showMessage && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('✓ Einträge aktualisiert'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.green.shade700,
+        ),
+      );
     }
   }
 
@@ -566,13 +581,8 @@ class _CalendarPageState extends State<CalendarPage> {
               },
             ),
             const Divider(height: 1),
-            if (_isLoading)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: CircularProgressIndicator(),
-              )
-            else
-              Expanded(child: _buildReleaseList()),
+            // Immer die Liste anzeigen - kein Ladekreis mehr!
+            Expanded(child: _buildReleaseList()),
           ],
         ),
       ),

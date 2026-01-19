@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:io';
 import 'services/crunchyroll_service.dart';
 import 'services/background_service.dart';
+import 'services/battery_optimization_service.dart';
+import 'services/permission_service.dart';
 
 /// Einstellungen für die App
 class AppSettings {
@@ -10,6 +13,8 @@ class AppSettings {
   static const String _updateIntervalKey = 'update_interval_minutes';
   static const String _autoTranslateKey = 'auto_translate';
   static const String _accentColorKey = 'accent_color';
+  static const String _notificationDelayKey = 'notification_delay_seconds';
+  static const String _showRefreshMessageKey = 'show_refresh_message';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -28,6 +33,16 @@ class AppSettings {
     15: '15 Minuten',
     30: '30 Minuten',
     60: '1 Stunde',
+  };
+
+  /// Verfügbare Verzögerungen für Benachrichtigungen in Sekunden
+  static const Map<int, String> notificationDelays = {
+    0: 'Sofort',
+    10: '10 Sekunden',
+    30: '30 Sekunden',
+    60: '1 Minute',
+    300: '5 Minuten',
+    600: '10 Minuten',
   };
   
   /// Vordefinierte Accent-Farben
@@ -99,6 +114,30 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_accentColorKey, color.value);
   }
+
+  /// Lädt die Benachrichtigungs-Verzögerung in Sekunden
+  static Future<int> getNotificationDelaySeconds() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_notificationDelayKey) ?? 0; // Standard: 0 (sofort)
+  }
+
+  /// Speichert die Benachrichtigungs-Verzögerung in Sekunden
+  static Future<void> setNotificationDelaySeconds(int seconds) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_notificationDelayKey, seconds);
+  }
+
+  /// Lädt ob Aktualisierungsmeldungen angezeigt werden sollen
+  static Future<bool> getShowRefreshMessage() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_showRefreshMessageKey) ?? true; // Standard: aktiviert
+  }
+
+  /// Speichert ob Aktualisierungsmeldungen angezeigt werden sollen
+  static Future<void> setShowRefreshMessage(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_showRefreshMessageKey, enabled);
+  }
 }
 
 /// Einstellungs-Seite
@@ -117,7 +156,10 @@ class _SettingsPageState extends State<SettingsPage> {
   int _updateIntervalMinutes = 5;
   bool _autoTranslate = true;
   Color _accentColor = Colors.orange;
+  int _notificationDelaySeconds = 0;
+  bool _showRefreshMessage = true;
   bool _isLoading = true;
+  Map<String, PermissionStatus> _permissions = {};
 
   @override
   void initState() {
@@ -130,12 +172,18 @@ class _SettingsPageState extends State<SettingsPage> {
     final updateInterval = await AppSettings.getUpdateIntervalMinutes();
     final autoTranslate = await AppSettings.getAutoTranslate();
     final accentColor = await AppSettings.getAccentColor();
+    final notificationDelay = await AppSettings.getNotificationDelaySeconds();
+    final showRefreshMessage = await AppSettings.getShowRefreshMessage();
+    final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
       _imageQuality = imageQuality;
       _updateIntervalMinutes = updateInterval;
       _autoTranslate = autoTranslate;
       _accentColor = accentColor;
+      _notificationDelaySeconds = notificationDelay;
+      _showRefreshMessage = showRefreshMessage;
+      _permissions = permissions;
       _isLoading = false;
     });
   }
@@ -228,6 +276,14 @@ class _SettingsPageState extends State<SettingsPage> {
       ),
       body: ListView(
         children: [
+          // Berechtigungen
+          _buildSectionHeader('Berechtigungen'),
+          _buildPermissionsOverviewTile(),
+          // Hintergrund-Einstellungen
+          _buildBatteryOptimizationTile(),
+         
+          const Divider(),
+          
           // Bildqualität
           _buildSectionHeader('Bildqualität'),
           _buildImageQualityTile(),
@@ -237,6 +293,7 @@ class _SettingsPageState extends State<SettingsPage> {
           // Update-Intervall
           _buildSectionHeader('Aktualisierung'),
           _buildUpdateIntervalTile(),
+          _buildShowRefreshMessageTile(),
           
           const Divider(),
           
@@ -260,8 +317,12 @@ class _SettingsPageState extends State<SettingsPage> {
           
           // Test
           _buildSectionHeader('Test'),
+          _buildNotificationDelayTile(),
+          _buildTestFavoritesNotificationsTile(),
           _buildTestNotificationTile(),
-          if (kDebugMode) _buildBackgroundTaskStatusTile(),
+          _buildBackgroundTaskStatusTile(),
+          _buildWorkmanagerTestTile(),
+          _buildBackgroundScraperTestTile(),
           
           const Divider(),
           
@@ -283,6 +344,110 @@ class _SettingsPageState extends State<SettingsPage> {
           fontWeight: FontWeight.bold,
           color: Theme.of(context).colorScheme.primary,
         ),
+      ),
+    );
+  }
+
+  Widget _buildPermissionsOverviewTile() {
+    // Zähle gewährte Permissions
+    final grantedCount = _permissions.values.where((p) => p == PermissionStatus.granted).length;
+    final totalCount = _permissions.length;
+    final allGranted = grantedCount == totalCount;
+    
+    return ListTile(
+      leading: Icon(
+        allGranted ? Icons.verified : Icons.warning,
+        color: allGranted ? Colors.green : Colors.orange,
+      ),
+      title: const Text('Status der Berechtigungen'),
+      subtitle: Text('$grantedCount/$totalCount Berechtigungen aktiviert'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showPermissionsDetailsDialog(),
+    );
+  }
+  
+  void _showPermissionsDetailsDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Berechtigungen'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: _permissions.entries.map((entry) {
+              final name = entry.key;
+              final status = entry.value;
+              final description = PermissionService.getPermissionDescriptions()[name] ?? '';
+              
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          width: 12,
+                          height: 12,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: status.color,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                name,
+                                style: const TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                              Text(
+                                status.label,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              if (description.isNotEmpty)
+                                Text(
+                                  description,
+                                  style: const TextStyle(fontSize: 11),
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (entry != _permissions.entries.last)
+                      const Divider(height: 16),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              Navigator.pop(context);
+              // Aktualisiere die Permissions
+              final permissions = await PermissionService().checkAllPermissions();
+              setState(() {
+                _permissions = permissions;
+              });
+            },
+            child: const Text('Aktualisieren'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Schließen'),
+          ),
+        ],
       ),
     );
   }
@@ -342,6 +507,50 @@ class _SettingsPageState extends State<SettingsPage> {
       title: const Text('Bild-Cache löschen'),
       subtitle: const Text('Alle gecachten Cover-Bilder löschen und neu laden'),
       onTap: () => _showClearCacheDialog(),
+    );
+  }
+
+  Widget _buildBatteryOptimizationTile() {
+    // Nur auf Android anzeigen
+    if (!Platform.isAndroid) {
+      return const SizedBox.shrink();
+    }
+    
+    return ListTile(
+      leading: Icon(Icons.battery_saver, color: Colors.orange.shade700),
+      title: const Text('Akku-Optimierung'),
+      subtitle: const Text('Einstellungen für Hintergrund-Benachrichtigungen'),
+      trailing: const Icon(Icons.open_in_new),
+      onTap: () async {
+        await BatteryOptimizationService.showBatteryOptimizationDialog(context);
+      },
+    );
+  }
+
+  Widget _buildShowRefreshMessageTile() {
+    return SwitchListTile(
+      secondary: const Icon(Icons.notifications_none),
+      title: const Text('Aktualisierungsmeldung'),
+      subtitle: const Text('Meldung nach dem Aktualisieren anzeigen'),
+      value: _showRefreshMessage,
+      onChanged: (value) async {
+        await AppSettings.setShowRefreshMessage(value);
+        setState(() {
+          _showRefreshMessage = value;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                value 
+                  ? 'Meldung wird nach Aktualisierung angezeigt'
+                  : 'Meldung wird nicht mehr angezeigt',
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      },
     );
   }
 
@@ -448,11 +657,179 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Widget _buildTestFavoritesNotificationsTile() {
+    final delayText = AppSettings.notificationDelays[_notificationDelaySeconds] ?? 'Sofort';
+    return ListTile(
+      leading: const Icon(Icons.notifications_active),
+      title: const Text('🔔 Test: Favoriten-Benachrichtigungen'),
+      subtitle: Text('Verzögerung: $delayText'),
+      onTap: () async {
+        // Zeige Loading mit Verzögerungsinfo
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('⏳ Benachrichtigung in $delayText...'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
+        }
+
+        try {
+          final backgroundService = BackgroundService();
+          await backgroundService.sendTestNotificationsForTodaysFavorites(delaySeconds: _notificationDelaySeconds);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('✓ Benachrichtigung geplant (in $delayText)'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          if (kDebugMode) print('❌ Error sending test notifications: $e');
+        }
+      },
+    );
+  }
+
+  Widget _buildWorkmanagerTestTile() {
+    return ListTile(
+      leading: const Icon(Icons.schedule_send),
+      title: const Text('🧪 Test: Workmanager (Sofort)'),
+      subtitle: const Text('Testet ob Workmanager im Hintergrund funktioniert (1-2 Sekunden)'),
+      onTap: () async {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⏳ Starte Workmanager Test...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
+        try {
+          final backgroundService = BackgroundService();
+          await backgroundService.testWorkmanagerNow();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Workmanager Test gestartet - prüfe Logs in 2-3 Sekunden'),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          if (kDebugMode) print('❌ Error testing Workmanager: $e');
+        }
+      },
+    );
+  }
+
+  Widget _buildBackgroundScraperTestTile() {
+    return ListTile(
+      leading: const Icon(Icons.sync),
+      title: const Text('🔄 Test: Background Scraper'),
+      subtitle: const Text('Testet ob der periodische Crunchyroll-Scraper funktioniert'),
+      onTap: () async {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('⏳ Starte Background Scraper Test...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+
+        try {
+          final backgroundService = BackgroundService();
+          await backgroundService.testBackgroundScraperNow();
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('✅ Background Scraper gestartet - schließe App und prüfe Logs'),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } catch (e) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          if (kDebugMode) print('❌ Error testing background scraper: $e');
+        }
+      },
+    );
+  }
+
+  Widget _buildNotificationDelayTile() {
+    return ListTile(
+      leading: const Icon(Icons.schedule),
+      title: const Text('Benachrichtigungs-Verzögerung'),
+      subtitle: Text('${AppSettings.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}'),
+      trailing: DropdownButton<int>(
+        value: _notificationDelaySeconds,
+        underline: Container(),
+        items: AppSettings.notificationDelays.entries.map((entry) {
+          return DropdownMenuItem<int>(
+            value: entry.key,
+            child: Text(entry.value),
+          );
+        }).toList(),
+        onChanged: (int? newValue) async {
+          if (newValue != null) {
+            await AppSettings.setNotificationDelaySeconds(newValue);
+            setState(() {
+              _notificationDelaySeconds = newValue;
+            });
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('✓ Verzögerung auf ${AppSettings.notificationDelays[newValue]} eingestellt'),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
+            }
+          }
+        },
+      ),
+    );
+  }
+
   Widget _buildInfoTile() {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 1.0.0\nBilder werden von Kitsu.io geladen'),
+      subtitle: Text('Version 0.3.5\nBilder werden von Kitsu.io geladen'),
       isThreeLine: true,
     );
   }

@@ -100,10 +100,22 @@ class NotificationRepository {
       
       final yesterday = DateTime.now().subtract(const Duration(hours: oneDayAgo));
       
+      // Baue die WHERE-Klausel dynamisch auf, um NULL-Werte richtig zu behandeln
+      String where = 'favoriteTitle = ? AND releaseTitle = ? AND notifyTime > ?';
+      List<dynamic> whereArgs = [favoriteTitle, releaseTitle, yesterday.toIso8601String()];
+      
+      // Wenn episodeNumber null ist, prüfe auf IS NULL, sonst auf Gleichheit
+      if (episodeNumber == null) {
+        where += ' AND episodeNumber IS NULL';
+      } else {
+        where += ' AND episodeNumber = ?';
+        whereArgs.add(episodeNumber);
+      }
+      
       final result = await db.query(
         _tableName,
-        where: 'favoriteTitle = ? AND releaseTitle = ? AND episodeNumber = ? AND notifyTime > ?',
-        whereArgs: [favoriteTitle, releaseTitle, episodeNumber, yesterday.toIso8601String()],
+        where: where,
+        whereArgs: whereArgs,
       );
       
       return result.isNotEmpty;

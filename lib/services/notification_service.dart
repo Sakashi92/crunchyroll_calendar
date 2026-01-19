@@ -2,6 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/foundation.dart';
+import '../settings.dart';
 
 /// Service für lokale Benachrichtigungen
 /// Zeigt Benachrichtigungen an wenn neue Releases verfügbar sind
@@ -41,6 +42,10 @@ class NotificationService {
           requestAlertPermission: true,
           requestBadgePermission: true,
           requestSoundPermission: true,
+          notificationCategories: [],
+          defaultPresentAlert: true,
+          defaultPresentBadge: true,
+          defaultPresentSound: true,
         );
       
       // Kombinierte Einstellungen
@@ -48,6 +53,16 @@ class NotificationService {
         android: androidSettings,
         iOS: iosSettings,
       );
+      
+      // Konfiguriere Foreground Notification Präsentation für iOS
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          );
       
       // Initialize mit Callback
       await _notificationsPlugin.initialize(
@@ -123,6 +138,7 @@ class NotificationService {
           priority: Priority.high,
           showWhen: true,
           enableVibration: true,
+          onlyAlertOnce: false,
         );
       
       const DarwinNotificationDetails iosDetails = 
@@ -266,6 +282,55 @@ class NotificationService {
     } catch (e) {
       if (kDebugMode) print('❌ Error checking notification permissions: $e');
       return false;
+    }
+  }
+
+  /// Test-Methode: Sende Benachrichtigung für jedes Favorit mit heutigen Releases
+  Future<void> sendTestNotificationForFavoritesOfToday(
+    List<String> favoriteAnimeWithReleasesToday,
+  ) async {
+    if (kDebugMode) print('📨 [NOTIF] sendTestNotificationForFavoritesOfToday called with ${favoriteAnimeWithReleasesToday.length} favorites');
+    
+    if (favoriteAnimeWithReleasesToday.isEmpty) {
+      if (kDebugMode) print('ℹ️  [NOTIF] Keine Favoriten mit heutigen Releases gefunden');
+      return;
+    }
+
+    try {
+      // Lade die Verzögerung aus den Einstellungen
+      final delaySeconds = await AppSettings.getNotificationDelaySeconds();
+      if (kDebugMode) print('⏱️ [NOTIF] Using notification delay: ${delaySeconds}s');
+
+      // Sende für jedes Favorit eine Benachrichtigung
+      for (int i = 0; i < favoriteAnimeWithReleasesToday.length; i++) {
+        final title = favoriteAnimeWithReleasesToday[i];
+        
+        if (kDebugMode) print('📤 [NOTIF] Processing notification ${i+1}/${favoriteAnimeWithReleasesToday.length} for: $title');
+        
+        // Wende die Verzögerung an
+        if (delaySeconds > 0) {
+          if (kDebugMode) print('⏳ [NOTIF] Waiting ${delaySeconds}s before sending...');
+          await Future.delayed(Duration(seconds: delaySeconds));
+        }
+        
+        if (kDebugMode) print('🔔 [NOTIF] Calling showNotification for: $title');
+        await showNotification(
+          title: '🔔 Test: $title',
+          body: 'Eine neue Episode von ${favoriteAnimeWithReleasesToday[i]} ist heute verfügbar!',
+          payload: 'favorite_${i}',
+        );
+        if (kDebugMode) print('✅ [NOTIF] showNotification completed for: $title');
+        
+        // Kleine Verzögerung zwischen Benachrichtigungen (300ms)
+        await Future.delayed(const Duration(milliseconds: 300));
+      }
+      
+      if (kDebugMode) print('✅ [NOTIF] All test notifications sent for ${favoriteAnimeWithReleasesToday.length} favorites');
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        print('❌ [NOTIF] Error sending test notifications: $e');
+        print('❌ [NOTIF] Stack trace: $stackTrace');
+      }
     }
   }
 }

@@ -31,7 +31,7 @@ class FavoritesRepository {
       
       return await openDatabase(
         path,
-        version: 2, // Version erhöht für seriesUrl Spalte
+        version: 3, // Version erhöht für notificationsEnabled Spalte
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -50,6 +50,7 @@ class FavoritesRepository {
           title TEXT UNIQUE NOT NULL,
           imageUrl TEXT,
           seriesUrl TEXT,
+          notificationsEnabled INTEGER NOT NULL DEFAULT 0,
           addedDate TEXT NOT NULL,
           lastChecked TEXT
         )
@@ -70,6 +71,11 @@ class FavoritesRepository {
         await db.execute('ALTER TABLE $_tableName ADD COLUMN seriesUrl TEXT');
         if (kDebugMode) print('✓ Added seriesUrl column to favorites table');
       }
+
+      if (oldVersion < 3) {
+        await db.execute('ALTER TABLE $_tableName ADD COLUMN notificationsEnabled INTEGER NOT NULL DEFAULT 0');
+        if (kDebugMode) print('✓ Added notificationsEnabled column to favorites table');
+      }
     } catch (e) {
       if (kDebugMode) print('❌ Error upgrading database: $e');
       rethrow;
@@ -86,6 +92,7 @@ class FavoritesRepository {
         title: favorite.title.trim(),
         imageUrl: favorite.imageUrl,
         seriesUrl: favorite.seriesUrl,
+        notificationsEnabled: favorite.notificationsEnabled,
         addedDate: favorite.addedDate,
         lastChecked: favorite.lastChecked,
       );
@@ -157,6 +164,27 @@ class FavoritesRepository {
       return result.isNotEmpty;
     } catch (e) {
       if (kDebugMode) print('❌ Error checking favorite: $e');
+      return false;
+    }
+  }
+
+  /// Aktiviert/Deaktiviert Benachrichtigungen für ein einzelnes Favoriten-Anime
+  Future<bool> setNotificationsEnabled(String title, bool enabled) async {
+    try {
+      final db = await database;
+      final normalizedTitle = title.trim();
+      final updated = await db.update(
+        _tableName,
+        {'notificationsEnabled': enabled ? 1 : 0},
+        where: 'LOWER(TRIM(title)) = LOWER(?)',
+        whereArgs: [normalizedTitle],
+      );
+      if (kDebugMode) {
+        print('${updated > 0 ? '✓' : '⚠'} Updated notifications for $title to ${enabled ? 'on' : 'off'}');
+      }
+      return updated > 0;
+    } catch (e) {
+      if (kDebugMode) print('❌ Error updating notificationsEnabled: $e');
       return false;
     }
   }

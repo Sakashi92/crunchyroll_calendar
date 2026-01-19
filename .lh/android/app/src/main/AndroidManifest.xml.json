@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 4,
+            "activePatchIndex": 5,
             "patches": [
                 {
                     "date": 1768694074577,
@@ -24,6 +24,10 @@
                 {
                     "date": 1768756085509,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -18,9 +18,9 @@\n     <!-- Für Netzwerk-Status Check im Background -->\r\n     <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>\r\n     \r\n     <application\r\n-        android:label=\"crunchyroll_calendar\"\r\n+        android:label=\"Crunchyroll Kalender\"\r\n         android:name=\"${applicationName}\"\r\n         android:icon=\"@mipmap/hime\">\r\n         <activity\r\n             android:name=\".MainActivity\"\r\n"
+                },
+                {
+                    "date": 1768847596819,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -17,8 +17,11 @@\n     \r\n     <!-- Für Netzwerk-Status Check im Background -->\r\n     <uses-permission android:name=\"android.permission.ACCESS_NETWORK_STATE\"/>\r\n     \r\n+    <!-- Für Akku-Optimierung Dialog -->\r\n+    <uses-permission android:name=\"android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS\"/>\r\n+    \r\n     <application\r\n         android:label=\"Crunchyroll Kalender\"\r\n         android:name=\"${applicationName}\"\r\n         android:icon=\"@mipmap/hime\">\r\n"
                 }
             ],
             "date": 1768694074577,
