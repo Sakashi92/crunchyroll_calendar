@@ -101,6 +101,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   int _imagesLoaded = 0;
   int _imagesToLoad = 0;
   bool _cacheLoaded = false;
+  bool _isLoadingReleases = false;
   // Accumulates vertical drag delta to allow repeated swipes without lifting
   double _verticalDragDelta = 0.0;
   // Threshold in logical pixels to trigger a format change while dragging
@@ -141,7 +142,17 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
       }
     };
 
-    _loadReleases();
+    // Start loading releases (show loader until first load completes)
+    setState(() {
+      _isLoadingReleases = true;
+    });
+    _loadReleases().whenComplete(() {
+      if (mounted) {
+        setState(() {
+          _isLoadingReleases = false;
+        });
+      }
+    });
 
     // Starte automatische Updates alle 5 Minuten
     _crunchyrollService.startAutoUpdate(() {
@@ -255,6 +266,11 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 
   Future<void> _loadReleases({bool showMessage = false}) async {
     // Lade beim Start alle gecachten Daten (Bilder, verarbeitete Titel) - nur einmal
+    if (mounted) {
+      setState(() {
+        _isLoadingReleases = true;
+      });
+    }
     if (!_cacheLoaded) {
       await _crunchyrollService.loadCacheOnStartup();
       _cacheLoaded = true;
@@ -301,6 +317,13 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
       _loadAllCachedMonths();
     } catch (e) {
       if (kDebugMode) print('Error loading releases: $e');
+    }
+    finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingReleases = false;
+        });
+      }
     }
   }
   
@@ -789,16 +812,29 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                             color: Theme.of(context).colorScheme.primary,
                             shape: BoxShape.circle,
                           ),
-                          markerDecoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-                            shape: BoxShape.circle,
-                          ),
-                          markersMaxCount: 3,
                         ),
                         headerStyle: const HeaderStyle(
                           formatButtonVisible: false,
                           titleCentered: true,
                           formatButtonShowsNext: false,
+                        ),
+                        calendarBuilders: CalendarBuilders<AnimeRelease>(
+                          markerBuilder: (context, date, events) {
+                            if (events.isEmpty) return const SizedBox.shrink();
+                            final color = Theme.of(context).colorScheme.primary;
+                            return Align(
+                              alignment: Alignment.bottomCenter,
+                              child: Container(
+                                margin: const EdgeInsets.only(top: 28),
+                                width: 18,
+                                height: 3,
+                                decoration: BoxDecoration(
+                                  color: color,
+                                  borderRadius: BorderRadius.circular(2),
+                                ),
+                              ),
+                            );
+                          },
                         ),
                         availableCalendarFormats: const {
                           CalendarFormat.month: 'Monat',
@@ -846,6 +882,29 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 
   Widget _buildReleaseList() {
     final releases = _getReleasesForDay(_selectedDay ?? _focusedDay);
+    if (_isLoadingReleases) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: 200,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Lade Releases…',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
 
     if (releases.isEmpty) {
       return ListView(
@@ -1615,7 +1674,7 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                               vertical: 4,
                             ),
                             decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withOpacity(0.2),
+                              color: Theme.of(context).colorScheme.primaryContainer,
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Row(
@@ -1624,18 +1683,15 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                                 Icon(
                                   Icons.access_time,
                                   size: 14,
-                                  color: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                      ? Colors.black87
-                                      : Colors.white,
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
                                 ),
                                 const SizedBox(width: 4),
                                 Text(
                                   release.timeString,
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
-                                    color: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                        ? Colors.black87
-                                        : Colors.white,
+                                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                    fontSize: 12,
                                   ),
                                 ),
                               ],
