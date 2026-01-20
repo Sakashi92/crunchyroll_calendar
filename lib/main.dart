@@ -824,13 +824,15 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                             final color = Theme.of(context).colorScheme.primary;
                             return Align(
                               alignment: Alignment.bottomCenter,
-                              child: Container(
-                                margin: const EdgeInsets.only(top: 28),
-                                width: 18,
-                                height: 3,
-                                decoration: BoxDecoration(
-                                  color: color,
-                                  borderRadius: BorderRadius.circular(2),
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 10),
+                                child: Container(
+                                  width: 22,
+                                  height: 3,
+                                  decoration: BoxDecoration(
+                                    color: color,
+                                    borderRadius: BorderRadius.circular(2),
+                                  ),
                                 ),
                               ),
                             );
