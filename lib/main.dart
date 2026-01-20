@@ -90,9 +90,10 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> {
+class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMixin {
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
+  
   DateTime? _selectedDay;
   Map<DateTime, List<AnimeRelease>> _releases = {};
   final CrunchyrollService _crunchyrollService = CrunchyrollService();
@@ -100,6 +101,11 @@ class _CalendarPageState extends State<CalendarPage> {
   int _imagesLoaded = 0;
   int _imagesToLoad = 0;
   bool _cacheLoaded = false;
+  // Accumulates vertical drag delta to allow repeated swipes without lifting
+  double _verticalDragDelta = 0.0;
+  // Threshold in logical pixels to trigger a format change while dragging
+  // Increased to reduce accidental switches while swiping through the calendar
+  final double _verticalDragThreshold = 260.0;
 
   @override
   void initState() {
@@ -151,9 +157,35 @@ class _CalendarPageState extends State<CalendarPage> {
   Future<void> _loadCalendarFormat() async {
     final prefs = await SharedPreferences.getInstance();
     final formatIndex = prefs.getInt('calendar_format') ?? 0;
+    final format = CalendarFormat.values[formatIndex];
     setState(() {
-      _calendarFormat = CalendarFormat.values[formatIndex];
+      _calendarFormat = format;
     });
+  }
+
+  /// Wechsel das Kalender-Format (Swipe up = kompakter, Swipe down = umfangreicher)
+  void _cycleCalendarFormat({required bool up}) {
+    final formats = [
+      CalendarFormat.month,
+      CalendarFormat.twoWeeks,
+      CalendarFormat.week,
+    ];
+    final currentIndex = formats.indexOf(_calendarFormat);
+    int newIndex = currentIndex;
+    if (up) {
+      if (currentIndex < formats.length - 1) newIndex = currentIndex + 1;
+    } else {
+      if (currentIndex > 0) newIndex = currentIndex - 1;
+    }
+
+    if (newIndex != currentIndex) {
+      setState(() {
+        _calendarFormat = formats[newIndex];
+      });
+      // Persistieren und neu laden
+      _saveCalendarFormat(_calendarFormat);
+      _loadReleases();
+    }
   }
 
   Future<void> _requestPermissions() async {
@@ -521,7 +553,37 @@ class _CalendarPageState extends State<CalendarPage> {
         onRefresh: _forceRefresh,
         child: Column(
           children: [
-            TableCalendar<AnimeRelease>(
+            Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) {
+                _verticalDragDelta = 0.0;
+              },
+              onPointerMove: (event) {
+                // event.delta.dy: positive => moving down, negative => moving up
+                _verticalDragDelta += event.delta.dy;
+
+                if (_verticalDragDelta <= -_verticalDragThreshold) {
+                  // swiped up enough -> more compact view
+                  // subtract threshold so further movement can trigger again
+                  _verticalDragDelta += _verticalDragThreshold;
+                  _cycleCalendarFormat(up: true);
+                } else if (_verticalDragDelta >= _verticalDragThreshold) {
+                  // swiped down enough -> more expanded view
+                  _verticalDragDelta -= _verticalDragThreshold;
+                  _cycleCalendarFormat(up: false);
+                }
+              },
+              onPointerUp: (_) {
+                _verticalDragDelta = 0.0;
+              },
+              onPointerCancel: (_) {
+                _verticalDragDelta = 0.0;
+              },
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 450),
+                curve: Curves.easeInOut,
+                alignment: Alignment.topCenter,
+                child: TableCalendar<AnimeRelease>(
               locale: 'de_DE',
               firstDay: DateTime.utc(2020, 1, 1),
               lastDay: DateTime.utc(2030, 12, 31),
@@ -550,7 +612,10 @@ class _CalendarPageState extends State<CalendarPage> {
                 }
               },
               onPageChanged: (focusedDay) {
-                _focusedDay = focusedDay;
+                if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
+                setState(() {
+                  _focusedDay = focusedDay;
+                });
                 _loadReleases();
               },
               eventLoader: _getReleasesForDay,
@@ -579,6 +644,8 @@ class _CalendarPageState extends State<CalendarPage> {
                 CalendarFormat.twoWeeks: '2 Wochen',
                 CalendarFormat.week: 'Woche',
               },
+                ),
+              ),
             ),
             const Divider(height: 1),
             // Immer die Liste anzeigen - kein Ladekreis mehr!

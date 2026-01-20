@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 145,
+            "activePatchIndex": 147,
             "patches": [
                 {
                     "date": 1768666739579,
@@ -588,6 +588,14 @@
                 {
                     "date": 1768753792267,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -323,9 +323,8 @@\n   Future<void> _loadFromCache() async {\r\n     try {\r\n       final prefs = await SharedPreferences.getInstance();\r\n       final cachedJson = prefs.getString(_cacheKey);\r\n-      final lastUpdateStr = prefs.getString(_lastUpdateKey);\r\n       final imageCacheJson = prefs.getString(_imageCacheKey);\r\n       final releasesHash = prefs.getString(_releasesHashKey);\r\n       final processedTitlesJson = prefs.getString(_processedAnimeTitlesKey);\r\n       \r\n"
+                },
+                {
+                    "date": 1768919697297,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -558,8 +558,15 @@\n   \r\n   Future<void> _saveToCache(List<AnimeRelease> releases) async {\r\n     try {\r\n       final prefs = await SharedPreferences.getInstance();\r\n+      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Cache.\r\n+      // Das verhindert kurzzeitiges Leeren der UI, falls Background-Scraper fehlschlägt.\r\n+      final existing = prefs.getString(_cacheKey);\r\n+      if (releases.isEmpty && existing != null && existing.isNotEmpty) {\r\n+        if (kDebugMode) print('⚠ Skipping saveToCache because releases is empty and existing cache present');\r\n+        return;\r\n+      }\r\n       final jsonList = releases.map((r) => r.toJson()).toList();\r\n       await prefs.setString(_cacheKey, json.encode(jsonList));\r\n       await prefs.setString(_lastUpdateKey, DateTime.now().toIso8601String());\r\n       \r\n"
+                },
+                {
+                    "date": 1768919710027,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -605,13 +605,20 @@\n     try {\r\n       final prefs = await SharedPreferences.getInstance();\r\n       final cacheKey = _getMonthCacheKey(dateInMonth);\r\n       final updateKey = _getMonthUpdateKey(dateInMonth);\r\n-      \r\n+\r\n+      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Monats-Cache.\r\n+      final existing = prefs.getString(cacheKey);\r\n+      if (releases.isEmpty && existing != null && existing.isNotEmpty) {\r\n+        if (kDebugMode) print('⚠ Skipping saveMonthToCache because releases is empty and existing month cache present');\r\n+        return;\r\n+      }\r\n+\r\n       final jsonList = releases.map((r) => r.toJson()).toList();\r\n       await prefs.setString(cacheKey, json.encode(jsonList));\r\n       await prefs.setString(updateKey, DateTime.now().toIso8601String());\r\n-      \r\n+\r\n       if (kDebugMode) print('✓ Saved ${releases.length} releases to month cache for ${dateInMonth.month}/${dateInMonth.year}');\r\n     } catch (e) {\r\n       if (kDebugMode) print('Error saving month to cache: $e');\r\n     }\r\n"
                 }
             ],
             "date": 1768666739579,

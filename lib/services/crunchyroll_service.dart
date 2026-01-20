@@ -559,6 +559,13 @@ class CrunchyrollService {
   Future<void> _saveToCache(List<AnimeRelease> releases) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Cache.
+      // Das verhindert kurzzeitiges Leeren der UI, falls Background-Scraper fehlschlägt.
+      final existing = prefs.getString(_cacheKey);
+      if (releases.isEmpty && existing != null && existing.isNotEmpty) {
+        if (kDebugMode) print('⚠ Skipping saveToCache because releases is empty and existing cache present');
+        return;
+      }
       final jsonList = releases.map((r) => r.toJson()).toList();
       await prefs.setString(_cacheKey, json.encode(jsonList));
       await prefs.setString(_lastUpdateKey, DateTime.now().toIso8601String());
@@ -599,11 +606,18 @@ class CrunchyrollService {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = _getMonthCacheKey(dateInMonth);
       final updateKey = _getMonthUpdateKey(dateInMonth);
-      
+
+      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Monats-Cache.
+      final existing = prefs.getString(cacheKey);
+      if (releases.isEmpty && existing != null && existing.isNotEmpty) {
+        if (kDebugMode) print('⚠ Skipping saveMonthToCache because releases is empty and existing month cache present');
+        return;
+      }
+
       final jsonList = releases.map((r) => r.toJson()).toList();
       await prefs.setString(cacheKey, json.encode(jsonList));
       await prefs.setString(updateKey, DateTime.now().toIso8601String());
-      
+
       if (kDebugMode) print('✓ Saved ${releases.length} releases to month cache for ${dateInMonth.month}/${dateInMonth.year}');
     } catch (e) {
       if (kDebugMode) print('Error saving month to cache: $e');
