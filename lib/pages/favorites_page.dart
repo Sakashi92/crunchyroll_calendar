@@ -632,6 +632,7 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
   bool _showGerman = true;
   bool _isFavorite = true; // Immer true, da es aus Favoriten kommt
   bool _isLoadingFavorite = false;
+  bool _autoTranslateEnabled = true;
 
   @override
   void initState() {
@@ -649,12 +650,20 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
         _isLoadingDescription = false;
       });
       
-      // Starte Übersetzung (unabhängig von autoTranslate-Einstellung)
-      // damit User zwischen Sprachen wechseln kann
-      await _translateDescription();
-      
-      // Zeige automatisch Deutsche Version nur wenn Setting aktiviert
+      // Lade Auto-Translate Setting
       final autoTranslate = await AppSettings.getAutoTranslate();
+      if (mounted) {
+        setState(() {
+          _autoTranslateEnabled = autoTranslate;
+        });
+      }
+
+      // Starte Übersetzung nur wenn Setting aktiviert (spart unnötige Arbeit)
+      if (autoTranslate) {
+        await _translateDescription();
+      }
+
+      // Zeige automatisch Deutsche Version nur wenn Setting aktiviert
       if (mounted) {
         setState(() {
           _showGerman = autoTranslate;
@@ -894,7 +903,7 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
                               fontSize: 16,
                             ),
                           ),
-                          if (!_isLoadingDescription && _descriptionOriginal != 'Keine Beschreibung verfügbar')
+                          if (!_isLoadingDescription && _descriptionOriginal != 'Keine Beschreibung verfügbar' && _autoTranslateEnabled)
                             TextButton.icon(
                               onPressed: _isTranslating ? null : _toggleLanguage,
                               icon: Icon(

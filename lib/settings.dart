@@ -15,6 +15,7 @@ class AppSettings {
   static const String _accentColorKey = 'accent_color';
   static const String _notificationDelayKey = 'notification_delay_seconds';
   static const String _showRefreshMessageKey = 'show_refresh_message';
+  static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -138,6 +139,18 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showRefreshMessageKey, enabled);
   }
+
+  /// Lädt ob der Kalender beim Scroll automatisch minimiert werden soll
+  static Future<bool> getAutoMinimizeCalendar() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_autoMinimizeCalendarKey) ?? true; // Standard: aktiviert
+  }
+
+  /// Speichert die Einstellung für automatisches Minimieren des Kalenders
+  static Future<void> setAutoMinimizeCalendar(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_autoMinimizeCalendarKey, enabled);
+  }
 }
 
 /// Einstellungs-Seite
@@ -158,6 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
   Color _accentColor = Colors.orange;
   int _notificationDelaySeconds = 0;
   bool _showRefreshMessage = true;
+  bool _autoMinimizeCalendar = true;
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -174,6 +188,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final accentColor = await AppSettings.getAccentColor();
     final notificationDelay = await AppSettings.getNotificationDelaySeconds();
     final showRefreshMessage = await AppSettings.getShowRefreshMessage();
+    final autoMinimizeCalendar = await AppSettings.getAutoMinimizeCalendar();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -183,6 +198,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _accentColor = accentColor;
       _notificationDelaySeconds = notificationDelay;
       _showRefreshMessage = showRefreshMessage;
+      _autoMinimizeCalendar = autoMinimizeCalendar;
       _permissions = permissions;
       _isLoading = false;
     });
@@ -216,6 +232,22 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Update-Intervall auf ${AppSettings.updateIntervals[minutes]} geändert.'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAutoMinimizeCalendar(bool enabled) async {
+    await AppSettings.setAutoMinimizeCalendar(enabled);
+    setState(() {
+      _autoMinimizeCalendar = enabled;
+    });
+    widget.onSettingsChanged?.call();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled ? 'Automatisches Minimieren aktiviert' : 'Automatisches Minimieren deaktiviert'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -281,12 +313,28 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildPermissionsOverviewTile(),
           // Hintergrund-Einstellungen
           _buildBatteryOptimizationTile(),
+
+         // Anzeige
+          _buildSectionHeader('Anzeige'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SwitchListTile(
+              title: const Text('Kalender beim Scroll minimieren'),
+              subtitle: const Text('Minimiert den Kalender-Header automatisch, wenn du in der Liste nach unten scrollst'),
+              value: _autoMinimizeCalendar,
+              onChanged: (v) => _saveAutoMinimizeCalendar(v),
+            ),
+          ),
+          _buildImageQualityTile(),
+          _buildAccentColorTile(),
+          
+      //    const Divider(),
          
-          const Divider(),
+       //   const Divider(),
           
           // Bildqualität
-          _buildSectionHeader('Bildqualität'),
-          _buildImageQualityTile(),
+    //      _buildSectionHeader('Bildqualität'),
+   //       _buildImageQualityTile(),
           
           const Divider(),
           
@@ -301,11 +349,11 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildSectionHeader('Übersetzung'),
           _buildAutoTranslateTile(),
           
-          const Divider(),
+    //      const Divider(),
           
           // Accent-Farbe
-          _buildSectionHeader('Design'),
-          _buildAccentColorTile(),
+  //        _buildSectionHeader('Design'),
+   //       _buildAccentColorTile(),
           
           const Divider(),
           
@@ -316,15 +364,15 @@ class _SettingsPageState extends State<SettingsPage> {
           const Divider(),
           
           // Test
-          _buildSectionHeader('Test'),
-          _buildNotificationDelayTile(),
-          _buildTestFavoritesNotificationsTile(),
-          _buildTestNotificationTile(),
-          _buildBackgroundTaskStatusTile(),
-          _buildWorkmanagerTestTile(),
-          _buildBackgroundScraperTestTile(),
+      if (kDebugMode) _buildSectionHeader('Test'),
+      if (kDebugMode) _buildNotificationDelayTile(),
+      if (kDebugMode) _buildTestFavoritesNotificationsTile(),
+      if (kDebugMode) _buildTestNotificationTile(),
+      if (kDebugMode) _buildBackgroundTaskStatusTile(),
+      if (kDebugMode) _buildWorkmanagerTestTile(),
+      if (kDebugMode) _buildBackgroundScraperTestTile(),
           
-          const Divider(),
+      if (kDebugMode)    const Divider(),
           
           // Info
           _buildSectionHeader('Info'),
@@ -829,7 +877,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.3.5\nBilder werden von Kitsu.io geladen'),
+      subtitle: Text('Version 0.4.0\nBilder werden von Kitsu.io geladen'),
       isThreeLine: true,
     );
   }

@@ -106,12 +106,15 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   // Threshold in logical pixels to trigger a format change while dragging
   // Increased to reduce accidental switches while swiping through the calendar
   final double _verticalDragThreshold = 260.0;
+  // Wenn true: Kalender ist minimiert und zeigt nur den Header (Monat + chevrons)
+  bool _isCalendarMinimized = false;
 
   @override
   void initState() {
     super.initState();
     _selectedDay = _focusedDay;
     _loadCalendarFormat();
+    _loadAutoMinimizeSetting();
 
     // Berechtigungen nach dem ersten Frame anfragen
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -148,6 +151,25 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     });
   }
 
+  Future<void> _loadAutoMinimizeSetting() async {
+    try {
+      final enabled = await AppSettings.getAutoMinimizeCalendar();
+      if (mounted) {
+        setState(() {
+          _isCalendarMinimized = _isCalendarMinimized; // keep current minimized state
+        });
+      }
+      // store locally for quick checks
+      _autoMinimizeEnabled = enabled;
+    } catch (e) {
+      if (kDebugMode) print('Error loading auto-minimize setting: $e');
+      _autoMinimizeEnabled = true;
+    }
+  }
+
+  // Cached toggle value for quicker checks
+  bool _autoMinimizeEnabled = true;
+
   @override
   void dispose() {
     _crunchyrollService.stopAutoUpdate();
@@ -161,6 +183,20 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     setState(() {
       _calendarFormat = format;
     });
+  }
+
+  void _goToPreviousMonth() {
+    setState(() {
+      _focusedDay = DateTime(_focusedDay.year, _focusedDay.month - 1, _focusedDay.day);
+    });
+    _loadReleases();
+  }
+
+  void _goToNextMonth() {
+    setState(() {
+      _focusedDay = DateTime(_focusedDay.year, _focusedDay.month + 1, _focusedDay.day);
+    });
+    _loadReleases();
   }
 
   /// Wechsel das Kalender-Format (Swipe up = kompakter, Swipe down = umfangreicher)
@@ -479,6 +515,8 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                 _loadReleases();
               }
             });
+            // Lade neue Einstellung für automatisches Minimieren
+            _loadAutoMinimizeSetting();
             // Benachrichtige MainApp dass sich die Accent-Farbe geändert hat
             widget.onAccentColorChanged?.call();
           },
@@ -553,103 +591,159 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         onRefresh: _forceRefresh,
         child: Column(
           children: [
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) {
-                _verticalDragDelta = 0.0;
-              },
-              onPointerMove: (event) {
-                // event.delta.dy: positive => moving down, negative => moving up
-                _verticalDragDelta += event.delta.dy;
+            AnimatedSize(
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOut,
+              alignment: Alignment.topCenter,
+              child: _isCalendarMinimized
+                  ? Container(
+                      color: Theme.of(context).colorScheme.surface,
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Row(
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.chevron_left),
+                                tooltip: 'Vorheriger Monat',
+                                onPressed: () {
+                                  _goToPreviousMonth();
+                                },
+                              ),
+                              Text(
+                                DateFormat.yMMMM('de_DE').format(_focusedDay),
+                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.chevron_right),
+                                tooltip: 'Nächster Monat',
+                                onPressed: () {
+                                  _goToNextMonth();
+                                },
+                              ),
+                            ],
+                          ),
+                          TextButton.icon(
+                            onPressed: () {
+                              setState(() {
+                                _isCalendarMinimized = false;
+                              });
+                            },
+                            icon: Icon(Icons.expand_more, color: Theme.of(context).colorScheme.primary),
+                            label: const Text('Kalender öffnen'),
+                          ),
+                        ],
+                      ),
+                    )
+                  : Listener(
+                      behavior: HitTestBehavior.translucent,
+                      onPointerDown: (_) {
+                        _verticalDragDelta = 0.0;
+                      },
+                      onPointerMove: (event) {
+                        // event.delta.dy: positive => moving down, negative => moving up
+                        _verticalDragDelta += event.delta.dy;
 
-                if (_verticalDragDelta <= -_verticalDragThreshold) {
-                  // swiped up enough -> more compact view
-                  // subtract threshold so further movement can trigger again
-                  _verticalDragDelta += _verticalDragThreshold;
-                  _cycleCalendarFormat(up: true);
-                } else if (_verticalDragDelta >= _verticalDragThreshold) {
-                  // swiped down enough -> more expanded view
-                  _verticalDragDelta -= _verticalDragThreshold;
-                  _cycleCalendarFormat(up: false);
-                }
-              },
-              onPointerUp: (_) {
-                _verticalDragDelta = 0.0;
-              },
-              onPointerCancel: (_) {
-                _verticalDragDelta = 0.0;
-              },
-              child: AnimatedSize(
-                duration: const Duration(milliseconds: 450),
-                curve: Curves.easeInOut,
-                alignment: Alignment.topCenter,
-                child: TableCalendar<AnimeRelease>(
-              locale: 'de_DE',
-              firstDay: DateTime.utc(2020, 1, 1),
-              lastDay: DateTime.utc(2030, 12, 31),
-              focusedDay: _focusedDay,
-              calendarFormat: _calendarFormat,
-              startingDayOfWeek: StartingDayOfWeek.monday,
-              selectedDayPredicate: (day) {
-                return isSameDay(_selectedDay, day);
-              },
-              onDaySelected: (selectedDay, focusedDay) {
-                if (!isSameDay(_selectedDay, selectedDay)) {
-                  setState(() {
-                    _selectedDay = selectedDay;
-                    _focusedDay = focusedDay;
-                  });
-                  // Lade Releases für den neuen ausgewählten Tag
-                  _loadReleases();
-                }
-              },
-              onFormatChanged: (format) {
-                if (_calendarFormat != format) {
-                  setState(() {
-                    _calendarFormat = format;
-                  });
-                  _saveCalendarFormat(format);
-                }
-              },
-              onPageChanged: (focusedDay) {
-                if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
-                setState(() {
-                  _focusedDay = focusedDay;
-                });
-                _loadReleases();
-              },
-              eventLoader: _getReleasesForDay,
-              calendarStyle: CalendarStyle(
-                todayDecoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                  shape: BoxShape.circle,
-                ),
-                selectedDecoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary,
-                  shape: BoxShape.circle,
-                ),
-                markerDecoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
-                  shape: BoxShape.circle,
-                ),
-                markersMaxCount: 3,
-              ),
-              headerStyle: const HeaderStyle(
-                formatButtonVisible: true,
-                titleCentered: true,
-                formatButtonShowsNext: false,
-              ),
-              availableCalendarFormats: const {
-                CalendarFormat.month: 'Monat',
-                CalendarFormat.twoWeeks: '2 Wochen',
-                CalendarFormat.week: 'Woche',
-              },
-                ),
-              ),
+                        if (_verticalDragDelta <= -_verticalDragThreshold) {
+                          // swiped up enough -> more compact view
+                          // subtract threshold so further movement can trigger again
+                          _verticalDragDelta += _verticalDragThreshold;
+                          _cycleCalendarFormat(up: true);
+                        } else if (_verticalDragDelta >= _verticalDragThreshold) {
+                          // swiped down enough -> more expanded view
+                          _verticalDragDelta -= _verticalDragThreshold;
+                          _cycleCalendarFormat(up: false);
+                        }
+                      },
+                      onPointerUp: (_) {
+                        _verticalDragDelta = 0.0;
+                      },
+                      onPointerCancel: (_) {
+                        _verticalDragDelta = 0.0;
+                      },
+                      child: TableCalendar<AnimeRelease>(
+                        locale: 'de_DE',
+                        firstDay: DateTime.utc(2020, 1, 1),
+                        lastDay: DateTime.utc(2030, 12, 31),
+                        focusedDay: _focusedDay,
+                        calendarFormat: _calendarFormat,
+                        startingDayOfWeek: StartingDayOfWeek.monday,
+                        selectedDayPredicate: (day) {
+                          return isSameDay(_selectedDay, day);
+                        },
+                        onDaySelected: (selectedDay, focusedDay) {
+                          if (!isSameDay(_selectedDay, selectedDay)) {
+                            setState(() {
+                              _selectedDay = selectedDay;
+                              _focusedDay = focusedDay;
+                            });
+                            // Lade Releases für den neuen ausgewählten Tag
+                            _loadReleases();
+                          }
+                        },
+                        onFormatChanged: (format) {
+                          if (_calendarFormat != format) {
+                            setState(() {
+                              _calendarFormat = format;
+                            });
+                            _saveCalendarFormat(format);
+                          }
+                        },
+                        onPageChanged: (focusedDay) {
+                          if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
+                          setState(() {
+                            _focusedDay = focusedDay;
+                          });
+                          _loadReleases();
+                        },
+                        eventLoader: _getReleasesForDay,
+                        calendarStyle: CalendarStyle(
+                          todayDecoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                            shape: BoxShape.circle,
+                          ),
+                          selectedDecoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            shape: BoxShape.circle,
+                          ),
+                          markerDecoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary.withOpacity(0.7),
+                            shape: BoxShape.circle,
+                          ),
+                          markersMaxCount: 3,
+                        ),
+                        headerStyle: const HeaderStyle(
+                          formatButtonVisible: false,
+                          titleCentered: true,
+                          formatButtonShowsNext: false,
+                        ),
+                        availableCalendarFormats: const {
+                          CalendarFormat.month: 'Monat',
+                          CalendarFormat.twoWeeks: '2 Wochen',
+                          CalendarFormat.week: 'Woche',
+                        },
+                      ),
+                    ),
             ),
             const Divider(height: 1),
             // Immer die Liste anzeigen - kein Ladekreis mehr!
-            Expanded(child: _buildReleaseList()),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification is ScrollUpdateNotification) {
+                    // Only minimize when user actually scrolls the list (not overscroll)
+                    if (_autoMinimizeEnabled && !_isCalendarMinimized && notification.metrics.axis == Axis.vertical && notification.scrollDelta != 0) {
+                      setState(() {
+                        _isCalendarMinimized = true;
+                      });
+                    }
+                  }
+                  return false;
+                },
+                child: _buildReleaseList(),
+              ),
+            ),
           ],
         ),
       ),
@@ -1099,6 +1193,7 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
   bool _isLoadingDescription = true;
   bool _isTranslating = false;
   bool _showGerman = true; // Zeige standardmäßig Deutsch
+  bool _autoTranslateEnabled = true; // Steuert, ob der Sprach-Button angezeigt wird
   bool _isFavorite = false; // Track Favoriten-Status
   bool _isLoadingFavorite = true; // Loading State für Favoriten
   final _translator = GoogleTranslator();
@@ -1187,6 +1282,7 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
       });
       // Automatisch übersetzen nur wenn Setting aktiviert ist
       final autoTranslate = await AppSettings.getAutoTranslate();
+      _autoTranslateEnabled = autoTranslate;
       if (autoTranslate) {
         _translateDescription();
       } else {
@@ -1466,7 +1562,7 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                               fontSize: 16,
                             ),
                           ),
-                          if (!_isLoadingDescription && _descriptionOriginal != 'Keine Beschreibung verfügbar')
+                          if (!_isLoadingDescription && _descriptionOriginal != 'Keine Beschreibung verfügbar' && _autoTranslateEnabled)
                             TextButton.icon(
                               onPressed: _isTranslating ? null : _toggleLanguage,
                               icon: Icon(
