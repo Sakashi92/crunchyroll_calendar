@@ -48,7 +48,8 @@ class NotificationRepository {
           releaseTitle TEXT NOT NULL,
           episodeNumber TEXT,
           notifyTime TEXT NOT NULL,
-          isShown INTEGER DEFAULT 0
+          isShown INTEGER DEFAULT 0,
+          contentHash TEXT
         )
       ''');
       
@@ -59,6 +60,11 @@ class NotificationRepository {
       
       await db.execute('''
         CREATE INDEX idx_notify_time ON $_tableName(notifyTime)
+      ''');
+      
+      // Index für Content-Hash (für Deduplication)
+      await db.execute('''
+        CREATE INDEX idx_content_hash ON $_tableName(contentHash)
       ''');
       
       if (kDebugMode) print('✓ Notifications table created');
@@ -122,6 +128,103 @@ class NotificationRepository {
     } catch (e) {
       if (kDebugMode) print('❌ Error checking notification history: $e');
       return false;
+    }
+  }
+  
+  /// 🚀 NEUE METHODE: Smartere Deduplication basierend auf Content-Hash
+  /// Prüft ob dieser EXAKTE Inhalt in den letzten X Minuten versendet wurde
+  /// Returns: true wenn Duplikat gefunden (nicht senden), false wenn neu (senden)
+  /// Prüft, ob ein Inhalt bereits jemals (ohne Zeitfenster) gesendet wurde.
+  /// Zuerst wird auf `contentHash` geprüft. Falls kein Treffer, wird
+  /// als Fallback nach `favoriteTitle`/`releaseTitle`/`episodeNumber` gesucht
+  /// (für ältere Einträge ohne Hash). Dadurch werden Duplikate niemals erneut gesendet.
+  Future<bool> isDuplicate(
+    String contentHash, {
+    String? favoriteTitle,
+    String? releaseTitle,
+    String? episodeNumber,
+  }) async {
+    try {
+      final db = await database;
+
+      // 1) Suche nach exakt gleichem contentHash (NEVER SEND AGAIN)
+      final hashResult = await db.query(
+        _tableName,
+        where: 'contentHash = ?',
+        whereArgs: [contentHash],
+        limit: 1,
+      );
+
+      if (hashResult.isNotEmpty) {
+        if (kDebugMode) print('⏭️  [DEDUP] Exact contentHash found - skip: $contentHash');
+        return true;
+      }
+
+      // 2) Fallback: Falls ältere Einträge ohne contentHash existieren,
+      //    prüfen wir anhand favoriteTitle/releaseTitle/episodeNumber (ever)
+      if (favoriteTitle != null && releaseTitle != null) {
+        String where = 'favoriteTitle = ? AND releaseTitle = ?';
+        final whereArgs = <dynamic>[favoriteTitle, releaseTitle];
+
+        if (episodeNumber == null) {
+          where += ' AND episodeNumber IS NULL';
+        } else {
+          where += ' AND episodeNumber = ?';
+          whereArgs.add(episodeNumber);
+        }
+
+        final fallback = await db.query(
+          _tableName,
+          where: where,
+          whereArgs: whereArgs,
+          limit: 1,
+        );
+
+        if (fallback.isNotEmpty) {
+          if (kDebugMode) print('⏭️  [DEDUP] Found matching historic entry - skip: $favoriteTitle / $releaseTitle / $episodeNumber');
+          return true;
+        }
+      }
+
+      return false;
+    } catch (e) {
+      if (kDebugMode) print('❌ Error checking duplicate: $e');
+      return false;
+    }
+  }
+  
+  /// 🚀 NEUE METHODE: Gibt eine Übersicht der Benachrichtigungen der letzten Stunden
+  Future<Map<String, dynamic>> getNotificationStats({int hoursBack = 2}) async {
+    try {
+      final db = await database;
+      
+      final cutoffTime = DateTime.now().subtract(Duration(hours: hoursBack));
+      
+      final result = await db.rawQuery('''
+        SELECT 
+          COUNT(*) as totalCount,
+          COUNT(DISTINCT contentHash) as uniqueCount,
+          COUNT(DISTINCT favoriteTitle) as favCount,
+          MIN(notifyTime) as oldestTime,
+          MAX(notifyTime) as newestTime
+        FROM $_tableName
+        WHERE notifyTime > ?
+      ''', [cutoffTime.toIso8601String()]);
+      
+      if (result.isNotEmpty) {
+        return result.first.cast<String, dynamic>();
+      }
+      
+      return {
+        'totalCount': 0,
+        'uniqueCount': 0,
+        'favCount': 0,
+        'oldestTime': null,
+        'newestTime': null,
+      };
+    } catch (e) {
+      if (kDebugMode) print('❌ Error getting notification stats: $e');
+      return {};
     }
   }
   

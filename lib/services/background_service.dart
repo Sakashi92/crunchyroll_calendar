@@ -341,35 +341,23 @@ Future<bool> _executeBackgroundScraper() async {
     // 5. Prüfe auf bereits gesendete Benachrichtigungen
     final uniqueReleases = ReleaseComparator.sortByRelevance(relevantReleases);
     
+    // 🚀 LOGGING UND STATISTIKEN AKTIVIEREN
+    final stats = await notificationRepo.getNotificationStats(hoursBack: 2);
+    if (kDebugMode) {
+      print('📊 [BACKGROUND-SCRAPER] Notification Stats (last 2 hours):');
+      print('   - Total sent: ${stats['totalCount']}');
+      print('   - Unique content: ${stats['uniqueCount']}');
+      print('   - Affected favorites: ${stats['favCount']}');
+    }
+    
     // 6. Sende Benachrichtigungen für neue Releases
     int notificationCount = 0;
-    if (kDebugMode) print('📤 [BACKGROUND-SCRAPER] Sending notifications...');
+    int skippedDuplicates = 0;
+    
+    if (kDebugMode) print('📤 [BACKGROUND-SCRAPER] Processing ${uniqueReleases.length} releases...');
     
     for (final release in uniqueReleases) {
-      // Prüfe ob Benachrichtigung bereits gesendet wurde
-      final alreadyNotified = await notificationRepo.hasBeenNotified(
-        release.title,
-        release.episodeTitle,
-        release.episodeNumber,
-      );
-      
-      if (alreadyNotified) {
-        if (kDebugMode) print('⏭️  [BACKGROUND-SCRAPER] Skip (already notified): ${release.title} - ${release.episodeTitle}');
-        continue;
-      }
-      
-      // Zeige Benachrichtigung
-      final notificationBody = release.isPremiere 
-        ? '🎬 Neue Serie: ${release.title}'
-        : 'Folge ${release.episodeNumber}: ${release.title}';
-      
-      await notificationService.showNotification(
-        title: 'Neuer Anime Release',
-        body: notificationBody,
-        payload: release.seriesUrl,
-      );
-      
-      // Logge Benachrichtigung
+      // Erstelle NotificationLog mit Content-Hash
       final notification = NotificationLog(
         favoriteTitle: release.title,
         releaseTitle: release.episodeTitle,
@@ -378,11 +366,50 @@ Future<bool> _executeBackgroundScraper() async {
         isShown: true,
       );
       
-      await notificationRepo.logNotification(notification);
+      // 🚀 NEUE LOGIK: Prüfe auf Duplikat basierend auf Content-Hash
+      final contentHash = notification.generateContentHash();
+      final isDuplicate = await notificationRepo.isDuplicate(
+        contentHash,
+        favoriteTitle: release.title,
+        releaseTitle: release.episodeTitle,
+        episodeNumber: release.episodeNumber,
+      );
+      
+      if (isDuplicate) {
+        if (kDebugMode) {
+          print('⏭️  [BACKGROUND-SCRAPER] Skip duplicate: ${release.title} - ${release.episodeTitle}');
+        }
+        skippedDuplicates++;
+        continue;
+      }
+      
+      // Zeige Benachrichtigung
+      final notificationBody = release.isPremiere 
+        ? '🎬 Neue Serie: ${release.title}'
+        : 'Folge ${release.episodeNumber}: ${release.title}';
+      
+      if (kDebugMode) {
+        print('📤 [BACKGROUND-SCRAPER] Sending: ${release.title} - ${release.episodeTitle}');
+      }
+      
+      await notificationService.showNotification(
+        title: 'Neuer Anime Release',
+        body: notificationBody,
+        payload: release.seriesUrl,
+      );
+      
+      // 🚀 Logge Benachrichtigung mit Content-Hash
+      final notificationWithHash = notification.copyWith(
+        contentHash: contentHash,
+      );
+      
+      await notificationRepo.logNotification(notificationWithHash);
       
       notificationCount++;
       
-      if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Notified: ${release.title} - ${release.episodeTitle}');
+      if (kDebugMode) {
+        print('✅ [BACKGROUND-SCRAPER] Logged: ${release.title} - ${release.episodeTitle}');
+      }
     }
     
     // 7. Aktualisiere lastChecked für alle Favoriten
@@ -397,6 +424,8 @@ Future<bool> _executeBackgroundScraper() async {
       print('   - Favorites checked: ${favorites.length}');
       print('   - Releases found: ${uniqueReleases.length}');
       print('   - Notifications sent: $notificationCount');
+      print('   - Duplicates skipped: $skippedDuplicates');
+      print('   - Total to send: ${uniqueReleases.length}');
     }
     
     return true;

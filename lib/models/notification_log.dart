@@ -1,5 +1,7 @@
 /// Modell für eine Benachrichtigungs-Historie
 /// Speichert alle gesendeten Benachrichtigungen zur Vermeidung von Duplikaten
+import 'package:crypto/crypto.dart';
+
 class NotificationLog {
   final int? id;
   final int? favoriteId;
@@ -8,6 +10,7 @@ class NotificationLog {
   final String? episodeNumber;
   final DateTime notifyTime;
   final bool isShown;
+  final String? contentHash; // SHA256 des Inhalts für Deduplication
   
   NotificationLog({
     this.id,
@@ -17,7 +20,15 @@ class NotificationLog {
     this.episodeNumber,
     required this.notifyTime,
     this.isShown = false,
+    this.contentHash,
   });
+  
+  /// Erstellt einen Content-Hash für Deduplication
+  /// Hash basiert auf: favoriteTitle + releaseTitle + episodeNumber
+  String generateContentHash() {
+    final content = '$favoriteTitle|$releaseTitle|${episodeNumber ?? ""}';
+    return sha256.convert(content.codeUnits).toString();
+  }
   
   /// Konvertiert das Modell zu JSON für Speicherung
   Map<String, dynamic> toJson() {
@@ -29,6 +40,7 @@ class NotificationLog {
       'episodeNumber': episodeNumber,
       'notifyTime': notifyTime.toIso8601String(),
       'isShown': isShown ? 1 : 0,
+      'contentHash': contentHash ?? generateContentHash(),
     };
   }
   
@@ -42,6 +54,7 @@ class NotificationLog {
       episodeNumber: json['episodeNumber'] as String?,
       notifyTime: DateTime.parse(json['notifyTime'] as String),
       isShown: (json['isShown'] as int?) == 1,
+      contentHash: json['contentHash'] as String?,
     );
   }
   
@@ -54,6 +67,7 @@ class NotificationLog {
     String? episodeNumber,
     DateTime? notifyTime,
     bool? isShown,
+    String? contentHash,
   }) {
     return NotificationLog(
       id: id ?? this.id,
@@ -63,6 +77,7 @@ class NotificationLog {
       episodeNumber: episodeNumber ?? this.episodeNumber,
       notifyTime: notifyTime ?? this.notifyTime,
       isShown: isShown ?? this.isShown,
+      contentHash: contentHash ?? this.contentHash,
     );
   }
   
@@ -71,6 +86,7 @@ class NotificationLog {
       'favoriteTitle: $favoriteTitle, '
       'releaseTitle: $releaseTitle, '
       'episodeNumber: $episodeNumber, '
+      'contentHash: $contentHash, '
       'notifyTime: $notifyTime'
       ')';
 }

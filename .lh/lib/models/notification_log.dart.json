@@ -3,11 +3,19 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 0,
+            "activePatchIndex": 2,
             "patches": [
                 {
                     "date": 1768745785178,
                     "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1768918843958,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,14 +1,17 @@\n /// Modell für eine Benachrichtigungs-Historie\r\n /// Speichert alle gesendeten Benachrichtigungen zur Vermeidung von Duplikaten\r\n+import 'package:crypto/crypto.dart';\r\n+\r\n class NotificationLog {\r\n   final int? id;\r\n   final int? favoriteId;\r\n   final String favoriteTitle;\r\n   final String releaseTitle;\r\n   final String? episodeNumber;\r\n   final DateTime notifyTime;\r\n   final bool isShown;\r\n+  final String? contentHash; // SHA256 des Inhalts für Deduplication\r\n   \r\n   NotificationLog({\r\n     this.id,\r\n     this.favoriteId,\r\n@@ -16,10 +19,18 @@\n     required this.releaseTitle,\r\n     this.episodeNumber,\r\n     required this.notifyTime,\r\n     this.isShown = false,\r\n+    this.contentHash,\r\n   });\r\n   \r\n+  /// Erstellt einen Content-Hash für Deduplication\r\n+  /// Hash basiert auf: favoriteTitle + releaseTitle + episodeNumber\r\n+  String generateContentHash() {\r\n+    final content = '$favoriteTitle|$releaseTitle|${episodeNumber ?? \"\"}';\r\n+    return sha256.convert(content.codeUnits).toString();\r\n+  }\r\n+  \r\n   /// Konvertiert das Modell zu JSON für Speicherung\r\n   Map<String, dynamic> toJson() {\r\n     return {\r\n       'id': id,\r\n@@ -28,8 +39,9 @@\n       'releaseTitle': releaseTitle,\r\n       'episodeNumber': episodeNumber,\r\n       'notifyTime': notifyTime.toIso8601String(),\r\n       'isShown': isShown ? 1 : 0,\r\n+      'contentHash': contentHash ?? generateContentHash(),\r\n     };\r\n   }\r\n   \r\n   /// Erstellt ein NotificationLog-Objekt aus JSON\r\n@@ -41,8 +53,9 @@\n       releaseTitle: json['releaseTitle'] as String,\r\n       episodeNumber: json['episodeNumber'] as String?,\r\n       notifyTime: DateTime.parse(json['notifyTime'] as String),\r\n       isShown: (json['isShown'] as int?) == 1,\r\n+      contentHash: json['contentHash'] as String?,\r\n     );\r\n   }\r\n   \r\n   /// Erstellt eine Kopie mit optionalen Änderungen\r\n@@ -53,8 +66,9 @@\n     String? releaseTitle,\r\n     String? episodeNumber,\r\n     DateTime? notifyTime,\r\n     bool? isShown,\r\n+    String? contentHash,\r\n   }) {\r\n     return NotificationLog(\r\n       id: id ?? this.id,\r\n       favoriteId: favoriteId ?? this.favoriteId,\r\n@@ -62,15 +76,18 @@\n       releaseTitle: releaseTitle ?? this.releaseTitle,\r\n       episodeNumber: episodeNumber ?? this.episodeNumber,\r\n       notifyTime: notifyTime ?? this.notifyTime,\r\n       isShown: isShown ?? this.isShown,\r\n+      contentHash: contentHash ?? this.contentHash,\r\n     );\r\n   }\r\n   \r\n   @override\r\n   String toString() => 'NotificationLog('\r\n       'favoriteTitle: $favoriteTitle, '\r\n       'releaseTitle: $releaseTitle, '\r\n       'episodeNumber: $episodeNumber, '\r\n+      'contentHash: $contentHash, '\r\n       'notifyTime: $notifyTime'\r\n       ')';\r\n }\r\n+}\r\n"
+                },
+                {
+                    "date": 1768918886865,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -89,5 +89,4 @@\n       'contentHash: $contentHash, '\r\n       'notifyTime: $notifyTime'\r\n       ')';\r\n }\r\n-}\r\n"
                 }
             ],
             "date": 1768745785178,
