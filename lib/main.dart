@@ -154,6 +154,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   Future<void> _loadAutoMinimizeSetting() async {
     try {
       final enabled = await AppSettings.getAutoMinimizeCalendar();
+      final threshold = await AppSettings.getAutoMinimizeScrollThreshold();
       if (mounted) {
         setState(() {
           _isCalendarMinimized = _isCalendarMinimized; // keep current minimized state
@@ -161,6 +162,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
       }
       // store locally for quick checks
       _autoMinimizeEnabled = enabled;
+      _autoMinimizeScrollThreshold = threshold;
     } catch (e) {
       if (kDebugMode) print('Error loading auto-minimize setting: $e');
       _autoMinimizeEnabled = true;
@@ -169,6 +171,11 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 
   // Cached toggle value for quicker checks
   bool _autoMinimizeEnabled = true;
+  // cumulative scroll delta (pixels) accumulated while the list is scrolled
+  double _cumulativeScrollDelta = 0.0;
+  // threshold (pixels) read from settings before auto-minimizing
+  double _autoMinimizeScrollThreshold = 200.0;
+  OverlayEntry? _topDateOverlay;
 
   @override
   void dispose() {
@@ -422,6 +429,59 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     }
   }
 
+  void _showSelectedDateDialog(DateTime selected) {
+    final full = DateFormat("EEEE, d. MMMM yyyy", 'de_DE').format(selected);
+    if (!mounted) return;
+
+    // remove any existing overlay
+    _topDateOverlay?.remove();
+    _topDateOverlay = null;
+
+    final overlay = Overlay.of(context);
+    if (overlay == null) return;
+
+    final topOffset = MediaQuery.of(context).padding.top + 48.0 + 8.0 + 3.0;
+
+    _topDateOverlay = OverlayEntry(
+      builder: (context) => Positioned(
+        top: topOffset,
+        left: 16,
+        right: 16,
+        child: Material(
+          color: Colors.transparent,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: DefaultTextStyle(
+                style: Theme.of(context).textTheme.bodyMedium!.copyWith(fontWeight: FontWeight.w500),
+                child: Text(full, textAlign: TextAlign.center),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    overlay.insert(_topDateOverlay!);
+
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      _topDateOverlay?.remove();
+      _topDateOverlay = null;
+    });
+  }
+
   /// Zeigt eine Nachricht an, dass der Monat eingeforen ist
   void _showFrozenMonthMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -600,7 +660,6 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                       color: Theme.of(context).colorScheme.surface,
                       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Row(
                             children: [
@@ -623,6 +682,29 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                                 },
                               ),
                             ],
+                          ),
+                          Expanded(
+                            child: Center(
+                              child: Builder(builder: (context) {
+                                final selected = _selectedDay ?? _focusedDay;
+                                final dayNumber = DateFormat('d').format(selected);
+                                return GestureDetector(
+                                  onTap: () => _showSelectedDateDialog(selected),
+                                  child: CircleAvatar(
+                                    radius: 18,
+                                    backgroundColor: Theme.of(context).colorScheme.primary,
+                                    child: Text(
+                                      dayNumber,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: Theme.of(context).colorScheme.onPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
                           ),
                           TextButton.icon(
                             onPressed: () {
@@ -732,11 +814,23 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               child: NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
                   if (notification is ScrollUpdateNotification) {
-                    // Only minimize when user actually scrolls the list (not overscroll)
-                    if (_autoMinimizeEnabled && !_isCalendarMinimized && notification.metrics.axis == Axis.vertical && notification.scrollDelta != 0) {
-                      setState(() {
-                        _isCalendarMinimized = true;
-                      });
+                    // Only consider vertical scrolling and when feature enabled
+                    if (_autoMinimizeEnabled && notification.metrics.axis == Axis.vertical && (notification.scrollDelta ?? 0) != 0) {
+                      // If already minimized, nothing to do; reset accumulator
+                      if (_isCalendarMinimized) {
+                        _cumulativeScrollDelta = 0.0;
+                      } else {
+                        // Accumulate absolute scroll distance (both up and down)
+                        _cumulativeScrollDelta += (notification.scrollDelta ?? 0).abs();
+
+                        if (_cumulativeScrollDelta >= _autoMinimizeScrollThreshold) {
+                          // reached threshold — minimize and reset accumulator
+                          _cumulativeScrollDelta = 0.0;
+                          setState(() {
+                            _isCalendarMinimized = true;
+                          });
+                        }
+                      }
                     }
                   }
                   return false;

@@ -16,6 +16,7 @@ class AppSettings {
   static const String _notificationDelayKey = 'notification_delay_seconds';
   static const String _showRefreshMessageKey = 'show_refresh_message';
   static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';
+  static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -151,6 +152,18 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoMinimizeCalendarKey, enabled);
   }
+
+  /// Lädt den kumulativen Scroll-Schwellenwert (in Pixel) bevor der Kalender minimiert wird
+  static Future<double> getAutoMinimizeScrollThreshold() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getDouble(_autoMinimizeScrollThresholdKey) ?? 200.0; // Standard: 200px
+  }
+
+  /// Speichert den Scroll-Schwellenwert (in Pixel)
+  static Future<void> setAutoMinimizeScrollThreshold(double pixels) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setDouble(_autoMinimizeScrollThresholdKey, pixels);
+  }
 }
 
 /// Einstellungs-Seite
@@ -172,6 +185,7 @@ class _SettingsPageState extends State<SettingsPage> {
   int _notificationDelaySeconds = 0;
   bool _showRefreshMessage = true;
   bool _autoMinimizeCalendar = true;
+  double _autoMinimizeScrollThreshold = 200.0;
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -189,6 +203,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final notificationDelay = await AppSettings.getNotificationDelaySeconds();
     final showRefreshMessage = await AppSettings.getShowRefreshMessage();
     final autoMinimizeCalendar = await AppSettings.getAutoMinimizeCalendar();
+    final autoMinimizeScrollThreshold = await AppSettings.getAutoMinimizeScrollThreshold();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -199,6 +214,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _notificationDelaySeconds = notificationDelay;
       _showRefreshMessage = showRefreshMessage;
       _autoMinimizeCalendar = autoMinimizeCalendar;
+      _autoMinimizeScrollThreshold = autoMinimizeScrollThreshold;
       _permissions = permissions;
       _isLoading = false;
     });
@@ -248,6 +264,22 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(enabled ? 'Automatisches Minimieren aktiviert' : 'Automatisches Minimieren deaktiviert'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveAutoMinimizeScrollThreshold(double pixels) async {
+    await AppSettings.setAutoMinimizeScrollThreshold(pixels);
+    setState(() {
+      _autoMinimizeScrollThreshold = pixels;
+    });
+    widget.onSettingsChanged?.call();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Scroll-Schwelle gesetzt: ${pixels.toStringAsFixed(0)} px'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -314,6 +346,8 @@ class _SettingsPageState extends State<SettingsPage> {
           // Hintergrund-Einstellungen
           _buildBatteryOptimizationTile(),
 
+          const Divider(),
+
          // Anzeige
           _buildSectionHeader('Anzeige'),
           Padding(
@@ -323,6 +357,16 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('Minimiert den Kalender-Header automatisch, wenn du in der Liste nach unten scrollst'),
               value: _autoMinimizeCalendar,
               onChanged: (v) => _saveAutoMinimizeCalendar(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('Scroll-Schwelle zum Minimieren'),
+              subtitle: Text('Aktuell: ${_autoMinimizeScrollThreshold.toStringAsFixed(0)} px'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showScrollThresholdDialog(),
             ),
           ),
           _buildImageQualityTile(),
@@ -902,6 +946,70 @@ class _SettingsPageState extends State<SettingsPage> {
               },
             );
           }).toList(),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showScrollThresholdDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Scroll-Schwelle wählen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            RadioListTile<double>(
+              title: const Text('Niedrig (100 px)'),
+              value: 100.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(value);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Standard (200 px)'),
+              value: 200.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(value);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Hoch (300 px)'),
+              value: 300.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(value);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Sehr hoch (500 px)'),
+              value: 500.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (value) {
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(value);
+                }
+              },
+            ),
+          ],
         ),
         actions: [
           TextButton(
