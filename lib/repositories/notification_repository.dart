@@ -9,6 +9,7 @@ class NotificationRepository {
   static const String _tableName = 'notifications';
   static const String _dbName = 'crunchyroll_calendar.db';
   static const int _maxRetentionDays = 30;
+  static const int _dbVersion = 3; // Set to 3 and use onOpen to ensure table exists
   
   static Database? _database;
   
@@ -28,8 +29,27 @@ class NotificationRepository {
       
       return await openDatabase(
         path,
-        version: 1,
+        version: _dbVersion,
         onCreate: _onCreate,
+        onUpgrade: _onUpgrade,
+        onOpen: (db) async {
+          try {
+            if (kDebugMode) print('🔓 Opening DB, verifying schema...');
+            final tables = await db.rawQuery(
+              "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+              [_tableName],
+            );
+
+            if (tables.isEmpty) {
+              if (kDebugMode) print('  - Notifications table missing on open, creating...');
+              await _createNotificationsTable(db);
+            } else {
+              if (kDebugMode) print('  - Notifications table present');
+            }
+          } catch (e) {
+            if (kDebugMode) print('❌ Error in onOpen DB check: $e');
+          }
+        },
       );
     } catch (e) {
       if (kDebugMode) print('❌ Error initializing database: $e');
@@ -40,36 +60,89 @@ class NotificationRepository {
   /// Erstellt die Tabellen beim erstmaligen Erstellen der DB
   Future<void> _onCreate(Database db, int version) async {
     try {
-      await db.execute('''
-        CREATE TABLE $_tableName (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          favoriteId INTEGER,
-          favoriteTitle TEXT NOT NULL,
-          releaseTitle TEXT NOT NULL,
-          episodeNumber TEXT,
-          notifyTime TEXT NOT NULL,
-          isShown INTEGER DEFAULT 0,
-          contentHash TEXT
-        )
-      ''');
-      
-      // Index für schnellere Abfragen
-      await db.execute('''
-        CREATE INDEX idx_favorite_title ON $_tableName(favoriteTitle)
-      ''');
-      
-      await db.execute('''
-        CREATE INDEX idx_notify_time ON $_tableName(notifyTime)
-      ''');
-      
-      // Index für Content-Hash (für Deduplication)
-      await db.execute('''
-        CREATE INDEX idx_content_hash ON $_tableName(contentHash)
-      ''');
-      
-      if (kDebugMode) print('✓ Notifications table created');
+      await _createNotificationsTable(db);
+      if (kDebugMode) print('✓ Notifications table created (version $version)');
     } catch (e) {
       if (kDebugMode) print('❌ Error creating table: $e');
+      rethrow;
+    }
+  }
+
+  /// Upgrade-Logik wenn die DB-Version erhöht wird
+  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    try {
+      if (kDebugMode) print('🔄 Upgrading database from version $oldVersion to $newVersion');
+      
+      // Von Version 1 zu 2: Stelle sicher, dass die Tabelle existiert
+      if (oldVersion < 2) {
+        // Prüfe ob die Tabelle bereits existiert
+        final tables = await db.rawQuery(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+          [_tableName],
+        );
+        
+        if (tables.isEmpty) {
+          if (kDebugMode) print('  - Creating missing notifications table...');
+          await _createNotificationsTable(db);
+        } else {
+          if (kDebugMode) print('  - Notifications table already exists');
+        }
+      }
+      
+      if (kDebugMode) print('✓ Database upgrade completed');
+    } catch (e) {
+      if (kDebugMode) print('❌ Error upgrading database: $e');
+      rethrow;
+    }
+  }
+
+  /// Erstellt die notifications Tabelle
+  Future<void> _createNotificationsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS $_tableName (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        favoriteId INTEGER,
+        favoriteTitle TEXT NOT NULL,
+        releaseTitle TEXT NOT NULL,
+        episodeNumber TEXT,
+        notifyTime TEXT NOT NULL,
+        isShown INTEGER DEFAULT 0,
+        contentHash TEXT
+      )
+    ''');
+    
+    // Index für schnellere Abfragen
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_favorite_title ON $_tableName(favoriteTitle)
+    ''');
+    
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_notify_time ON $_tableName(notifyTime)
+    ''');
+    
+    // Index für Content-Hash (für Deduplication)
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_content_hash ON $_tableName(contentHash)
+    ''');
+  }
+
+  /// Sicherstellen, dass die Tabelle existiert (idempotent)
+  Future<void> _ensureTableExists(Database db) async {
+    try {
+      final tables = await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [_tableName],
+      );
+
+      if (tables.isEmpty) {
+        if (kDebugMode) print('⚠️  _ensureTableExists: table missing, creating...');
+        await _createNotificationsTable(db);
+      } else {
+        if (kDebugMode) print('✔️  _ensureTableExists: table present');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error in _ensureTableExists: $e');
+      // Rethrow to let callers handle it if necessary
       rethrow;
     }
   }
@@ -78,7 +151,9 @@ class NotificationRepository {
   Future<int> logNotification(NotificationLog notification) async {
     try {
       final db = await database;
-      
+      // Ensure table exists (extra safety for corrupted/missing schemas)
+      await _ensureTableExists(db);
+
       // Cleanup alte Einträge bevor wir neue hinzufügen
       await _cleanupOldNotifications();
       
@@ -132,12 +207,10 @@ class NotificationRepository {
   }
   
   /// 🚀 NEUE METHODE: Smartere Deduplication basierend auf Content-Hash
-  /// Prüft ob dieser EXAKTE Inhalt in den letzten X Minuten versendet wurde
+  /// Prüft ob dieser EXAKTE Inhalt schon mal versendet wurde (GLOBAL, kein Zeitlimit!)
   /// Returns: true wenn Duplikat gefunden (nicht senden), false wenn neu (senden)
-  /// Prüft, ob ein Inhalt bereits jemals (ohne Zeitfenster) gesendet wurde.
-  /// Zuerst wird auf `contentHash` geprüft. Falls kein Treffer, wird
-  /// als Fallback nach `favoriteTitle`/`releaseTitle`/`episodeNumber` gesucht
-  /// (für ältere Einträge ohne Hash). Dadurch werden Duplikate niemals erneut gesendet.
+  /// 
+  /// WICHTIG: Einmal versendet = immer duplikat! Nie wieder senden!
   Future<bool> isDuplicate(
     String contentHash, {
     String? favoriteTitle,
@@ -147,7 +220,8 @@ class NotificationRepository {
     try {
       final db = await database;
 
-      // 1) Suche nach exakt gleichem contentHash (NEVER SEND AGAIN)
+      // 1) PRIMÄRE PRÜFUNG: Suche nach exakt gleichem contentHash (NEVER SEND AGAIN)
+      // Zeitlimit: KEINE! Einmal versendet = immer Duplikat!
       final hashResult = await db.query(
         _tableName,
         where: 'contentHash = ?',
@@ -156,40 +230,19 @@ class NotificationRepository {
       );
 
       if (hashResult.isNotEmpty) {
-        if (kDebugMode) print('⏭️  [DEDUP] Exact contentHash found - skip: $contentHash');
+        if (kDebugMode) {
+          final existingTime = hashResult.first['notifyTime'] as String?;
+          print('⏭️  [DEDUP] Exact contentHash found (sent on $existingTime) - SKIP: $contentHash');
+        }
         return true;
       }
-
-      // 2) Fallback: Falls ältere Einträge ohne contentHash existieren,
-      //    prüfen wir anhand favoriteTitle/releaseTitle/episodeNumber (ever)
-      if (favoriteTitle != null && releaseTitle != null) {
-        String where = 'favoriteTitle = ? AND releaseTitle = ?';
-        final whereArgs = <dynamic>[favoriteTitle, releaseTitle];
-
-        if (episodeNumber == null) {
-          where += ' AND episodeNumber IS NULL';
-        } else {
-          where += ' AND episodeNumber = ?';
-          whereArgs.add(episodeNumber);
-        }
-
-        final fallback = await db.query(
-          _tableName,
-          where: where,
-          whereArgs: whereArgs,
-          limit: 1,
-        );
-
-        if (fallback.isNotEmpty) {
-          if (kDebugMode) print('⏭️  [DEDUP] Found matching historic entry - skip: $favoriteTitle / $releaseTitle / $episodeNumber');
-          return true;
-        }
-      }
-
+      // Kein Duplikat gefunden (nur Content-Hash wird berücksichtigt)
+      if (kDebugMode) print('✅ [DEDUP] New content (no matching contentHash) - WILL SEND: $favoriteTitle / $releaseTitle / $episodeNumber');
       return false;
     } catch (e) {
       if (kDebugMode) print('❌ Error checking duplicate: $e');
-      return false;
+      // Im Fehlerfall: besser NICHT senden (false = senden, also true = skip)
+      return true;
     }
   }
   

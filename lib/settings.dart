@@ -6,6 +6,8 @@ import 'services/crunchyroll_service.dart';
 import 'services/background_service.dart';
 import 'services/battery_optimization_service.dart';
 import 'services/permission_service.dart';
+import 'repositories/notification_repository.dart';
+import 'models/notification_log.dart';
 
 /// Einstellungen für die App
 class AppSettings {
@@ -309,6 +311,167 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _showNotificationDbOptions() async {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.list),
+                title: const Text('Historie anzeigen'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showNotificationHistory();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text('Datenbank leeren', style: TextStyle(color: Colors.red)),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Datenbank leeren?'),
+                      content: const Text('Alle gespeicherten Benachrichtigungen werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.'),
+                      actions: [
+                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
+                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen', style: TextStyle(color: Colors.red))),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    await NotificationRepository().deleteAllNotifications();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Benachrichtigungs‑DB geleert')),
+                      );
+                    }
+                  }
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _showNotificationHistory() async {
+    final repo = NotificationRepository();
+    final history = await repo.getHistory(limit: 200);
+
+    if (kDebugMode) {
+      print('📊 [SETTINGS] Loaded ${history.length} notification history entries from DB');
+      if (history.isNotEmpty) {
+        for (final entry in history.take(5)) {
+          print('  - ${entry.favoriteTitle} / ${entry.releaseTitle} (ep: ${entry.episodeNumber}) @ ${entry.notifyTime}');
+        }
+      }
+    }
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Benachrichtigungs‑Historie'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: history.isEmpty
+              ? Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline, size: 48, color: Colors.grey.shade400),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Keine Einträge in der Benachrichtigungs‑DB',
+                        style: TextStyle(color: Colors.grey.shade600),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Benachrichtigungen werden hier gespeichert, nachdem sie versendet wurden.',
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                )
+              : ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: history.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final entry = history[index];
+                    return ListTile(
+                      title: Text('${entry.favoriteTitle} — ${entry.releaseTitle}'),
+                      subtitle: Text('Ep: ${entry.episodeNumber ?? '-'} • ${entry.notifyTime.toLocal().toString().split('.')[0]}'),
+                      isThreeLine: false,
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _testLogNotification() async {
+    try {
+      final repo = NotificationRepository();
+      final testNotification = NotificationLog(
+        favoriteTitle: 'Tune In to the Midnight Heart',
+        releaseTitle: 'Episode 1',
+        episodeNumber: '1',
+        notifyTime: DateTime.now(),
+        isShown: true,
+      );
+
+      final contentHash = testNotification.generateContentHash();
+      final withHash = testNotification.copyWith(contentHash: contentHash);
+
+      await repo.logNotification(withHash);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('✅ Test-Benachrichtigung geloggt (prüfe Logs: flutter logs)'),
+            duration: const Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        if (kDebugMode) {
+          print('✅ [TEST] Logged test notification:');
+          print('   - favoriteTitle: ${testNotification.favoriteTitle}');
+          print('   - releaseTitle: ${testNotification.releaseTitle}');
+          print('   - episodeNumber: ${testNotification.episodeNumber}');
+          print('   - contentHash: $contentHash');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Loggen: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      if (kDebugMode) print('❌ [TEST] Error logging test notification: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -404,6 +567,27 @@ class _SettingsPageState extends State<SettingsPage> {
           // Cache-Verwaltung
           _buildSectionHeader('Cache-Verwaltung'),
           _buildClearCacheTile(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.notifications),
+              title: const Text('Benachrichtigungs‑DB'),
+              subtitle: const Text('Historie anzeigen oder Datenbank leeren'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () => _showNotificationDbOptions(),
+            ),
+          ),
+          
+      if (kDebugMode)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ListTile(
+                leading: const Icon(Icons.bug_report),
+                title: const Text('🧪 Test: Benachrichtigung loggen'),
+                subtitle: const Text('Fügt eine Test-Benachrichtigung zur DB hinzu'),
+                onTap: () => _testLogNotification(),
+              ),
+            ),
           
           const Divider(),
           

@@ -368,6 +368,11 @@ Future<bool> _executeBackgroundScraper() async {
       
       // 🚀 NEUE LOGIK: Prüfe auf Duplikat basierend auf Content-Hash
       final contentHash = notification.generateContentHash();
+      
+      if (kDebugMode) {
+        print('🔍 [BACKGROUND-SCRAPER] Checking: ${release.title} ep.${release.episodeNumber} hash=$contentHash');
+      }
+      
       final isDuplicate = await notificationRepo.isDuplicate(
         contentHash,
         favoriteTitle: release.title,
@@ -377,7 +382,7 @@ Future<bool> _executeBackgroundScraper() async {
       
       if (isDuplicate) {
         if (kDebugMode) {
-          print('⏭️  [BACKGROUND-SCRAPER] Skip duplicate: ${release.title} - ${release.episodeTitle}');
+          print('⏭️  [BACKGROUND-SCRAPER] DUPLICATE SKIPPED: ${release.title} ep.${release.episodeNumber} hash=$contentHash');
         }
         skippedDuplicates++;
         continue;
@@ -389,7 +394,7 @@ Future<bool> _executeBackgroundScraper() async {
         : 'Folge ${release.episodeNumber}: ${release.title}';
       
       if (kDebugMode) {
-        print('📤 [BACKGROUND-SCRAPER] Sending: ${release.title} - ${release.episodeTitle}');
+        print('📤 [BACKGROUND-SCRAPER] SENDING NOTIFICATION: ${release.title} ep.${release.episodeNumber}');
       }
       
       await notificationService.showNotification(
@@ -408,7 +413,7 @@ Future<bool> _executeBackgroundScraper() async {
       notificationCount++;
       
       if (kDebugMode) {
-        print('✅ [BACKGROUND-SCRAPER] Logged: ${release.title} - ${release.episodeTitle}');
+        print('✅ [BACKGROUND-SCRAPER] LOGGED TO DB: ${release.title} ep.${release.episodeNumber} hash=$contentHash');
       }
     }
     
@@ -534,22 +539,50 @@ Future<bool> _executeFavoritesTestNotification() async {
     if (kDebugMode) print('📤 [BACKGROUND] Sending notifications for ${favoritesWithTodaysReleases.length} favorites with releases today');
     
     // Sende Benachrichtigungen für jeden Favoriten mit Release heute
+    final notificationRepo = NotificationRepository();
     for (int i = 0; i < favoritesWithTodaysReleases.length; i++) {
       final favorite = favoritesWithTodaysReleases[i];
-      
+
       // Finde die passenden Releases für diesen Favoriten
       final matchingReleases = todaysReleases.where((release) =>
           release.title.toLowerCase() == favorite.title.toLowerCase()).toList();
-      
+
       for (final release in matchingReleases) {
-        if (kDebugMode) print('📤 [BACKGROUND] Sending notification for: ${release.title} - ${release.episodeInfo}');
-        
+        // Erstelle NotificationLog und prüfe Dedupe anhand des Content-Hash
+        final log = NotificationLog(
+          favoriteTitle: release.title,
+          releaseTitle: release.episodeTitle,
+          episodeNumber: release.episodeNumber,
+          notifyTime: DateTime.now(),
+          isShown: true,
+        );
+
+        final hash = log.generateContentHash();
+        if (kDebugMode) print('🔍 [FAV-TEST] Checking duplicate for ${release.title} ep.${release.episodeNumber} hash=$hash');
+
+        final already = await notificationRepo.isDuplicate(hash);
+        if (already) {
+          if (kDebugMode) print('⏭️  [FAV-TEST] Duplicate found, skipping: ${release.title} ep.${release.episodeNumber}');
+          continue;
+        }
+
+        if (kDebugMode) print('📤 [BACKGROUND] SENDING favorite-test notification for: ${release.title} - ${release.episodeInfo}');
+
         await notificationService.showNotification(
           title: '🔔 Neue Episode: ${release.title}',
           body: '${release.episodeInfo}: ${release.episodeTitle}',
           payload: 'release_${release.title}_${release.episodeNumber}',
         );
-        
+
+        // Logge die Benachrichtigung in der DB
+        try {
+          final withHash = log.copyWith(contentHash: hash);
+          await notificationRepo.logNotification(withHash);
+          if (kDebugMode) print('✅ [FAV-TEST] Logged favorite-test notification: ${release.title} ep.${release.episodeNumber} hash=$hash');
+        } catch (e) {
+          if (kDebugMode) print('❌ [FAV-TEST] Error logging favorite-test notification: $e');
+        }
+
         // Kleine Verzögerung zwischen Benachrichtigungen
         await Future.delayed(const Duration(milliseconds: 500));
       }

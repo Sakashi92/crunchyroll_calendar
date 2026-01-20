@@ -26,7 +26,18 @@ class NotificationLog {
   /// Erstellt einen Content-Hash für Deduplication
   /// Hash basiert auf: favoriteTitle + releaseTitle + episodeNumber
   String generateContentHash() {
-    final content = '$favoriteTitle|$releaseTitle|${episodeNumber ?? ""}';
+    String normalize(String s) {
+      return s
+          .toLowerCase()
+          .replaceAll(RegExp(r"\s+"), ' ')
+          .trim();
+    }
+
+    final fav = normalize(favoriteTitle);
+    final rel = normalize(releaseTitle);
+    final ep = episodeNumber == null ? '' : normalize(episodeNumber!);
+
+    final content = '$fav|$rel|$ep';
     return sha256.convert(content.codeUnits).toString();
   }
   
