@@ -1262,15 +1262,25 @@ class _ReleaseCard extends StatefulWidget {
 class _ReleaseCardState extends State<_ReleaseCard> {
   bool _isFavorite = false;
   late final FavoritesRepository _favoritesRepository;
+  bool _isInitialized = false; // Track if we've loaded the status
+  static final Map<String, bool> _favoriteCache = {}; // In-memory cache to prevent flickering
 
   @override
   void initState() {
     super.initState();
     _favoritesRepository = FavoritesRepository();
-    _checkIfFavorite();
     
     // Höre auf globale Favoriten-Änderungen
     favoritesChangeNotifier.addListener(_onFavoritesChanged);
+    
+    // Check cache first for instant display
+    if (_favoriteCache.containsKey(widget.release.title)) {
+      _isFavorite = _favoriteCache[widget.release.title]!;
+      _isInitialized = true;
+    }
+    
+    // Load favorite status immediately
+    _checkIfFavorite();
   }
 
   @override
@@ -1287,13 +1297,21 @@ class _ReleaseCardState extends State<_ReleaseCard> {
   Future<void> _checkIfFavorite() async {
     try {
       final isFav = await _favoritesRepository.isFavorite(widget.release.title);
+      // Update cache
+      _favoriteCache[widget.release.title] = isFav;
       if (mounted) {
         setState(() {
           _isFavorite = isFav;
+          _isInitialized = true; // Mark as initialized to prevent white flash
         });
       }
     } catch (e) {
       if (kDebugMode) print('❌ Error checking favorite: $e');
+      if (mounted) {
+        setState(() {
+          _isInitialized = true; // Mark as initialized even on error
+        });
+      }
     }
   }
 
@@ -1310,6 +1328,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
       if (wasAlreadyFavorite) {
         // War favorisiert → jetzt entfernen
         await _favoritesRepository.removeFavorite(widget.release.title);
+        _favoriteCache[widget.release.title] = false; // Update cache
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1327,6 +1346,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
           addedDate: DateTime.now(),
         );
         await _favoritesRepository.addFavorite(favorite);
+        _favoriteCache[widget.release.title] = true; // Update cache
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -1399,21 +1419,35 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                 Positioned(
                   top: 8,
                   left: 8,
-                  child: CircleAvatar(
-                    backgroundColor: Colors.black54,
-                    radius: 20,
-                    child: IconButton(
-                      icon: Icon(
-                        _isFavorite
-                            ? Icons.favorite
-                            : Icons.favorite_border,
-                        color: _isFavorite ? Colors.red : Colors.white,
-                        size: 20,
-                      ),
-                      onPressed: _toggleFavorite,
-                      padding: EdgeInsets.zero,
-                    ),
-                  ),
+                  child: _isInitialized
+                      ? CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          radius: 20,
+                          child: IconButton(
+                            icon: Icon(
+                              _isFavorite
+                                  ? Icons.favorite
+                                  : Icons.favorite_border,
+                              color: _isFavorite ? Colors.red : Colors.white,
+                              size: 20,
+                            ),
+                            onPressed: _toggleFavorite,
+                            padding: EdgeInsets.zero,
+                          ),
+                        )
+                      : CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          radius: 20,
+                          child: const SizedBox(
+                            width: 20,
+                            height: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                        ),
                 ),
                 if (widget.release.isPremiere)
                   Positioned(
