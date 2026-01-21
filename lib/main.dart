@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
@@ -383,7 +384,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   double _verticalDragDelta = 0.0;
   // Threshold in logical pixels to trigger a format change while dragging
   // Increased to reduce accidental switches while swiping through the calendar
-  final double _verticalDragThreshold = 260.0;
+  final double _verticalDragThreshold = 120.0;
   // Horizontal commit thresholds for day swipe
   // Fraction of width that must be dragged to commit (35% requested)
   final double _horizontalCommitFraction = 0.35;
@@ -1147,88 +1148,111 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
               child: _isCalendarMinimized
-                  ? const SizedBox.shrink() // Komplett ausblenden wenn minimiert
-                  : SizedBox(
-                      key: ValueKey('calendar_format_${_calendarFormat.index}'),
-                      child: TableCalendar<AnimeRelease>(
-                // Nutze 'de_DE' nur wenn initialisiert, sonst null (Standard)
-                locale: Intl.defaultLocale == 'de_DE' ? 'de_DE' : null,
-                firstDay: DateTime.utc(2020, 1, 1),
-                lastDay: DateTime.utc(2030, 12, 31),
-                focusedDay: _focusedDay,
-                calendarFormat: _calendarFormat,
-                startingDayOfWeek: StartingDayOfWeek.monday,
-                selectedDayPredicate: (day) {
-                  return isSameDay(_selectedDay, day);
-                },
-                onDaySelected: (selectedDay, focusedDay) {
-                  if (!isSameDay(_selectedDay, selectedDay)) {
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                    });
-                    _loadReleases();
-                  }
-                },
-                onFormatChanged: (format) {
-                  if (_calendarFormat != format) {
-                    setState(() {
-                      _calendarFormat = format;
-                    });
-                    _saveCalendarFormat(format);
-                  }
-                },
-                onPageChanged: (focusedDay) {
-                  if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
-                  setState(() {
-                    _focusedDay = focusedDay;
-                  });
-                  _loadReleases();
-                },
-                eventLoader: _getReleasesForDay,
-                calendarStyle: CalendarStyle(
-                  todayDecoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                    shape: BoxShape.circle,
-                  ),
-                  selectedDecoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                headerStyle: const HeaderStyle(
-                  formatButtonVisible: false,
-                  titleCentered: true,
-                  formatButtonShowsNext: false,
-                ),
-                calendarBuilders: CalendarBuilders<AnimeRelease>(
-                  markerBuilder: (context, date, events) {
-                    if (events.isEmpty) return const SizedBox.shrink();
-                    final color = Theme.of(context).colorScheme.primary;
-                    return Align(
-                      alignment: Alignment.bottomCenter,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Container(
-                          width: 22,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: color,
-                            borderRadius: BorderRadius.circular(2),
+                  ? const SizedBox.shrink()
+                  : GestureDetector(
+                      onVerticalDragStart: (_) => _verticalDragDelta = 0.0,
+                      onVerticalDragUpdate: (details) {
+                        _verticalDragDelta += details.delta.dy;
+                        if (_verticalDragDelta <= -_verticalDragThreshold) {
+                          // Nach oben: kompakter
+                          _cycleCalendarFormat(up: true);
+                          _verticalDragDelta = 0.0;
+                          HapticFeedback.mediumImpact();
+                        } else if (_verticalDragDelta >= _verticalDragThreshold) {
+                          // Nach unten: größer
+                          _cycleCalendarFormat(up: false);
+                          _verticalDragDelta = 0.0;
+                          HapticFeedback.mediumImpact();
+                        }
+                      },
+                      onVerticalDragEnd: (_) => _verticalDragDelta = 0.0,
+                      child: SizedBox(
+                        key: ValueKey('calendar_format_${_calendarFormat.index}'),
+                        child: TableCalendar<AnimeRelease>(
+                          // Nutze 'de_DE' nur wenn initialisiert, sonst null (Standard)
+                          locale: Intl.defaultLocale == 'de_DE' ? 'de_DE' : null,
+                          firstDay: DateTime.utc(2020, 1, 1),
+                          lastDay: DateTime.utc(2030, 12, 31),
+                          focusedDay: _focusedDay,
+                          calendarFormat: _calendarFormat,
+                          startingDayOfWeek: StartingDayOfWeek.monday,
+                          selectedDayPredicate: (day) => isSameDay(_selectedDay, day),
+                          onDaySelected: (selectedDay, focusedDay) {
+                            final previous = _selectedDay ?? _focusedDay;
+                            if (!isSameDay(previous, selectedDay)) {
+                              // Determine visual direction for AnimatedSwitcher
+                              final diff = selectedDay.difference(previous).inDays;
+                              if (diff > 0) {
+                                // clicked a later day -> appears like swiping left (next)
+                                _lastSwipeDirection = -1;
+                              } else if (diff < 0) {
+                                // clicked an earlier day -> appears like swiping right (previous)
+                                _lastSwipeDirection = 1;
+                              }
+
+                              setState(() {
+                                _selectedDay = selectedDay;
+                                _focusedDay = focusedDay;
+                              });
+                              _loadReleases();
+                            }
+                          },
+                          onFormatChanged: (format) {
+                            if (_calendarFormat != format) {
+                              setState(() => _calendarFormat = format);
+                              _saveCalendarFormat(format);
+                            }
+                          },
+                          onPageChanged: (focusedDay) {
+                            if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
+                            setState(() => _focusedDay = focusedDay);
+                            _loadReleases();
+                          },
+                          eventLoader: _getReleasesForDay,
+                          calendarStyle: CalendarStyle(
+                            todayDecoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            selectedDecoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                            ),
                           ),
+                          headerStyle: const HeaderStyle(
+                            formatButtonVisible: false,
+                            titleCentered: true,
+                            formatButtonShowsNext: false,
+                          ),
+                          calendarBuilders: CalendarBuilders<AnimeRelease>(
+                            markerBuilder: (context, date, events) {
+                              if (events.isEmpty) return const SizedBox.shrink();
+                              final color = Theme.of(context).colorScheme.primary;
+                              return Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Padding(
+                                  padding: const EdgeInsets.only(bottom: 10),
+                                  child: Container(
+                                    width: 22,
+                                    height: 3,
+                                    decoration: BoxDecoration(
+                                      color: color,
+                                      borderRadius: BorderRadius.circular(2),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                          availableCalendarFormats: const {
+                            CalendarFormat.month: 'Monat',
+                            CalendarFormat.twoWeeks: '2 Wochen',
+                            CalendarFormat.week: 'Woche',
+                          },
                         ),
                       ),
-                    );
-                  },
-                ),
-                                availableCalendarFormats: const {
-                  CalendarFormat.month: 'Monat',
-                  CalendarFormat.twoWeeks: '2 Wochen',
-                  CalendarFormat.week: 'Woche',
-                },
-              ),
                     ),
-            ),
+              ),
                                     // Zeige Datum mit Ausklapp-Button wenn Kalender minimiert ist
             if (_isCalendarMinimized)
               InkWell(
@@ -1269,7 +1293,6 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                       // Datum
                       Expanded(
                         child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
