@@ -10,7 +10,6 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
 import 'dart:io';
 import 'dart:async';
-import 'dart:math' as math;
 import 'models/anime_release.dart';
 import 'services/crunchyroll_service.dart';
 import 'services/notification_service.dart';
@@ -382,6 +381,8 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   bool _isLoadingReleases = false;
   // Accumulates vertical drag delta to allow repeated swipes without lifting
   double _verticalDragDelta = 0.0;
+  // True while user is performing a vertical drag on the calendar
+  bool _isVerticalDragging = false;
   // Threshold in logical pixels to trigger a format change while dragging
   // Increased to reduce accidental switches while swiping through the calendar
   final double _verticalDragThreshold = 120.0;
@@ -1149,25 +1150,47 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               curve: Curves.easeInOut,
               child: _isCalendarMinimized
                   ? const SizedBox.shrink()
-                  : GestureDetector(
-                      onVerticalDragStart: (_) => _verticalDragDelta = 0.0,
-                      onVerticalDragUpdate: (details) {
-                        _verticalDragDelta += details.delta.dy;
-                        if (_verticalDragDelta <= -_verticalDragThreshold) {
-                          // Nach oben: kompakter
+                  : Listener(
+                      onPointerDown: (event) {
+                        if (kDebugMode) print('[CAL] pointer down at ${event.position.dy}');
+                        setState(() {
+                          _isVerticalDragging = true;
+                          _verticalDragDelta = 0.0;
+                        });
+                      },
+                      onPointerMove: (event) {
+                        final dy = event.delta.dy;
+                        _verticalDragDelta += dy;
+                        if (kDebugMode) print('[CAL] pointer move dy=${dy.toStringAsFixed(1)}, cumulative=${_verticalDragDelta.toStringAsFixed(1)}, format=$_calendarFormat');
+                        while (_verticalDragDelta <= -_verticalDragThreshold) {
+                          HapticFeedback.mediumImpact();
                           _cycleCalendarFormat(up: true);
-                          _verticalDragDelta = 0.0;
+                          if (kDebugMode) print('[CAL] switched UP -> format=$_calendarFormat');
+                          _verticalDragDelta += _verticalDragThreshold;
+                        }
+                        while (_verticalDragDelta >= _verticalDragThreshold) {
                           HapticFeedback.mediumImpact();
-                        } else if (_verticalDragDelta >= _verticalDragThreshold) {
-                          // Nach unten: größer
                           _cycleCalendarFormat(up: false);
-                          _verticalDragDelta = 0.0;
-                          HapticFeedback.mediumImpact();
+                          if (kDebugMode) print('[CAL] switched DOWN -> format=$_calendarFormat');
+                          _verticalDragDelta -= _verticalDragThreshold;
                         }
                       },
-                      onVerticalDragEnd: (_) => _verticalDragDelta = 0.0,
+                      onPointerUp: (event) {
+                        if (kDebugMode) print('[CAL] pointer up, final cumulative=${_verticalDragDelta.toStringAsFixed(1)}');
+                        setState(() {
+                          _isVerticalDragging = false;
+                          _verticalDragDelta = 0.0;
+                        });
+                      },
+                      onPointerCancel: (event) {
+                        if (kDebugMode) print('[CAL] pointer cancel');
+                        setState(() {
+                          _isVerticalDragging = false;
+                          _verticalDragDelta = 0.0;
+                        });
+                      },
                       child: SizedBox(
-                        key: ValueKey('calendar_format_${_calendarFormat.index}'),
+                        key: ValueKey(_isVerticalDragging ? 'calendar_format_drag' : 'calendar_format_${_calendarFormat.index}'),
                         child: TableCalendar<AnimeRelease>(
                           // Nutze 'de_DE' nur wenn initialisiert, sonst null (Standard)
                           locale: Intl.defaultLocale == 'de_DE' ? 'de_DE' : null,
