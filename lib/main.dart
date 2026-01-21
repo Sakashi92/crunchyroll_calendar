@@ -1084,67 +1084,91 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               duration: const Duration(milliseconds: 450),
               curve: Curves.easeInOut,
               alignment: Alignment.topCenter,
-              child: _isCalendarMinimized
-                  ? Container(
-                      color: Theme.of(context).colorScheme.surface,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        children: [
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.chevron_left),
-                                tooltip: 'Vorheriger Monat',
-                                onPressed: () {
-                                  _goToPreviousMonth();
-                                },
+                            child: _isCalendarMinimized
+                  ? InkWell(
+                      onTap: () {
+                        setState(() {
+                          _isCalendarMinimized = false;
+                          _cumulativeScrollDelta = 0.0;
+                        });
+                      },
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            // Kalender Icon
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(12),
                               ),
-                              Text(
-                                DateFormat.yMMMM('de_DE').format(_focusedDay),
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                              child: Icon(
+                                Icons.calendar_today,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
                               ),
-                              IconButton(
-                                icon: const Icon(Icons.chevron_right),
-                                tooltip: 'Nächster Monat',
-                                onPressed: () {
-                                  _goToNextMonth();
-                                },
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Builder(builder: (context) {
-                                final selected = _selectedDay ?? _focusedDay;
-                                final dayNumber = DateFormat('d').format(selected);
-                                return GestureDetector(
-                                  onTap: () => _showSelectedDateDialog(selected),
-                                  child: CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: Theme.of(context).colorScheme.primary,
-                                    child: Text(
-                                      dayNumber,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: Theme.of(context).colorScheme.onPrimary,
-                                      ),
+                            ),
+                            const SizedBox(width: 16),
+                            // Datum Informationen
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    () {
+                                      final selected = _selectedDay ?? _focusedDay;
+                                      return DateFormat('EEEE, d. MMMM yyyy', 'de_DE').format(selected);
+                                    }(),
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context).colorScheme.onSurface,
                                     ),
                                   ),
-                                );
-                              }),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    () {
+                                      final releases = _getReleasesForDay(_selectedDay ?? _focusedDay);
+                                      if (releases.isEmpty) return 'Keine Releases';
+                                      return '${releases.length} Release${releases.length == 1 ? '' : 's'}';
+                                    }(),
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w500,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _isCalendarMinimized = false;
-                              });
-                            },
-                            icon: Icon(Icons.expand_more, color: Theme.of(context).colorScheme.primary),
-                            label: const Text('Kalender öffnen'),
-                          ),
-                        ],
+                            // Expand Icon
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.5),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(
+                                Icons.keyboard_arrow_down,
+                                size: 20,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     )
                   : Listener(
