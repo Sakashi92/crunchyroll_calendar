@@ -122,7 +122,7 @@ class _SearchPageState extends State<SearchPage> {
                 final DateTime date = entry['date'] as DateTime;
                 return ListTile(
                   title: Text(r.title),
-                  subtitle: Text('${r.episodeInfo ?? ''} — ${DateFormat('dd.MM.yyyy').format(date)}'),
+                  subtitle: Text('${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}'),
                   onTap: () {
                     Navigator.of(context).pop({'release': r, 'date': date});
                   },
@@ -423,8 +423,46 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         releasesByDay[date]!.add(release);
       }
 
+      // Optionally remove duplicate releases (same episode URL or same title+episode)
+      final hideDup = await AppSettings.getHideDuplicateReleases();
+      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
+      if (hideDup) {
+        String normalizeUrl(String url) {
+          try {
+            final uri = Uri.parse(url);
+            // Keep scheme, host, port and path; remove query and fragment
+            final normalized = Uri(
+              scheme: uri.scheme,
+              host: uri.host,
+              port: uri.hasPort ? uri.port : null,
+              path: uri.path,
+            ).toString();
+            return normalized.toLowerCase();
+          } catch (_) {
+            return url.toLowerCase();
+          }
+        }
+
+        final deduped = <DateTime, List<AnimeRelease>>{};
+        releasesByDay.forEach((date, list) {
+          final seen = <String>{};
+          final out = <AnimeRelease>[];
+          for (var r in list) {
+            final urlPart = (r.episodeUrl.isNotEmpty) ? normalizeUrl(r.episodeUrl) : '';
+            final titlePart = '${r.title.trim().toLowerCase()}_${r.episodeNumber.trim().toLowerCase()}';
+            final id = urlPart.isNotEmpty ? urlPart : titlePart;
+            if (!seen.contains(id)) {
+              seen.add(id);
+              out.add(r);
+            }
+          }
+          deduped[date] = out;
+        });
+        finalByDay = deduped;
+      }
+
       setState(() {
-        _releases = releasesByDay;
+        _releases = finalByDay;
       });
       
       // Zeige Meldung wenn gewünscht und eingestellt
@@ -777,7 +815,9 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         builder: (context) => SettingsPage(
           crunchyrollService: _crunchyrollService,
           onSettingsChanged: () {
-            // Starte Auto-Update mit neuen Einstellungen neu und lade Releases neu
+            // Direkt Releases neu laden (z.B. nach Aktivieren von "Doppelte Releases ausblenden")
+            _loadReleases();
+            // Starte/aktualisiere Auto-Update mit neuen Einstellungen
             _crunchyrollService.restartAutoUpdate(() {
               if (mounted) {
                 _loadReleases();

@@ -19,6 +19,7 @@ class AppSettings {
   static const String _showRefreshMessageKey = 'show_refresh_message';
   static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';
   static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';
+  static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -166,6 +167,18 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_autoMinimizeScrollThresholdKey, pixels);
   }
+
+  /// Lädt, ob doppelte Releases ausgeblendet werden sollen
+  static Future<bool> getHideDuplicateReleases() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_hideDuplicateReleasesKey) ?? false; // Standard: aus
+  }
+
+  /// Speichert die Einstellung zum Ausblenden doppelter Releases
+  static Future<void> setHideDuplicateReleases(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_hideDuplicateReleasesKey, enabled);
+  }
 }
 
 /// Einstellungs-Seite
@@ -188,6 +201,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _showRefreshMessage = true;
   bool _autoMinimizeCalendar = true;
   double _autoMinimizeScrollThreshold = 200.0;
+  bool _hideDuplicateReleases = false;
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -206,6 +220,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final showRefreshMessage = await AppSettings.getShowRefreshMessage();
     final autoMinimizeCalendar = await AppSettings.getAutoMinimizeCalendar();
     final autoMinimizeScrollThreshold = await AppSettings.getAutoMinimizeScrollThreshold();
+    final hideDuplicateReleases = await AppSettings.getHideDuplicateReleases();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -217,6 +232,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _showRefreshMessage = showRefreshMessage;
       _autoMinimizeCalendar = autoMinimizeCalendar;
       _autoMinimizeScrollThreshold = autoMinimizeScrollThreshold;
+      _hideDuplicateReleases = hideDuplicateReleases;
       _permissions = permissions;
       _isLoading = false;
     });
@@ -282,6 +298,22 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Scroll-Schwelle gesetzt: ${pixels.toStringAsFixed(0)} px'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _saveHideDuplicateReleases(bool enabled) async {
+    await AppSettings.setHideDuplicateReleases(enabled);
+    setState(() {
+      _hideDuplicateReleases = enabled;
+    });
+    widget.onSettingsChanged?.call();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(enabled ? 'Doppelte Releases werden ausgeblendet' : 'Doppelte Releases werden angezeigt'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -520,6 +552,15 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('Minimiert den Kalender-Header automatisch, wenn du in der Liste nach unten scrollst'),
               value: _autoMinimizeCalendar,
               onChanged: (v) => _saveAutoMinimizeCalendar(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SwitchListTile(
+              title: const Text('Doppelte Releases ausblenden'),
+              subtitle: const Text('Versteckt doppelte Einträge (gleiche Folge/URL) im Kalender'),
+              value: _hideDuplicateReleases,
+              onChanged: (v) => _saveHideDuplicateReleases(v),
             ),
           ),
           Padding(
