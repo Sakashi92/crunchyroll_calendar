@@ -873,7 +873,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               if (result != null && result is Map) {
                 final AnimeRelease r = result['release'] as AnimeRelease;
                 final DateTime date = result['date'] as DateTime;
-                // Show details dialog for the selected release
+                // Show details dialog for the selected release (do not change calendar focus)
                 await showDialog(
                   context: context,
                   builder: (BuildContext ctx) => _AnimeDetailsDialog(
@@ -881,12 +881,6 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                     crunchyrollService: CrunchyrollService(),
                   ),
                 );
-                // After closing the dialog, focus the calendar to the release date
-                setState(() {
-                  _selectedDay = date;
-                  _focusedDay = _selectedDay!;
-                });
-                _loadReleases();
               }
             },
           ),

@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 225,
+            "activePatchIndex": 226,
             "patches": [
                 {
                     "date": 1768665346973,
@@ -908,6 +908,10 @@
                 {
                     "date": 1769025914849,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -814,9 +814,11 @@\n       MaterialPageRoute(\r\n         builder: (context) => SettingsPage(\r\n           crunchyrollService: _crunchyrollService,\r\n           onSettingsChanged: () {\r\n-            // Starte Auto-Update mit neuen Einstellungen neu und lade Releases neu\r\n+            // Direkt Releases neu laden (z.B. nach Aktivieren von \"Doppelte Releases ausblenden\")\r\n+            _loadReleases();\r\n+            // Starte/aktualisiere Auto-Update mit neuen Einstellungen\r\n             _crunchyrollService.restartAutoUpdate(() {\r\n               if (mounted) {\r\n                 _loadReleases();\r\n               }\r\n"
+                },
+                {
+                    "date": 1769026001893,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -872,22 +872,16 @@\n               );\r\n               if (result != null && result is Map) {\r\n                 final AnimeRelease r = result['release'] as AnimeRelease;\r\n                 final DateTime date = result['date'] as DateTime;\r\n-                // Show details dialog for the selected release\r\n+                // Show details dialog for the selected release (do not change calendar focus)\r\n                 await showDialog(\r\n                   context: context,\r\n                   builder: (BuildContext ctx) => _AnimeDetailsDialog(\r\n                     release: r,\r\n                     crunchyrollService: CrunchyrollService(),\r\n                   ),\r\n                 );\r\n-                // After closing the dialog, focus the calendar to the release date\r\n-                setState(() {\r\n-                  _selectedDay = date;\r\n-                  _focusedDay = _selectedDay!;\r\n-                });\r\n-                _loadReleases();\r\n               }\r\n             },\r\n           ),\r\n           IconButton(\r\n"
                 }
             ],
             "date": 1768665346973,
