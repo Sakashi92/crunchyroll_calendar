@@ -1240,7 +1240,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                 },
                 child: Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
                   decoration: BoxDecoration(
                     color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
                     border: Border(
@@ -1254,14 +1254,14 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                     children: [
                       // Kalender Icon
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
                           Icons.calendar_today,
-                          size: 20,
+                          size: 18,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
@@ -1269,6 +1269,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                       // Datum
                       Expanded(
                         child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
@@ -1282,32 +1283,26 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                                 }
                               }(),
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 14,
                                 fontWeight: FontWeight.w600,
                                 color: Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                             const SizedBox(height: 2),
-                            Text(
-                              'Tippen zum Ausklappen',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
-                              ),
-                            ),
+
                           ],
                         ),
                       ),
                       // Ausklapp-Button
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(6),
                         decoration: BoxDecoration(
                           color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
                           Icons.keyboard_arrow_down,
-                          size: 24,
+                          size: 20,
                           color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
