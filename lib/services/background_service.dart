@@ -7,6 +7,18 @@ import '../services/notification_service.dart';
 import '../utils/release_comparator.dart';
 import '../models/notification_log.dart';
 
+// Hilfsfunktion: Erzeuge eine 32-bit positive Int-ID aus einem Hex-Hash (erste 8 Zeichen)
+int _notificationIdFromHash(String contentHash) {
+  try {
+    final hex = contentHash.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
+    if (hex.length < 8) return DateTime.now().millisecondsSinceEpoch;
+    final sub = hex.substring(0, 8);
+    return int.parse(sub, radix: 16) & 0x7fffffff;
+  } catch (_) {
+    return DateTime.now().millisecondsSinceEpoch;
+  }
+}
+
 /// Service für Background-Scraping wenn die App geschlossen ist
 /// Nutzt Workmanager um periodische Aufgaben zu planen
 class BackgroundService {
@@ -397,10 +409,12 @@ Future<bool> _executeBackgroundScraper() async {
         print('📤 [BACKGROUND-SCRAPER] SENDING NOTIFICATION: ${release.title} ep.${release.episodeNumber}');
       }
       
+      final notifId = _notificationIdFromHash(contentHash);
       await notificationService.showNotification(
         title: 'Neuer Anime Release',
         body: notificationBody,
         payload: release.seriesUrl,
+        id: notifId,
       );
       
       // 🚀 Logge Benachrichtigung mit Content-Hash
@@ -568,10 +582,12 @@ Future<bool> _executeFavoritesTestNotification() async {
 
         if (kDebugMode) print('📤 [BACKGROUND] SENDING favorite-test notification for: ${release.title} - ${release.episodeInfo}');
 
+        final favNotifId = _notificationIdFromHash(hash);
         await notificationService.showNotification(
           title: '🔔 Neue Episode: ${release.title}',
           body: '${release.episodeInfo}: ${release.episodeTitle}',
           payload: 'release_${release.title}_${release.episodeNumber}',
+          id: favNotifId,
         );
 
         // Logge die Benachrichtigung in der DB

@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 14,
+            "activePatchIndex": 15,
             "patches": [
                 {
                     "date": 1768665334381,
@@ -64,6 +64,10 @@
                 {
                     "date": 1768923768532,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,8 @@\n name: crunchyroll_calendar\r\n description: \"Ein inoffizieller Kalender für Anime-Veröffentlichungen auf Crunchyroll.\"\r\n publish_to: 'none'\r\n-version: 0.3.5\r\n+version: 0.4.0\r\n \r\n environment:\r\n   sdk: ^3.10.7\r\n \r\n"
+                },
+                {
+                    "date": 1768934278875,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,8 +1,8 @@\n name: crunchyroll_calendar\r\n description: \"Ein inoffizieller Kalender für Anime-Veröffentlichungen auf Crunchyroll.\"\r\n publish_to: 'none'\r\n-version: 0.4.0\r\n+version: 0.4.5\r\n \r\n environment:\r\n   sdk: ^3.10.7\r\n \r\n"
                 }
             ],
             "date": 1768665334380,

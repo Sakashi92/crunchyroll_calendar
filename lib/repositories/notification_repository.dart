@@ -220,6 +220,11 @@ class NotificationRepository {
     try {
       final db = await database;
 
+      // Ensure table exists before running queries (defensive for background isolates)
+      await _ensureTableExists(db);
+      // As extra defense, run CREATE TABLE IF NOT EXISTS directly (idempotent)
+      await _createNotificationsTable(db);
+
       // 1) PRIMÄRE PRÜFUNG: Suche nach exakt gleichem contentHash (NEVER SEND AGAIN)
       // Zeitlimit: KEINE! Einmal versendet = immer Duplikat!
       final hashResult = await db.query(
@@ -241,8 +246,12 @@ class NotificationRepository {
       return false;
     } catch (e) {
       if (kDebugMode) print('❌ Error checking duplicate: $e');
-      // Im Fehlerfall: besser NICHT senden (false = senden, also true = skip)
-      return true;
+      // Try to recover: ensure table exists and treat as NOT duplicate so notifications are sent.
+      try {
+        final db = await database;
+        await _ensureTableExists(db);
+      } catch (_) {}
+      return false;
     }
   }
   

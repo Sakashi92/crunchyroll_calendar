@@ -567,6 +567,7 @@ class _SettingsPageState extends State<SettingsPage> {
           // Cache-Verwaltung
           _buildSectionHeader('Cache-Verwaltung'),
           _buildClearCacheTile(),
+      if (kDebugMode)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ListTile(
@@ -1105,7 +1106,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.4.0\nBilder werden von Kitsu.io geladen'),
+      subtitle: Text('Version 0.4.5\nBilder werden von Kitsu.io geladen'),
       isThreeLine: true,
     );
   }

@@ -122,6 +122,7 @@ class NotificationService {
     required String title,
     required String body,
     String? payload,
+    int? id,
   }) async {
     if (!_isInitialized) {
       if (kDebugMode) print('⚠️  Notifications not initialized');
@@ -153,8 +154,10 @@ class NotificationService {
         iOS: iosDetails,
       );
       
+      final int notifId = id ?? DateTime.now().millisecondsSinceEpoch;
+      if (kDebugMode) print('📲 [NOTIF] Showing notification id=$notifId title=$title');
       await _notificationsPlugin.show(
-        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        notifId,
         title,
         body,
         details,
@@ -177,6 +180,7 @@ class NotificationService {
     required String body,
     required DateTime scheduledTime,
     String? payload,
+    int? id,
   }) async {
     if (!_isInitialized) {
       if (kDebugMode) print('⚠️  Notifications not initialized');
@@ -216,8 +220,10 @@ class NotificationService {
         iOS: iosDetails,
       );
       
+      final int schedId = id ?? DateTime.now().millisecondsSinceEpoch;
+      if (kDebugMode) print('📲 [NOTIF] Scheduling notification id=$schedId at=${scheduledTime.toIso8601String()} title=$title');
       await _notificationsPlugin.zonedSchedule(
-        DateTime.now().millisecondsSinceEpoch ~/ 1000,
+        schedId,
         title,
         body,
         tz.TZDateTime.from(scheduledTime, tz.local),
@@ -225,7 +231,7 @@ class NotificationService {
         payload: payload,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
         uiLocalNotificationDateInterpretation: 
-            UILocalNotificationDateInterpretation.absoluteTime,
+        UILocalNotificationDateInterpretation.absoluteTime,
       );
       
       if (kDebugMode) {

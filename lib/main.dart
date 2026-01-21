@@ -95,6 +95,22 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   DateTime _focusedDay = DateTime.now();
   
   DateTime? _selectedDay;
+  // -1 = swiped left (next day), 1 = swiped right (previous day)
+  int _lastSwipeDirection = 0;
+  // Drag state for interactive swipe preview
+  double _dragOffset = 0.0; // pixels, positive = dragging right (show previous), negative = left (show next)
+  bool _isDragging = false;
+  bool _isSnapping = false;
+  late AnimationController _dragAnimationController;
+  Animation<double>? _currentSettleAnimation; // Track current animation to remove listeners
+  VoidCallback? _currentSettleListener; // Track the setState listener
+  Function(AnimationStatus)? _currentStatusListener; // Track the status listener
+  DateTime? _dragStartDay;
+  // Stable snapshot of the selected/focused day at the start of the current drag session
+  DateTime? _dragSessionStartDay;
+  // Wenn während des Drags bereits ein Seitenwechsel ausgeführt wurde,
+  // verhindern wir beim Drag-Ende ein zweites Commit.
+  bool _committedDuringDrag = false;
   Map<DateTime, List<AnimeRelease>> _releases = {};
   final CrunchyrollService _crunchyrollService = CrunchyrollService();
   bool _isLoadingImages = false;
@@ -107,6 +123,11 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   // Threshold in logical pixels to trigger a format change while dragging
   // Increased to reduce accidental switches while swiping through the calendar
   final double _verticalDragThreshold = 260.0;
+  // Horizontal commit thresholds for day swipe
+  // Fraction of width that must be dragged to commit (35% requested)
+  final double _horizontalCommitFraction = 0.35;
+  // Minimum velocity (px/s) to force a commit regardless of distance
+  final double _horizontalVelocityCommit = 900.0;
   // Wenn true: Kalender ist minimiert und zeigt nur den Header (Monat + chevrons)
   bool _isCalendarMinimized = false;
 
@@ -160,6 +181,9 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         _loadReleases();
       }
     });
+
+    // Controller for finishing/settling drag animations
+    _dragAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
   }
 
   Future<void> _loadAutoMinimizeSetting() async {
@@ -191,6 +215,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   @override
   void dispose() {
     _crunchyrollService.stopAutoUpdate();
+    _dragAnimationController.dispose();
     super.dispose();
   }
 
@@ -523,6 +548,68 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
   List<AnimeRelease> _getReleasesForDay(DateTime day) {
     final date = DateTime(day.year, day.month, day.day);
     return _releases[date] ?? [];
+  }
+
+  Widget _buildContentForDay(DateTime day) {
+    final releases = _getReleasesForDay(day);
+
+    if (_isLoadingReleases) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: 200,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: const [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text(
+                    'Lade Releases…',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    if (releases.isEmpty) {
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: 200,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Keine Anime-Releases an diesem Tag bisher.',
+                    style: TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.all(8),
+      itemCount: releases.length,
+      itemBuilder: (context, index) {
+        final release = releases[index];
+        return _buildReleaseCard(release);
+      },
+    );
   }
 
   /// Lädt alle gecachten Monate beim Start um Punkte überall anzuzeigen
@@ -884,8 +971,11 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 
   Widget _buildReleaseList() {
     final releases = _getReleasesForDay(_selectedDay ?? _focusedDay);
+
+    Widget content;
+
     if (_isLoadingReleases) {
-      return ListView(
+      content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           SizedBox(
@@ -906,10 +996,8 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           ),
         ],
       );
-    }
-
-    if (releases.isEmpty) {
-      return ListView(
+    } else if (releases.isEmpty) {
+      content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
           SizedBox(
@@ -917,10 +1005,10 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
             child: Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                children: const [
-                  Icon(Icons.event_busy, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text(
+                children: [
+                  Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
+                  const SizedBox(height: 16),
+                  const Text(
                     'Keine Anime-Releases an diesem Tag bisher.',
                     style: TextStyle(fontSize: 16, color: Colors.grey),
                   ),
@@ -930,16 +1018,226 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           ),
         ],
       );
+    } else {
+      content = ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(8),
+        itemCount: releases.length,
+        itemBuilder: (context, index) {
+          final release = releases[index];
+          return _buildReleaseCard(release);
+        },
+      );
     }
 
-    return ListView.builder(
-      physics: const AlwaysScrollableScrollPhysics(),
-      padding: const EdgeInsets.all(8),
-      itemCount: releases.length,
-      itemBuilder: (context, index) {
-        final release = releases[index];
-        return _buildReleaseCard(release);
+    // Wrap the content in a GestureDetector so horizontal swipes change the day.
+    // Use AnimatedSwitcher + SlideTransition for a side-entry animation.
+    final dayKey = ValueKey((_selectedDay ?? _focusedDay).toIso8601String());
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onHorizontalDragStart: (_) {
+        if (_dragAnimationController.isAnimating) _dragAnimationController.stop();
+        setState(() {
+          _isDragging = true;
+          // Start fresh for this gesture: reset offset and session anchors
+          _dragOffset = 0.0;
+          _dragStartDay = _selectedDay ?? _focusedDay;
+          _dragSessionStartDay = _selectedDay ?? _focusedDay;
+          // Reset commit flag for this new drag session
+          _committedDuringDrag = false;
+        });
       },
+      onHorizontalDragCancel: () {
+        // User aborted the swipe gesture — return to current page without committing
+        if (_dragAnimationController.isAnimating) _dragAnimationController.stop();
+        setState(() {
+          _isDragging = false;
+          _isSnapping = false;
+          _dragOffset = 0.0;
+          _committedDuringDrag = false;
+        });
+      },
+      onHorizontalDragUpdate: (details) {
+        // Simply track offset for visual preview during drag
+        if (_isSnapping || _committedDuringDrag) return;
+        setState(() {
+          _dragOffset += details.delta.dx;
+        });
+      },
+      onHorizontalDragEnd: (details) {
+        // Skip if no meaningful drag happened (small accidental moves)
+        if (_dragOffset.abs() < 100 && details.primaryVelocity!.abs() < _horizontalVelocityCommit) {
+          if (kDebugMode) print('[SWIPE] Ignored: offset=${_dragOffset.toStringAsFixed(1)}, velocity=${details.primaryVelocity?.toStringAsFixed(1)}');
+          setState(() {
+            _isDragging = false;
+            _dragOffset = 0.0;
+            _committedDuringDrag = false;
+          });
+          return;
+        }
+
+        final velocity = details.primaryVelocity ?? 0.0;
+        final width = context.size?.width ?? 0.0;
+
+        if (width <= 0) return;
+
+        // --- Vereinfachte Swipe-Commit-Logik ---
+        double target = 0.0;
+        bool shouldCommit = false;
+        // Clamp current offset to screen bounds to avoid weird large offsets
+        final double clampedOffset = _dragOffset.clamp(-width, width);
+        // Use clampedOffset for decision-making and animation
+        
+        // Commit nur bei hoher Velocity UND mit Minimum-Offset (35%), oder bei Offset > 35%
+        // WICHTIG: Velocity hat Vorzeichen! velocity < 0 = nach links swipen = nächster Tag = target < 0
+        // Minimum offset to consider even with high velocity: same as normal threshold (35%)
+        final double minOffsetForVelocityCommit = width * _horizontalCommitFraction;
+        
+        if (velocity.abs() > _horizontalVelocityCommit && clampedOffset.abs() >= minOffsetForVelocityCommit) {
+          if (kDebugMode) print('[SWIPE] Commit by velocity: ${velocity.toStringAsFixed(1)} (sign=${velocity.sign}) + offset=${clampedOffset.toStringAsFixed(1)}');
+          // velocity sign determines direction: negative = left (next), positive = right (prev)
+          target = velocity < 0 ? -width : width;
+          shouldCommit = true;
+        } else if (clampedOffset.abs() > width * _horizontalCommitFraction) {
+          if (kDebugMode) print('[SWIPE] Commit by offset: ${clampedOffset.toStringAsFixed(1)} / ${width.toStringAsFixed(1)}');
+          // clampedOffset < 0 means dragged left (negative) = show next day (target = -width)
+          target = clampedOffset < 0 ? -width : width;
+          shouldCommit = true;
+        } else {
+          if (kDebugMode) print('[SWIPE] No commit: offset=${clampedOffset.toStringAsFixed(1)}, velocity=${velocity.toStringAsFixed(1)}');
+          target = 0.0;
+          shouldCommit = false;
+        }
+
+        _isSnapping = true;
+        if (shouldCommit) _committedDuringDrag = true;
+
+        // Remove old listeners from previous animation if still attached
+        if (_currentSettleAnimation != null) {
+          if (_currentSettleListener != null) {
+            _currentSettleAnimation!.removeListener(_currentSettleListener!);
+          }
+          if (_currentStatusListener != null) {
+            _currentSettleAnimation!.removeStatusListener(_currentStatusListener!);
+          }
+        }
+
+        // Animationsdauer proportional zur verbleibenden Strecke, damit px/s konstant sind
+        // Basis: volle Breite -> 260ms. Dauer = (distance / width) * baseDurationMs
+        const int baseDurationMs = 260;
+        final double distance = (target - clampedOffset).abs();
+        final double full = width > 0 ? width : 1.0;
+        int durationMs = ((distance / full) * baseDurationMs).round();
+        // Clamp to avoid too short/long animations
+        if (durationMs < 120) durationMs = 120;
+        if (durationMs > 800) durationMs = 800;
+        _dragAnimationController.duration = Duration(milliseconds: durationMs);
+        if (kDebugMode) print('[SWIPE] Anim duration=${durationMs}ms distance=${distance.toStringAsFixed(1)} full=${full.toStringAsFixed(1)} clampedOffset=${clampedOffset.toStringAsFixed(1)} target=${target.toStringAsFixed(1)}');
+        _dragAnimationController.reset();
+        final Animation<double> settle = Tween<double>(begin: clampedOffset, end: target)
+          .animate(CurvedAnimation(parent: _dragAnimationController, curve: Curves.easeOut));
+
+        // Save animation and listeners for cleanup
+        _currentSettleAnimation = settle;
+
+        _currentSettleListener = () {
+          setState(() {
+            _dragOffset = settle.value;
+          });
+        };
+        settle.addListener(_currentSettleListener!);
+
+        _currentStatusListener = (status) {
+          if (status == AnimationStatus.completed) {
+            if (shouldCommit) {
+              final base = _dragSessionStartDay ?? _selectedDay ?? _focusedDay;
+              if (target < 0) {
+                setState(() {
+                  _lastSwipeDirection = -1;
+                  _selectedDay = DateTime(base.year, base.month, base.day).add(const Duration(days: 1));
+                  _focusedDay = _selectedDay!;
+                });
+              } else {
+                setState(() {
+                  _lastSwipeDirection = 1;
+                  _selectedDay = DateTime(base.year, base.month, base.day).subtract(const Duration(days: 1));
+                  _focusedDay = _selectedDay!;
+                });
+              }
+              _loadReleases();
+            }
+            setState(() {
+              _isDragging = false;
+              _isSnapping = false;
+              _dragOffset = 0.0;
+              _committedDuringDrag = false;
+            });
+            // Clean up listeners
+            if (_currentSettleListener != null) {
+              settle.removeListener(_currentSettleListener!);
+              _currentSettleListener = null;
+            }
+            if (_currentStatusListener != null) {
+              settle.removeStatusListener(_currentStatusListener!);
+              _currentStatusListener = null;
+            }
+            _currentSettleAnimation = null;
+          }
+        };
+        settle.addStatusListener(_currentStatusListener!);
+
+        _dragAnimationController.forward(from: 0.0);
+      },
+      child: LayoutBuilder(builder: (context, constraints) {
+        final width = constraints.maxWidth;
+
+        Widget currentChild = SizedBox(key: dayKey, child: content);
+
+        if (!_isDragging && _dragOffset == 0.0) {
+          // No active drag: show animated switcher (standard behavior)
+          return AnimatedSwitcher(
+            duration: const Duration(milliseconds: 520),
+            switchInCurve: Curves.easeOutCubic,
+            switchOutCurve: Curves.easeInCubic,
+            transitionBuilder: (Widget child, Animation<double> animation) {
+              final isIncoming = child.key == dayKey;
+              Offset incomingBegin = Offset.zero;
+              if (_lastSwipeDirection == -1) incomingBegin = const Offset(1.0, 0.0);
+              else if (_lastSwipeDirection == 1) incomingBegin = const Offset(-1.0, 0.0);
+
+              if (isIncoming) {
+                final tween = Tween<Offset>(begin: incomingBegin, end: Offset.zero).chain(CurveTween(curve: Curves.easeInOut));
+                return SlideTransition(position: animation.drive(tween), child: child);
+              } else {
+                final outgoingEnd = Offset(-incomingBegin.dx, 0.0);
+                final tween = Tween<Offset>(begin: Offset.zero, end: outgoingEnd).chain(CurveTween(curve: Curves.easeInOut));
+                return SlideTransition(position: animation.drive(tween), child: child);
+              }
+            },
+            child: currentChild,
+          );
+        }
+
+        // During drag: show current and adjacent day, each translated by _dragOffset
+        final baseDay = _selectedDay ?? _focusedDay;
+        final showingNext = _dragOffset < 0; // dragging left shows next day
+        final adjacentDay = DateTime(baseDay.year, baseDay.month, baseDay.day).add(Duration(days: showingNext ? 1 : -1));
+        final adjacentReleasesWidget = _buildContentForDay(adjacentDay);
+
+        return Stack(children: [
+          // Adjacent (incoming) -- positioned relative to drag
+          Transform.translate(
+            offset: Offset(_dragOffset + (showingNext ? width : -width), 0),
+            child: SizedBox(width: width, child: adjacentReleasesWidget),
+          ),
+          // Current
+          Transform.translate(
+            offset: Offset(_dragOffset, 0),
+            child: SizedBox(width: width, child: currentChild),
+          ),
+        ]);
+      }),
     );
   }
 
