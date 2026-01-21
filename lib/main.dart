@@ -51,6 +51,28 @@ class _SearchPageState extends State<SearchPage> {
   Timer? _debounce;
   List<Map<String, dynamic>> _results = [];
 
+  // Autocomplete / history
+  List<String> _history = [];
+  List<String> _allSuggestions = [];
+  List<String> _suggestions = [];
+
+  @override
+  void initState() {
+    super.initState();
+    // Build suggestion pool from loaded releases
+    final titles = <String>{};
+    widget.releases.values.expand((l) => l).forEach((r) {
+      titles.add(r.title);
+      if (r.episodeTitle.isNotEmpty) titles.add(r.episodeTitle);
+    });
+    _allSuggestions = titles.toList()..sort();
+
+    // Load history
+    AppSettings.getSearchHistory().then((list) {
+      if (mounted) setState(() => _history = list);
+    });
+  }
+
   @override
   void dispose() {
     _controller.dispose();
@@ -59,9 +81,26 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   void _onSearchChanged() {
+    // immediate suggestions
+    final text = _controller.text.trim();
+    _updateSuggestions(text);
+
+    // debounced full search
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), () {
-      _performSearch(_controller.text.trim());
+      _performSearch(text);
+    });
+  }
+
+  void _updateSuggestions(String text) {
+    if (text.isEmpty) {
+      setState(() => _suggestions = []);
+      return;
+    }
+    final q = text.toLowerCase();
+    final matched = _allSuggestions.where((s) => s.toLowerCase().contains(q)).take(10).toList();
+    setState(() {
+      _suggestions = matched;
     });
   }
 
@@ -78,10 +117,7 @@ class _SearchPageState extends State<SearchPage> {
       for (var r in list) {
         final hay = '${r.title} ${r.episodeTitle} ${r.episodeInfo}'.toLowerCase();
         if (hay.contains(q)) {
-          matches.add({
-            'release': r,
-            'date': date,
-          });
+          matches.add({'release': r, 'date': date});
         }
       }
     });
@@ -89,6 +125,64 @@ class _SearchPageState extends State<SearchPage> {
     setState(() {
       _results = matches;
     });
+  }
+
+  void _onSuggestionTap(String suggestion) async {
+    _controller.text = suggestion;
+    _updateSuggestions(suggestion);
+    await AppSettings.addToSearchHistory(suggestion);
+    final list = await AppSettings.getSearchHistory();
+    if (mounted) setState(() => _history = list);
+    _performSearch(suggestion);
+  }
+
+  Future<void> _onResultTap(AnimeRelease r, DateTime date) async {
+    await AppSettings.addToSearchHistory(r.title);
+    final list = await AppSettings.getSearchHistory();
+    if (mounted) setState(() => _history = list);
+
+    // show details dialog
+    await showDialog(
+      context: context,
+      builder: (BuildContext ctx) => _AnimeDetailsDialog(
+        release: r,
+        crunchyrollService: CrunchyrollService(),
+      ),
+    );
+  }
+
+  Widget _buildHistoryList() {
+    if (_history.isEmpty) return const Center(child: Text('Keine letzten Suchanfragen'));
+    return ListView.separated(
+      itemCount: _history.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final s = _history[index];
+        return ListTile(
+          leading: const Icon(Icons.history),
+          title: Text(s),
+          onTap: () => _onSuggestionTap(s),
+        );
+      },
+    );
+  }
+
+  Widget _buildSuggestionList() {
+    if (_suggestions.isEmpty) return const SizedBox.shrink();
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: _suggestions.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final s = _suggestions[index];
+        return ListTile(
+          leading: const Icon(Icons.search),
+          title: Text(s),
+          onTap: () => _onSuggestionTap(s),
+        );
+      },
+    );
   }
 
   @override
@@ -105,30 +199,56 @@ class _SearchPageState extends State<SearchPage> {
           onChanged: (_) => _onSearchChanged(),
         ),
         backgroundColor: Theme.of(context).colorScheme.surface,
-      ),
-      body: _results.isEmpty
-          ? Center(
-              child: Text(
-                _controller.text.isEmpty ? 'Gib einen Suchbegriff ein' : 'Keine Treffer',
-                style: TextStyle(color: Colors.grey.shade600),
-              ),
-            )
-          : ListView.separated(
-              itemCount: _results.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
-              itemBuilder: (context, index) {
-                final entry = _results[index];
-                final AnimeRelease r = entry['release'] as AnimeRelease;
-                final DateTime date = entry['date'] as DateTime;
-                return ListTile(
-                  title: Text(r.title),
-                  subtitle: Text('${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}'),
-                  onTap: () {
-                    Navigator.of(context).pop({'release': r, 'date': date});
-                  },
-                );
+        actions: [
+          if (_controller.text.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                _controller.clear();
+                _onSearchChanged();
               },
             ),
+        ],
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: _controller.text.isEmpty
+            ? _buildHistoryList()
+            : (_results.isNotEmpty
+                ? ListView.separated(
+                    itemCount: _results.length,
+                    separatorBuilder: (_, __) => const Divider(height: 1),
+                    itemBuilder: (context, index) {
+                      final entry = _results[index];
+                      final AnimeRelease r = entry['release'] as AnimeRelease;
+                      final DateTime date = entry['date'] as DateTime;
+                      return ListTile(
+                        title: Text(r.title),
+                        subtitle: Text('${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}'),
+                        onTap: () => _onResultTap(r, date),
+                      );
+                    },
+                  )
+                : SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const SizedBox(height: 8),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                          child: Text('Vorschläge', style: TextStyle(color: Colors.grey.shade700)),
+                        ),
+                        const SizedBox(height: 4),
+                        _buildSuggestionList(),
+                        if (_suggestions.isEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 32.0),
+                            child: Center(child: Text('Keine Treffer', style: TextStyle(color: Colors.grey.shade600))),
+                          ),
+                      ],
+                    ),
+                  )),
+      ),
     );
   }
 }

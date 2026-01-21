@@ -20,6 +20,7 @@ class AppSettings {
   static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';
   static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';
   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
+  static const String _searchHistoryKey = 'search_history';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -178,6 +179,31 @@ class AppSettings {
   static Future<void> setHideDuplicateReleases(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hideDuplicateReleasesKey, enabled);
+  }
+
+  /// Lädt den Suchverlauf (neueste zuerst)
+  static Future<List<String>> getSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_searchHistoryKey)?.toList() ?? <String>[];
+  }
+
+  /// Fügt einen Eintrag zum Suchverlauf hinzu (an den Anfang). Max-Größe: 20
+  static Future<void> addToSearchHistory(String term) async {
+    final prefs = await SharedPreferences.getInstance();
+    final normalized = term.trim();
+    if (normalized.isEmpty) return;
+    final list = prefs.getStringList(_searchHistoryKey)?.toList() ?? <String>[];
+    // entferne vorhandene Vorkommen
+    list.removeWhere((e) => e.toLowerCase() == normalized.toLowerCase());
+    list.insert(0, normalized);
+    if (list.length > 20) list.removeRange(20, list.length);
+    await prefs.setStringList(_searchHistoryKey, list);
+  }
+
+  /// Löscht den Suchverlauf
+  static Future<void> clearSearchHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_searchHistoryKey);
   }
 }
 
