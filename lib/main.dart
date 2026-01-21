@@ -1207,8 +1207,19 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                         selectedDayPredicate: (day) {
                           return isSameDay(_selectedDay, day);
                         },
-                        onDaySelected: (selectedDay, focusedDay) {
+                                                onDaySelected: (selectedDay, focusedDay) {
                           if (!isSameDay(_selectedDay, selectedDay)) {
+                            // Bestimme Animationsrichtung basierend auf Datum-Differenz
+                            final previous = _selectedDay ?? _focusedDay;
+                            final diff = selectedDay.difference(previous).inDays;
+                            if (diff > 0) {
+                              // Späteres Datum ausgewählt -> von rechts reinschieben (swipe left)
+                              _lastSwipeDirection = -1;
+                            } else if (diff < 0) {
+                              // Früheres Datum ausgewählt -> von links reinschieben (swipe right)
+                              _lastSwipeDirection = 1;
+                            }
+                            
                             setState(() {
                               _selectedDay = selectedDay;
                               _focusedDay = focusedDay;
