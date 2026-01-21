@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
 import 'dart:io';
+import 'dart:async';
 import 'models/anime_release.dart';
 import 'services/crunchyroll_service.dart';
 import 'services/notification_service.dart';
@@ -33,6 +34,103 @@ void main() async {
   await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
   
   runApp(const MainApp());
+}
+
+// Simple in-app search page for locally loaded releases
+class SearchPage extends StatefulWidget {
+  final Map<DateTime, List<AnimeRelease>> releases;
+
+  const SearchPage({super.key, required this.releases});
+
+  @override
+  State<SearchPage> createState() => _SearchPageState();
+}
+
+class _SearchPageState extends State<SearchPage> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+  List<Map<String, dynamic>> _results = [];
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _debounce?.cancel();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 300), () {
+      _performSearch(_controller.text.trim());
+    });
+  }
+
+  void _performSearch(String query) {
+    if (query.isEmpty) {
+      setState(() => _results = []);
+      return;
+    }
+
+    final q = query.toLowerCase();
+    final List<Map<String, dynamic>> matches = [];
+
+    widget.releases.forEach((date, list) {
+      for (var r in list) {
+        final hay = '${r.title} ${r.episodeTitle} ${r.episodeInfo}'.toLowerCase();
+        if (hay.contains(q)) {
+          matches.add({
+            'release': r,
+            'date': date,
+          });
+        }
+      }
+    });
+
+    setState(() {
+      _results = matches;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: TextField(
+          controller: _controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Suche nach Anime, Serie oder Folge',
+            border: InputBorder.none,
+          ),
+          onChanged: (_) => _onSearchChanged(),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+      ),
+      body: _results.isEmpty
+          ? Center(
+              child: Text(
+                _controller.text.isEmpty ? 'Gib einen Suchbegriff ein' : 'Keine Treffer',
+                style: TextStyle(color: Colors.grey.shade600),
+              ),
+            )
+          : ListView.separated(
+              itemCount: _results.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, index) {
+                final entry = _results[index];
+                final AnimeRelease r = entry['release'] as AnimeRelease;
+                final DateTime date = entry['date'] as DateTime;
+                return ListTile(
+                  title: Text(r.title),
+                  subtitle: Text('${r.episodeInfo ?? ''} — ${DateFormat('dd.MM.yyyy').format(date)}'),
+                  onTap: () {
+                    Navigator.of(context).pop({'release': r, 'date': date});
+                  },
+                );
+              },
+            ),
+    );
+  }
 }
 
 class MainApp extends StatefulWidget {
@@ -708,7 +806,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Crunchyroll Anime Kalender'),
+            const Text('Crunchyroll Kalender'),
             if (_isLoadingImages)
               Text(
                 'Lade Bilder... $_imagesLoaded/$_imagesToLoad',
@@ -722,6 +820,36 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           ],
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            tooltip: 'Suche',
+            onPressed: () async {
+              final result = await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SearchPage(releases: _releases),
+                ),
+              );
+              if (result != null && result is Map) {
+                final AnimeRelease r = result['release'] as AnimeRelease;
+                final DateTime date = result['date'] as DateTime;
+                // Show details dialog for the selected release
+                await showDialog(
+                  context: context,
+                  builder: (BuildContext ctx) => _AnimeDetailsDialog(
+                    release: r,
+                    crunchyrollService: CrunchyrollService(),
+                  ),
+                );
+                // After closing the dialog, focus the calendar to the release date
+                setState(() {
+                  _selectedDay = date;
+                  _focusedDay = _selectedDay!;
+                });
+                _loadReleases();
+              }
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.favorite),
             tooltip: 'Meine Favoriten',
