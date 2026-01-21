@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:math' as math;
 import 'models/anime_release.dart';
 import 'services/crunchyroll_service.dart';
 import 'services/notification_service.dart';
@@ -24,17 +25,37 @@ import 'pages/favorites_page.dart';
 import 'utils/favorites_notifier.dart';
 
 void main() async {
+  // Sicherstellen dass Flutter bereit ist
   WidgetsFlutterBinding.ensureInitialized();
-  await initializeDateFormatting('de_DE', null);
-  Intl.defaultLocale = 'de_DE';
   
-  // Notification Service initialisieren
-  await NotificationService().initialize();
+  try {
+    // Initialisiere deutsche Lokalisierung für Kalender und DateFormat
+    await initializeDateFormatting('de_DE', null);
+    Intl.defaultLocale = 'de_DE';
+    if (kDebugMode) print('✓ Lokalisierung initialisiert');
+  } catch (e) {
+    if (kDebugMode) print('⚠️ Lokalisierung Fehler: $e - verwende Fallback');
+    // Fallback auf Standard-Locale wenn deutsche Lokalisierung fehlschlägt
+    Intl.defaultLocale = 'en';
+  }
   
-  // Background Service initialisieren und Task starten (Standard-Intervall aus Einstellungen)
-  await BackgroundService.initialize();
-  final interval = await AppSettings.getUpdateIntervalMinutes();
-  await BackgroundService().startPeriodicScraperTask(intervalMinutes: interval);
+  try {
+    // Notification Service initialisieren
+    await NotificationService().initialize();
+    if (kDebugMode) print('✓ NotificationService initialisiert');
+  } catch (e) {
+    if (kDebugMode) print('❌ NotificationService Fehler: $e');
+  }
+  
+  try {
+    // Background Service initialisieren und Task starten (Standard-Intervall aus Einstellungen)
+    await BackgroundService.initialize();
+    final interval = await AppSettings.getUpdateIntervalMinutes();
+    await BackgroundService().startPeriodicScraperTask(intervalMinutes: interval);
+    if (kDebugMode) print('✓ BackgroundService initialisiert');
+  } catch (e) {
+    if (kDebugMode) print('❌ BackgroundService Fehler: $e');
+  }
   
   runApp(const MainApp());
 }
@@ -286,11 +307,13 @@ class _MainAppState extends State<MainApp> {
     _loadAccentColor();
   }
 
-  Future<void> _loadAccentColor() async {
+    Future<void> _loadAccentColor() async {
     final color = await AppSettings.getAccentColor();
-    setState(() {
-      _accentColor = color;
-    });
+    if (mounted) {
+      setState(() {
+        _accentColor = color;
+      });
+    }
   }
 
   @override
@@ -325,7 +348,10 @@ class CalendarPage extends StatefulWidget {
   State<CalendarPage> createState() => _CalendarPageState();
 }
 
-class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMixin {
+class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  
   CalendarFormat _calendarFormat = CalendarFormat.month;
   DateTime _focusedDay = DateTime.now();
   
@@ -421,6 +447,21 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     _dragAnimationController = AnimationController(vsync: this, duration: const Duration(milliseconds: 260));
   }
 
+  double _calendarHeight() {
+    final available = MediaQuery.of(context).size.height;
+    // Return unbounded height - let the calendar size naturally
+    // No max constraint to prevent clipping
+    switch (_calendarFormat) {
+      case CalendarFormat.week:
+        return 280.0;
+      case CalendarFormat.twoWeeks:
+        return 420.0;
+      case CalendarFormat.month:
+      default:
+        return 600.0;
+    }
+  }
+
   Future<void> _loadAutoMinimizeSetting() async {
     try {
       final enabled = await AppSettings.getAutoMinimizeCalendar();
@@ -454,13 +495,22 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     super.dispose();
   }
 
-  Future<void> _loadCalendarFormat() async {
-    final prefs = await SharedPreferences.getInstance();
-    final formatIndex = prefs.getInt('calendar_format') ?? 0;
-    final format = CalendarFormat.values[formatIndex];
-    setState(() {
-      _calendarFormat = format;
-    });
+    Future<void> _loadCalendarFormat() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final formatIndex = prefs.getInt('calendar_format') ?? 0;
+      // Sicherheitscheck für ungültigen Index
+      if (formatIndex >= 0 && formatIndex < CalendarFormat.values.length) {
+        final format = CalendarFormat.values[formatIndex];
+        if (mounted) {
+          setState(() {
+            _calendarFormat = format;
+          });
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error loading calendar format: $e');
+    }
   }
 
   void _goToPreviousMonth() {
@@ -771,8 +821,16 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     }
   }
 
-  void _showSelectedDateDialog(DateTime selected) {
-    final full = DateFormat("EEEE, d. MMMM yyyy", 'de_DE').format(selected);
+    void _showSelectedDateDialog(DateTime selected) {
+    // Sichere Formatierung mit Try-Catch
+    String full;
+    try {
+      full = DateFormat("EEEE, d. MMMM yyyy", 'de_DE').format(selected);
+    } catch (e) {
+      if (kDebugMode) print('Date format error: $e');
+      // Fallback auf einfacheres Format
+      full = DateFormat('dd.MM.yyyy').format(selected);
+    }
     if (!mounted) return;
 
     // remove any existing overlay
@@ -966,7 +1024,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     }
   }
   
-  void _openSettings() {
+    void _openSettings() {
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -993,6 +1051,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 
   @override
   Widget build(BuildContext context) {
+    super.build(context); // Wichtig für AutomaticKeepAliveClientMixin
     return Scaffold(
       appBar: AppBar(
         backgroundColor: Theme.of(context).colorScheme.surface,
@@ -1077,183 +1136,187 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               )
             : null,
       ),
-      body: RefreshIndicator(
+            body: RefreshIndicator(
         onRefresh: _forceRefresh,
         child: Column(
           children: [
+            // WICHTIG: Kalender mit stabilem Key um PageController-Problem zu vermeiden
+            // Key ändert sich NUR wenn Format wechselt (nicht bei focusedDay-Änderungen!)
+            // AnimatedSize für smooth Minimize-Transition
             AnimatedSize(
-              duration: const Duration(milliseconds: 450),
+              duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
               child: _isCalendarMinimized
-                  ? Container(
-                      color: Theme.of(context).colorScheme.surface,
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                      child: Row(
-                        children: [
-                          Row(
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.chevron_left),
-                                tooltip: 'Vorheriger Monat',
-                                onPressed: () {
-                                  _goToPreviousMonth();
-                                },
-                              ),
-                              Text(
-                                DateFormat.yMMMM('de_DE').format(_focusedDay),
-                                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.chevron_right),
-                                tooltip: 'Nächster Monat',
-                                onPressed: () {
-                                  _goToNextMonth();
-                                },
-                              ),
-                            ],
-                          ),
-                          Expanded(
-                            child: Center(
-                              child: Builder(builder: (context) {
-                                final selected = _selectedDay ?? _focusedDay;
-                                final dayNumber = DateFormat('d').format(selected);
-                                return GestureDetector(
-                                  onTap: () => _showSelectedDateDialog(selected),
-                                  child: CircleAvatar(
-                                    radius: 18,
-                                    backgroundColor: Theme.of(context).colorScheme.primary,
-                                    child: Text(
-                                      dayNumber,
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w700,
-                                        color: Theme.of(context).colorScheme.onPrimary,
-                                      ),
-                                    ),
-                                  ),
-                                );
-                              }),
-                            ),
-                          ),
-                          TextButton.icon(
-                            onPressed: () {
-                              setState(() {
-                                _isCalendarMinimized = false;
-                              });
-                            },
-                            icon: Icon(Icons.expand_more, color: Theme.of(context).colorScheme.primary),
-                            label: const Text('Kalender öffnen'),
-                          ),
-                        ],
-                      ),
-                    )
-                  : Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerDown: (_) {
-                        _verticalDragDelta = 0.0;
-                      },
-                      onPointerMove: (event) {
-                        // event.delta.dy: positive => moving down, negative => moving up
-                        _verticalDragDelta += event.delta.dy;
-
-                        if (_verticalDragDelta <= -_verticalDragThreshold) {
-                          // swiped up enough -> more compact view
-                          // subtract threshold so further movement can trigger again
-                          _verticalDragDelta += _verticalDragThreshold;
-                          _cycleCalendarFormat(up: true);
-                        } else if (_verticalDragDelta >= _verticalDragThreshold) {
-                          // swiped down enough -> more expanded view
-                          _verticalDragDelta -= _verticalDragThreshold;
-                          _cycleCalendarFormat(up: false);
-                        }
-                      },
-                      onPointerUp: (_) {
-                        _verticalDragDelta = 0.0;
-                      },
-                      onPointerCancel: (_) {
-                        _verticalDragDelta = 0.0;
-                      },
+                  ? const SizedBox.shrink() // Komplett ausblenden wenn minimiert
+                  : SizedBox(
+                      key: ValueKey('calendar_format_${_calendarFormat.index}'),
                       child: TableCalendar<AnimeRelease>(
-                        locale: 'de_DE',
-                        firstDay: DateTime.utc(2020, 1, 1),
-                        lastDay: DateTime.utc(2030, 12, 31),
-                        focusedDay: _focusedDay,
-                        calendarFormat: _calendarFormat,
-                        startingDayOfWeek: StartingDayOfWeek.monday,
-                        selectedDayPredicate: (day) {
-                          return isSameDay(_selectedDay, day);
-                        },
-                        onDaySelected: (selectedDay, focusedDay) {
-                          if (!isSameDay(_selectedDay, selectedDay)) {
-                            setState(() {
-                              _selectedDay = selectedDay;
-                              _focusedDay = focusedDay;
-                            });
-                            // Lade Releases für den neuen ausgewählten Tag
-                            _loadReleases();
-                          }
-                        },
-                        onFormatChanged: (format) {
-                          if (_calendarFormat != format) {
-                            setState(() {
-                              _calendarFormat = format;
-                            });
-                            _saveCalendarFormat(format);
-                          }
-                        },
-                        onPageChanged: (focusedDay) {
-                          if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
-                          setState(() {
-                            _focusedDay = focusedDay;
-                          });
-                          _loadReleases();
-                        },
-                        eventLoader: _getReleasesForDay,
-                        calendarStyle: CalendarStyle(
-                          todayDecoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
-                            shape: BoxShape.circle,
+                // Nutze 'de_DE' nur wenn initialisiert, sonst null (Standard)
+                locale: Intl.defaultLocale == 'de_DE' ? 'de_DE' : null,
+                firstDay: DateTime.utc(2020, 1, 1),
+                lastDay: DateTime.utc(2030, 12, 31),
+                focusedDay: _focusedDay,
+                calendarFormat: _calendarFormat,
+                startingDayOfWeek: StartingDayOfWeek.monday,
+                selectedDayPredicate: (day) {
+                  return isSameDay(_selectedDay, day);
+                },
+                onDaySelected: (selectedDay, focusedDay) {
+                  if (!isSameDay(_selectedDay, selectedDay)) {
+                    setState(() {
+                      _selectedDay = selectedDay;
+                      _focusedDay = focusedDay;
+                    });
+                    _loadReleases();
+                  }
+                },
+                onFormatChanged: (format) {
+                  if (_calendarFormat != format) {
+                    setState(() {
+                      _calendarFormat = format;
+                    });
+                    _saveCalendarFormat(format);
+                  }
+                },
+                onPageChanged: (focusedDay) {
+                  if (kDebugMode) print('onPageChanged: incoming focusedDay=$focusedDay, format=$_calendarFormat');
+                  setState(() {
+                    _focusedDay = focusedDay;
+                  });
+                  _loadReleases();
+                },
+                eventLoader: _getReleasesForDay,
+                calendarStyle: CalendarStyle(
+                  todayDecoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary.withOpacity(0.5),
+                    shape: BoxShape.circle,
+                  ),
+                  selectedDecoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primary,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                headerStyle: const HeaderStyle(
+                  formatButtonVisible: false,
+                  titleCentered: true,
+                  formatButtonShowsNext: false,
+                ),
+                calendarBuilders: CalendarBuilders<AnimeRelease>(
+                  markerBuilder: (context, date, events) {
+                    if (events.isEmpty) return const SizedBox.shrink();
+                    final color = Theme.of(context).colorScheme.primary;
+                    return Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Container(
+                          width: 22,
+                          height: 3,
+                          decoration: BoxDecoration(
+                            color: color,
+                            borderRadius: BorderRadius.circular(2),
                           ),
-                          selectedDecoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            shape: BoxShape.circle,
-                          ),
                         ),
-                        headerStyle: const HeaderStyle(
-                          formatButtonVisible: false,
-                          titleCentered: true,
-                          formatButtonShowsNext: false,
-                        ),
-                        calendarBuilders: CalendarBuilders<AnimeRelease>(
-                          markerBuilder: (context, date, events) {
-                            if (events.isEmpty) return const SizedBox.shrink();
-                            final color = Theme.of(context).colorScheme.primary;
-                            return Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Padding(
-                                padding: const EdgeInsets.only(bottom: 10),
-                                child: Container(
-                                  width: 22,
-                                  height: 3,
-                                  decoration: BoxDecoration(
-                                    color: color,
-                                    borderRadius: BorderRadius.circular(2),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                        availableCalendarFormats: const {
-                          CalendarFormat.month: 'Monat',
-                          CalendarFormat.twoWeeks: '2 Wochen',
-                          CalendarFormat.week: 'Woche',
-                        },
                       ),
+                    );
+                  },
+                ),
+                                availableCalendarFormats: const {
+                  CalendarFormat.month: 'Monat',
+                  CalendarFormat.twoWeeks: '2 Wochen',
+                  CalendarFormat.week: 'Woche',
+                },
+              ),
                     ),
             ),
-            const Divider(height: 1),
+                                    // Zeige Datum mit Ausklapp-Button wenn Kalender minimiert ist
+            if (_isCalendarMinimized)
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    _isCalendarMinimized = false;
+                    _cumulativeScrollDelta = 0.0;
+                  });
+                },
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.4),
+                    border: Border(
+                      bottom: BorderSide(
+                        color: Theme.of(context).dividerColor,
+                        width: 1,
+                      ),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      // Kalender Icon
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.calendar_today,
+                          size: 20,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      // Datum
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              () {
+                                final selectedDate = _selectedDay ?? _focusedDay;
+                                try {
+                                  return DateFormat('EEEE, d. MMMM yyyy', 'de_DE').format(selectedDate);
+                                } catch (e) {
+                                  // Fallback auf einfacheres Format
+                                  return DateFormat('dd.MM.yyyy').format(selectedDate);
+                                }
+                              }(),
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: Theme.of(context).colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Tippen zum Ausklappen',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      // Ausklapp-Button
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.primary.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 24,
+                          color: Theme.of(context).colorScheme.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              const Divider(height: 1),
             // Immer die Liste anzeigen - kein Ladekreis mehr!
             Expanded(
               child: NotificationListener<ScrollNotification>(

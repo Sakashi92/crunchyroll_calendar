@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 78,
+            "activePatchIndex": 79,
             "patches": [
                 {
                     "date": 1768743284045,
@@ -320,6 +320,10 @@
                 {
                     "date": 1769026970495,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -281,18 +281,23 @@\n     }\r\n   }\r\n \r\n   Future<void> _saveUpdateInterval(int minutes) async {\r\n+    // Read previous saved value to decide whether to restart background task\r\n+    final previous = await AppSettings.getUpdateIntervalMinutes();\r\n     await AppSettings.setUpdateIntervalMinutes(minutes);\r\n     setState(() {\r\n       _updateIntervalMinutes = minutes;\r\n     });\r\n     widget.onSettingsChanged?.call();\r\n-    // Restart background scraper with enforced minimum interval (15 min)\r\n+    // Restart background scraper only when effective interval increases above previous\r\n     try {\r\n-      await BackgroundService().stopPeriodicScraperTask();\r\n-      final effective = minutes < 15 ? 15 : minutes;\r\n-      await BackgroundService().startPeriodicScraperTask(intervalMinutes: effective);\r\n+      final prevEffective = previous < 15 ? 15 : previous;\r\n+      final newEffective = minutes < 15 ? 15 : minutes;\r\n+      if (newEffective > prevEffective) {\r\n+        await BackgroundService().stopPeriodicScraperTask();\r\n+        await BackgroundService().startPeriodicScraperTask(intervalMinutes: newEffective);\r\n+      }\r\n     } catch (e) {\r\n       if (kDebugMode) print('❌ Error restarting background service: $e');\r\n     }\r\n     \r\n"
+                },
+                {
+                    "date": 1769027328111,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -36,8 +36,9 @@\n     2: '2 Minuten',\r\n     5: '5 Minuten',\r\n     10: '10 Minuten',\r\n     15: '15 Minuten',\r\n+    20: '20 Minuten',\r\n     30: '30 Minuten',\r\n     60: '1 Stunde',\r\n   };\r\n \r\n"
                 }
             ],
             "date": 1768743284045,

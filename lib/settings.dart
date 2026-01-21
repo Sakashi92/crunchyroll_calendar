@@ -37,6 +37,7 @@ class AppSettings {
     5: '5 Minuten',
     10: '10 Minuten',
     15: '15 Minuten',
+    20: '20 Minuten',
     30: '30 Minuten',
     60: '1 Stunde',
   };
