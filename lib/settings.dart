@@ -81,7 +81,7 @@ class AppSettings {
   /// Lädt das Update-Intervall in Minuten
   static Future<int> getUpdateIntervalMinutes() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(_updateIntervalKey) ?? 5;
+    return prefs.getInt(_updateIntervalKey) ?? 20;
   }
   
   /// Speichert das Update-Intervall in Minuten
@@ -172,7 +172,7 @@ class AppSettings {
   /// Lädt, ob doppelte Releases ausgeblendet werden sollen
   static Future<bool> getHideDuplicateReleases() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_hideDuplicateReleasesKey) ?? false; // Standard: aus
+    return prefs.getBool(_hideDuplicateReleasesKey) ?? true; // Standard: an
   }
 
   /// Speichert die Einstellung zum Ausblenden doppelter Releases
@@ -220,14 +220,14 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   String _imageQuality = 'original';
-  int _updateIntervalMinutes = 5;
+  int _updateIntervalMinutes = 20;
   bool _autoTranslate = true;
   Color _accentColor = Colors.orange;
   int _notificationDelaySeconds = 0;
   bool _showRefreshMessage = true;
   bool _autoMinimizeCalendar = true;
   double _autoMinimizeScrollThreshold = 200.0;
-  bool _hideDuplicateReleases = false;
+  bool _hideDuplicateReleases = true;
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -282,11 +282,24 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveUpdateInterval(int minutes) async {
+    // Read previous saved value to decide whether to restart background task
+    final previous = await AppSettings.getUpdateIntervalMinutes();
     await AppSettings.setUpdateIntervalMinutes(minutes);
     setState(() {
       _updateIntervalMinutes = minutes;
     });
     widget.onSettingsChanged?.call();
+    // Restart background scraper only when effective interval increases above previous
+    try {
+      final prevEffective = previous < 15 ? 15 : previous;
+      final newEffective = minutes < 15 ? 15 : minutes;
+      if (newEffective > prevEffective) {
+        await BackgroundService().stopPeriodicScraperTask();
+        await BackgroundService().startPeriodicScraperTask(intervalMinutes: newEffective);
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error restarting background service: $e');
+    }
     
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1173,7 +1186,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.4.5F1\nBilder werden von Kitsu.io geladen'),
+      subtitle: Text('Version 0.5.8\nBilder werden von Kitsu.io geladen'),
       isThreeLine: true,
     );
   }

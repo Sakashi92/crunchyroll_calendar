@@ -16,7 +16,9 @@ import 'services/background_service.dart';
 import 'services/permission_service.dart';
 import 'services/battery_optimization_service.dart';
 import 'repositories/favorites_repository.dart';
+import 'repositories/seen_repository.dart';
 import 'models/favorite_anime.dart';
+import 'models/notification_log.dart';
 import 'settings.dart';
 import 'pages/favorites_page.dart';
 import 'utils/favorites_notifier.dart';
@@ -29,9 +31,10 @@ void main() async {
   // Notification Service initialisieren
   await NotificationService().initialize();
   
-  // Background Service initialisieren und Task starten (alle 20 Minuten)
+  // Background Service initialisieren und Task starten (Standard-Intervall aus Einstellungen)
   await BackgroundService.initialize();
-  await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
+  final interval = await AppSettings.getUpdateIntervalMinutes();
+  await BackgroundService().startPeriodicScraperTask(intervalMinutes: interval);
   
   runApp(const MainApp());
 }
@@ -140,6 +143,20 @@ class _SearchPageState extends State<SearchPage> {
     await AppSettings.addToSearchHistory(r.title);
     final list = await AppSettings.getSearchHistory();
     if (mounted) setState(() => _history = list);
+
+    // mark as seen (so background notifications skip it)
+    try {
+      final tempLog = NotificationLog(
+        favoriteTitle: r.title,
+        releaseTitle: r.episodeTitle,
+        episodeNumber: r.episodeNumber,
+        notifyTime: DateTime.now(),
+      );
+      final hash = tempLog.generateContentHash();
+      await SeenRepository().markSeen(hash);
+    } catch (e) {
+      if (kDebugMode) print('❌ Error marking seen from search: $e');
+    }
 
     // show details dialog
     await showDialog(
@@ -584,6 +601,27 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
       setState(() {
         _releases = finalByDay;
       });
+
+      // Wenn die App gerade im Vordergrund Releases lädt, markiere sie als 'gesehen'
+      // damit später keine Benachrichtigungen für bereits sichtbare Einträge erscheinen.
+      try {
+        final seenRepo = SeenRepository();
+        for (final list in finalByDay.values) {
+          for (final r in list) {
+            final tempLog = NotificationLog(
+              favoriteTitle: r.title,
+              releaseTitle: r.episodeTitle,
+              episodeNumber: r.episodeNumber,
+              notifyTime: DateTime.now(),
+            );
+            final hash = tempLog.generateContentHash();
+            // don't await to speed up UI; fire-and-forget
+            seenRepo.markSeen(hash);
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) print('❌ Error auto-marking seen releases: $e');
+      }
       
       // Zeige Meldung wenn gewünscht und eingestellt
       if (showMessage && mounted) {
@@ -1657,6 +1695,20 @@ class _ReleaseCardState extends State<_ReleaseCard> {
   }
 
   void _showAnimeDetailsDialog() async {
+    // Mark as seen (generate content-hash and store)
+    try {
+      final tempLog = NotificationLog(
+        favoriteTitle: widget.release.title,
+        releaseTitle: widget.release.episodeTitle,
+        episodeNumber: widget.release.episodeNumber,
+        notifyTime: DateTime.now(),
+      );
+      final hash = tempLog.generateContentHash();
+      await SeenRepository().markSeen(hash);
+    } catch (e) {
+      if (kDebugMode) print('❌ Error marking seen: $e');
+    }
+
     await showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -1666,6 +1718,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
         );
       },
     );
+
     // Nach dem Schließen des Dialogs, Status neu laden
     _checkIfFavorite();
   }

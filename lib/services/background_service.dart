@@ -2,6 +2,7 @@ import 'package:workmanager/workmanager.dart';
 import 'package:flutter/foundation.dart';
 import '../repositories/favorites_repository.dart';
 import '../repositories/notification_repository.dart';
+import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/notification_service.dart';
 import '../utils/release_comparator.dart';
@@ -365,6 +366,7 @@ Future<bool> _executeBackgroundScraper() async {
     // 6. Sende Benachrichtigungen für neue Releases
     int notificationCount = 0;
     int skippedDuplicates = 0;
+    final seenRepo = SeenRepository();
     
     if (kDebugMode) print('📤 [BACKGROUND-SCRAPER] Processing ${uniqueReleases.length} releases...');
     
@@ -380,6 +382,14 @@ Future<bool> _executeBackgroundScraper() async {
       
       // 🚀 NEUE LOGIK: Prüfe auf Duplikat basierend auf Content-Hash
       final contentHash = notification.generateContentHash();
+
+      // Skip if user already saw this release in the app
+      final alreadySeen = await seenRepo.isSeen(contentHash);
+      if (alreadySeen) {
+        if (kDebugMode) print('⏭️  [BACKGROUND-SCRAPER] SKIPPED (already seen): ${release.title} ep.${release.episodeNumber}');
+        skippedDuplicates++;
+        continue;
+      }
       
       if (kDebugMode) {
         print('🔍 [BACKGROUND-SCRAPER] Checking: ${release.title} ep.${release.episodeNumber} hash=$contentHash');
