@@ -12,6 +12,55 @@ class WatchlistService {
 
   WatchlistService(this.watchlist);
 
+  // Extrahiere das erste vollständig-balancierte JSON-Array aus `input`.
+  // Behandelt verschachtelte Arrays und ignoriert Zeichen innerhalb von Strings.
+  String? _extractJsonArray(String input) {
+    final start = input.indexOf('[');
+    if (start == -1) return null;
+
+    int depth = 0;
+    bool inString = false;
+    bool escape = false;
+
+    for (int i = start; i < input.length; i++) {
+      final ch = input.codeUnitAt(i);
+      if (inString) {
+        if (escape) {
+          escape = false;
+        } else if (ch == 92) { // backslash
+          escape = true;
+        } else if (ch == 34) { // '"'
+          inString = false;
+        }
+        continue;
+      }
+
+      if (ch == 34) { // '"'
+        inString = true;
+        continue;
+      }
+
+      if (ch == 91) { // '['
+        depth++;
+      } else if (ch == 93) { // ']'
+        depth--;
+        if (depth == 0) {
+          return input.substring(start, i + 1);
+        }
+      }
+    }
+
+    return null;
+  }
+
+  bool _parseBool(dynamic v) {
+    if (v == null) return false;
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) return v.toLowerCase() == 'true' || v == '1';
+    return false;
+  }
+
   Future<void> loadWatchlist() async {
     final prefs = await SharedPreferences.getInstance();
     final jsonString = prefs.getString(_storageKey);
@@ -67,7 +116,61 @@ class WatchlistService {
   }
 
   Future<void> importFromJson(String jsonString) async {
-    final List<dynamic> jsonList = json.decode(jsonString);
+    dynamic decoded;
+    try {
+      decoded = json.decode(jsonString);
+    } catch (e) {
+      final extracted = _extractJsonArray(jsonString);
+      if (extracted != null) {
+        try {
+          decoded = json.decode(extracted);
+          if (kDebugMode) print('Watchlist import: used extracted JSON array fallback');
+        } catch (e2) {
+          rethrow;
+        }
+      } else {
+        rethrow;
+      }
+    }
+
+    List<dynamic> jsonList;
+    if (decoded is List) {
+      jsonList = decoded as List<dynamic>;
+    } else if (decoded is Map<String, dynamic>) {
+      final map = decoded as Map<String, dynamic>;
+      if (map['watchlist'] is List) {
+        jsonList = map['watchlist'] as List<dynamic>;
+      } else if (map['favorites'] is List) {
+        // Map favorites export format to watchlist entries
+        final favs = map['favorites'] as List<dynamic>;
+        jsonList = favs.map((f) {
+          final m = f as Map<String, dynamic>;
+          return {
+            'animeId': (m['seriesUrl'] ?? m['title'])?.toString(),
+            'title': m['title'],
+            'imageUrl': m['imageUrl'],
+            'episodesWatched': 0,
+            'totalEpisodes': 0,
+            'status': 0,
+            'notificationsEnabled': _parseBool(m['notificationsEnabled']),
+            'note': null,
+            'rating': null,
+            'addedAt': m['addedDate'],
+          };
+        }).toList();
+      } else {
+        // fallback: try to find the first list value in the object
+        final firstList = map.values.firstWhere((v) => v is List, orElse: () => null);
+        if (firstList != null) {
+          jsonList = firstList as List<dynamic>;
+        } else {
+          throw FormatException('Unsupported JSON structure for watchlist import');
+        }
+      }
+    } else {
+      throw FormatException('Unsupported JSON structure for watchlist import');
+    }
+
     final parsed = jsonList.map((e) => WatchlistEntry(
       animeId: e['animeId'],
       title: e['title'],
@@ -106,7 +209,58 @@ class WatchlistService {
     }
 
     final jsonString = await file.readAsString();
-    final List<dynamic> jsonList = json.decode(jsonString);
+    dynamic decoded;
+    try {
+      decoded = json.decode(jsonString);
+    } catch (e) {
+      final extracted = _extractJsonArray(jsonString);
+      if (extracted != null) {
+        try {
+          decoded = json.decode(extracted);
+          if (kDebugMode) print('Watchlist importFromJsonFilePath: used extracted JSON array fallback');
+        } catch (e2) {
+          rethrow;
+        }
+      } else {
+        rethrow;
+      }
+    }
+
+    List<dynamic> jsonList;
+    if (decoded is List) {
+      jsonList = decoded as List<dynamic>;
+    } else if (decoded is Map<String, dynamic>) {
+      final map = decoded as Map<String, dynamic>;
+      if (map['watchlist'] is List) {
+        jsonList = map['watchlist'] as List<dynamic>;
+      } else if (map['favorites'] is List) {
+        final favs = map['favorites'] as List<dynamic>;
+        jsonList = favs.map((f) {
+          final m = f as Map<String, dynamic>;
+          return {
+            'animeId': (m['seriesUrl'] ?? m['title'])?.toString(),
+            'title': m['title'],
+            'imageUrl': m['imageUrl'],
+            'episodesWatched': 0,
+            'totalEpisodes': 0,
+            'status': 0,
+            'notificationsEnabled': _parseBool(m['notificationsEnabled']),
+            'note': null,
+            'rating': null,
+            'addedAt': m['addedDate'],
+          };
+        }).toList();
+      } else {
+        final firstList = map.values.firstWhere((v) => v is List, orElse: () => null);
+        if (firstList != null) {
+          jsonList = firstList as List<dynamic>;
+        } else {
+          throw FormatException('Unsupported JSON structure for watchlist import');
+        }
+      }
+    } else {
+      throw FormatException('Unsupported JSON structure for watchlist import');
+    }
 
     int importedCount = 0;
     for (var e in jsonList) {
