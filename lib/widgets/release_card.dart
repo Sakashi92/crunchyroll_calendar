@@ -8,6 +8,7 @@ import '../repositories/favorites_repository.dart';
 import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/watchlist_service.dart';
+import '../models/watchlist.dart';
 import '../utils/favorites_notifier.dart';
 import 'anime_placeholder.dart';
 import 'anime_details_dialog.dart';
@@ -28,6 +29,8 @@ class _ReleaseCardState extends State<ReleaseCard> {
   late final FavoritesRepository _favoritesRepository;
   bool _isInitialized = false;
   static final Map<String, bool> _favoriteCache = {};
+  bool _isInWatchlist = false;
+  bool _isProcessingWatchlist = false;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
     }
     
     _checkIfFavorite();
+    _updateWatchlistState();
   }
 
   @override
@@ -72,6 +76,13 @@ class _ReleaseCardState extends State<ReleaseCard> {
         });
       }
     }
+  }
+
+  void _updateWatchlistState() {
+    final ws = widget.watchlistService;
+    if (ws == null) return;
+    final id = widget.release.seriesUrl;
+    _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
   Future<void> _toggleFavorite() async {
@@ -183,35 +194,97 @@ class _ReleaseCardState extends State<ReleaseCard> {
                   )
                 else
                   const AnimePlaceholder(),
+                // Favorite (heart) button on cover (top-right)
                 Positioned(
                   top: 8,
-                  left: 8,
-                  child: _isInitialized
-                      ? CircleAvatar(
-                          backgroundColor: Colors.black54,
-                          radius: 20,
-                          child: IconButton(
-                            icon: Icon(
-                              _isFavorite ? Icons.favorite : Icons.favorite_border,
-                              color: _isFavorite ? Colors.red : Colors.white,
-                              size: 24,
+                  right: 8,
+                  child: CircleAvatar(
+                    backgroundColor: Colors.black54,
+                    radius: 20,
+                      child: _isInitialized
+                          ? (_isProcessingWatchlist
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    _isInWatchlist ? Icons.favorite : Icons.favorite_border,
+                                    color: _isInWatchlist ? Colors.red : Colors.white,
+                                    size: 20,
+                                  ),
+                                  onPressed: () async {
+                                    final ws = widget.watchlistService;
+                                    if (ws == null) return;
+                                    setState(() { _isProcessingWatchlist = true; });
+                                    try {
+                                      final id = widget.release.seriesUrl;
+                                      final exists = ws.watchlist.entries.any((e) => e.animeId == id);
+                                      if (exists) {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text('Eintrag entfernen'),
+                                            content: Text('Möchtest du "${widget.release.title}" wirklich aus der Watchlist entfernen?'),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Abbrechen')),
+                                              TextButton(
+                                                onPressed: () => Navigator.of(ctx).pop(true),
+                                                child: Text('Entfernen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                        if (confirm == true) {
+                                          ws.watchlist.removeEntry(id);
+                                          await ws.saveWatchlist();
+                                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
+                                          );
+                                        } else {
+                                          if (mounted) setState(() { _isProcessingWatchlist = false; });
+                                          return;
+                                        }
+                                      } else {
+                                        int parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
+                                        final entry = WatchlistEntry(
+                                          animeId: id,
+                                          title: widget.release.title,
+                                          imageUrl: widget.release.imageUrl,
+                                          episodesWatched: 0,
+                                          totalEpisodes: parsedCurrent,
+                                          addedAt: DateTime.now(),
+                                        );
+                                        ws.watchlist.addEntry(entry);
+                                        await ws.saveWatchlist();
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
+                                        );
+                                      }
+                                      if (mounted) setState(() {
+                                        _isProcessingWatchlist = false;
+                                        _isInWatchlist = !exists;
+                                      });
+                                    } catch (e) {
+                                      if (kDebugMode) print('❌ Error toggling watchlist from overview card: $e');
+                                      if (mounted) setState(() { _isProcessingWatchlist = false; });
+                                    }
+                                  },
+                                  padding: EdgeInsets.zero,
+                                ))
+                          : const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                strokeWidth: 2,
+                              ),
                             ),
-                            onPressed: _toggleFavorite,
-                            padding: EdgeInsets.zero,
-                          ),
-                        )
-                      : const CircleAvatar(
-                          backgroundColor: Colors.black54,
-                          radius: 22,
-                          child: SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                        ),
+                  ),
                 ),
                 if (widget.release.isPremiere)
                   Positioned(
