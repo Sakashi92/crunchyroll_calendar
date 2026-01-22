@@ -182,18 +182,26 @@ class _SearchPageState extends State<SearchPage> {
     );
   }
 
-  void _addToWatchlist(AnimeRelease release) {
+  Future<void> _addToWatchlist(AnimeRelease release) async {
     if (widget.watchlistService == null) return;
+    final cs = CrunchyrollService();
+    final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
+    // fast cache-only lookup (no network) for snappy UI
+    final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
+    final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
     final entry = WatchlistEntry(
       animeId: release.seriesUrl,
       title: release.title,
-        imageUrl: release.imageUrl,
+      imageUrl: release.imageUrl,
       episodesWatched: 0,
-      totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+      totalEpisodes: total,
     );
     widget.watchlistService!.watchlist.addEntry(entry);
-    widget.watchlistService!.saveWatchlist();
-    ScaffoldMessenger.of(context).showSnackBar(
+    await widget.watchlistService!.saveWatchlist();
+    // schedule background update (may perform network) - don't await
+    cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
     );
   }
@@ -788,8 +796,45 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         releasesByDay[date]!.add(release);
       }
 
+      // Respect user setting: optionally hide duplicate releases
+      final hideDup = await AppSettings.getHideDuplicateReleases();
+      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
+      if (hideDup) {
+        String normalizeUrl(String url) {
+          try {
+            final uri = Uri.parse(url);
+            final normalized = Uri(
+              scheme: uri.scheme,
+              host: uri.host,
+              port: uri.hasPort ? uri.port : null,
+              path: uri.path,
+            ).toString();
+            return normalized.toLowerCase();
+          } catch (_) {
+            return url.toLowerCase();
+          }
+        }
+
+        final deduped = <DateTime, List<AnimeRelease>>{};
+        releasesByDay.forEach((date, list) {
+          final seen = <String>{};
+          final out = <AnimeRelease>[];
+          for (var r in list) {
+            final urlPart = (r.episodeUrl.isNotEmpty) ? normalizeUrl(r.episodeUrl) : '';
+            final titlePart = '${r.title.trim().toLowerCase()}_${r.episodeNumber.trim().toLowerCase()}';
+            final id = urlPart.isNotEmpty ? urlPart : titlePart;
+            if (!seen.contains(id)) {
+              seen.add(id);
+              out.add(r);
+            }
+          }
+          deduped[date] = out;
+        });
+        finalByDay = deduped;
+      }
+
       setState(() {
-        _releases = releasesByDay;
+        _releases = finalByDay;
       });
       
       // Zeige Erfolgsmeldung
@@ -1046,7 +1091,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Crunchyroll Kalender'),
+            const Text('Kalender'),
             if (_isLoadingImages)
               Text(
                 'Lade Bilder... $_imagesLoaded/$_imagesToLoad',
@@ -1080,18 +1125,25 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                     release: r,
                     crunchyrollService: CrunchyrollService(),
                     watchlistService: widget.watchlistService,
-                    onAddToWatchlist: (release) {
-                      if (widget.watchlistService == null) return;
+                    onAddToWatchlist: (release) async {
+                      final ws = widget.watchlistService;
+                      if (ws == null) return;
+                      final cs = CrunchyrollService();
+                      final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
+                      final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
+                      final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
                       final entry = WatchlistEntry(
                         animeId: release.seriesUrl,
                         title: release.title,
                         imageUrl: release.imageUrl,
                         episodesWatched: 0,
-                        totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+                        totalEpisodes: total,
                       );
-                      widget.watchlistService!.watchlist.addEntry(entry);
-                      widget.watchlistService!.saveWatchlist();
-                      ScaffoldMessenger.of(context).showSnackBar(
+                      ws.watchlist.addEntry(entry);
+                      await ws.saveWatchlist();
+                      cs.scheduleWatchlistEntryUpdate(ws, entry);
+                      if (mounted) ScaffoldMessenger.of(ctx).showSnackBar(
                         SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
                       );
                       Navigator.of(ctx).pop();
@@ -1883,20 +1935,35 @@ class _ReleaseCardState extends State<_ReleaseCard> {
           release: widget.release,
           crunchyrollService: CrunchyrollService(),
           watchlistService: widget.watchlistService,
-          onAddToWatchlist: (release) {
-            if (widget.watchlistService == null) return;
-            final entry = WatchlistEntry(
-              animeId: release.seriesUrl,
-              title: release.title,
-              imageUrl: release.imageUrl,
-              episodesWatched: 0,
-              totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
-            );
-            widget.watchlistService!.watchlist.addEntry(entry);
-            widget.watchlistService!.saveWatchlist();
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
-            );
+          onAddToWatchlist: (release) async {
+            final ws = widget.watchlistService;
+            if (ws == null) return;
+            setState(() { _isProcessingWatchlist = true; });
+              try {
+              final cs = CrunchyrollService();
+              final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
+              final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
+              final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
+              final entry = WatchlistEntry(
+                animeId: release.seriesUrl,
+                title: release.title,
+                imageUrl: release.imageUrl,
+                episodesWatched: 0,
+                totalEpisodes: total,
+              );
+              ws.watchlist.addEntry(entry);
+              await ws.saveWatchlist();
+              cs.scheduleWatchlistEntryUpdate(ws, entry);
+              if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('${release.title} zur Watchlist hinzugefügt')),
+              );
+              setState(() { _isInWatchlist = true; });
+            } catch (e) {
+              if (kDebugMode) print('❌ Error adding to watchlist: $e');
+            } finally {
+              if (mounted) setState(() { _isProcessingWatchlist = false; });
+            }
             Navigator.of(context).pop();
           },
         );
@@ -1972,11 +2039,11 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                     left: 56,
                     child: CircleAvatar(
                       backgroundColor: Colors.black54,
-                      radius: 22,
+                      radius: 20,
                       child: _isProcessingWatchlist
                           ? const SizedBox(
-                              width: 24,
-                              height: 24,
+                              width: 20,
+                              height: 20,
                               child: CircularProgressIndicator(
                                 valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                 strokeWidth: 2,
@@ -1986,7 +2053,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                               icon: Icon(
                                 _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
                                 color: _isInWatchlist ? Colors.green : Colors.white,
-                                size: 24,
+                                size: 20,
                               ),
                               onPressed: () async {
                                 final ws = widget.watchlistService!;
@@ -2002,15 +2069,20 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                                     SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
                                   );
                                 } else {
+                                  final cs = CrunchyrollService();
+                                  final parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
+                                  final knownMax = await cs.getMaxEpisodeFromCache(id, widget.release.title);
+                                  final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
                                   final entry = WatchlistEntry(
                                     animeId: id,
                                     title: widget.release.title,
                                     imageUrl: widget.release.imageUrl,
                                     episodesWatched: 0,
-                                    totalEpisodes: int.tryParse(widget.release.episodeNumber) ?? 0,
+                                    totalEpisodes: total,
                                   );
                                   ws.watchlist.addEntry(entry);
                                   await ws.saveWatchlist();
+                                  cs.scheduleWatchlistEntryUpdate(ws, entry);
                                   if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
                                   );
@@ -2704,43 +2776,23 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                         ),
                       const SizedBox(height: 20),
 
-                      // Buttons: Crunchyroll + Zur Watchlist
+                      // Button: Crunchyroll
                       SizedBox(
                         width: double.infinity,
-                        child: Column(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: _openCrunchyrollEpisode,
-                              icon: const Icon(Icons.play_circle),
-                              label: const Text('Auf Crunchyroll ansehen'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.primary,
-                                foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                    ? Colors.black
-                                    : Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
+                        child: ElevatedButton.icon(
+                          onPressed: _openCrunchyrollEpisode,
+                          icon: const Icon(Icons.play_circle),
+                          label: const Text('Auf Crunchyroll ansehen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                ? Colors.black
+                                : Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const SizedBox(height: 8),
-                            ElevatedButton.icon(
-                              onPressed: widget.onAddToWatchlist != null ? () => widget.onAddToWatchlist!(release) : null,
-                              icon: const Icon(Icons.playlist_add),
-                              label: const Text('Zur Watchlist hinzufügen'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.secondary,
-                                foregroundColor: Theme.of(context).colorScheme.secondary.computeLuminance() > 0.5
-                                    ? Colors.black
-                                    : Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ],

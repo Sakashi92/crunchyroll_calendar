@@ -5,6 +5,8 @@ import '../repositories/notification_repository.dart';
 import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/notification_service.dart';
+import '../services/watchlist_service.dart';
+import '../models/watchlist.dart';
 import '../utils/release_comparator.dart';
 import '../models/notification_log.dart';
 
@@ -295,6 +297,17 @@ Future<bool> _executeBackgroundScraper() async {
     
     if (kDebugMode) print('📺 [BACKGROUND-SCRAPER] Fetched and cached ${allReleases.length} releases for this week');
     
+    // 2.a Synchronisiere die Watchlist mit den gecachten Releases (falls vorhanden)
+    try {
+      if (kDebugMode) print('🔁 [BACKGROUND-SCRAPER] Syncing watchlist totals with cached releases...');
+      final watchlist = Watchlist();
+      final watchlistService = WatchlistService(watchlist);
+      await watchlistService.loadWatchlist();
+      await crunchyrollService.syncWatchlistWithReleases(watchlistService, notificationRepo);
+    } catch (e) {
+      if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Failed to sync watchlist: $e');
+    }
+
     if (allReleases.isEmpty) {
       if (kDebugMode) print('⚠️  [BACKGROUND-SCRAPER] No releases found for this week');
       return true;

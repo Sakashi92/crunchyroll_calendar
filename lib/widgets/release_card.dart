@@ -194,7 +194,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                             icon: Icon(
                               _isFavorite ? Icons.favorite : Icons.favorite_border,
                               color: _isFavorite ? Colors.red : Colors.white,
-                              size: 20,
+                              size: 24,
                             ),
                             onPressed: _toggleFavorite,
                             padding: EdgeInsets.zero,
@@ -202,10 +202,10 @@ class _ReleaseCardState extends State<ReleaseCard> {
                         )
                       : const CircleAvatar(
                           backgroundColor: Colors.black54,
-                          radius: 20,
+                          radius: 22,
                           child: SizedBox(
-                            width: 20,
-                            height: 20,
+                            width: 24,
+                            height: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
                               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),

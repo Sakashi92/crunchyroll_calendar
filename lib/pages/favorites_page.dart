@@ -915,11 +915,11 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
                         left: 56,
                         child: CircleAvatar(
                           backgroundColor: Colors.black54,
-                          radius: 22,
+                          radius: 20,
                           child: _isProcessingWatchlist
                               ? const SizedBox(
-                                  width: 24,
-                                  height: 24,
+                                  width: 20,
+                                  height: 20,
                                   child: CircularProgressIndicator(
                                     valueColor: AlwaysStoppedAnimation<Color>(
                                       Colors.white,
@@ -931,7 +931,7 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
                                   icon: Icon(
                                     _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
                                     color: _isInWatchlist ? Colors.green : Colors.white,
-                                    size: 24,
+                                    size: 20,
                                   ),
                                   onPressed: () async {
                                     final ws = widget.watchlistService!;
@@ -949,15 +949,20 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
                                         );
                                       }
                                     } else {
+                                      final cs = CrunchyrollService();
+                                      final knownMax = await cs.getMaxEpisodeFromCache(widget.anime.seriesUrl, widget.anime.title);
+                                      final parsedCurrent = 0;
+                                      final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
                                       final entry = WatchlistEntry(
                                         animeId: id,
                                         title: widget.anime.title,
                                         imageUrl: widget.anime.imageUrl,
                                         episodesWatched: 0,
-                                        totalEpisodes: 0,
+                                        totalEpisodes: total,
                                       );
                                       ws.watchlist.addEntry(entry);
                                       await ws.saveWatchlist();
+                                      cs.scheduleWatchlistEntryUpdate(ws, entry);
                                       if (mounted) {
                                         ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(content: Text('${widget.anime.title} zur Watchlist hinzugefügt')),

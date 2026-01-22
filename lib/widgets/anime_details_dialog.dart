@@ -46,6 +46,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   late final FavoritesRepository _favoritesRepository;
   bool _isInWatchlist = false;
   bool _isProcessingWatchlist = false;
+  int? _knownMaxEpisode;
 
   @override
   void initState() {
@@ -53,7 +54,27 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     _favoritesRepository = FavoritesRepository();
     _loadDescription();
     _checkIfFavorite();
+    _prefetchKnownMaxEpisode();
     _updateWatchlistState();
+  }
+
+  Future<void> _prefetchKnownMaxEpisode() async {
+    try {
+      final id = widget.release.seriesUrl;
+      final title = widget.release.title;
+      final cs = widget.crunchyrollService;
+      final known = await cs.getMaxEpisodeForSeries(id, title);
+      if (known != null) {
+        _knownMaxEpisode = known;
+      } else {
+        // Try a forced refresh if cache didn't contain useful data
+        await cs.forceRefresh(forMonth: DateTime.now());
+        final known2 = await cs.getMaxEpisodeForSeries(id, title);
+        _knownMaxEpisode = known2;
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error prefetching known max episode: $e');
+    }
   }
 
   void _updateWatchlistState() {
@@ -250,11 +271,11 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       left: 8,
                       child: CircleAvatar(
                         backgroundColor: Colors.black54,
-                        radius: 22,
+                        radius: 20,
                         child: _isLoadingFavorite
                             ? const SizedBox(
-                                width: 24,
-                                height: 24,
+                                width: 20,
+                                height: 20,
                                 child: CircularProgressIndicator(
                                   valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   strokeWidth: 2,
@@ -264,7 +285,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                 icon: Icon(
                                   _isFavorite ? Icons.favorite : Icons.favorite_border,
                                   color: _isFavorite ? Colors.red : Colors.white,
-                                  size: 24,
+                                  size: 20,
                                 ),
                                 onPressed: _toggleFavorite,
                                 padding: EdgeInsets.zero,
@@ -276,23 +297,23 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                           top: 8,
                           left: 56,
                           child: CircleAvatar(
-                            backgroundColor: Colors.black54,
-                            radius: 22,
-                            child: _isProcessingWatchlist
-                                ? const SizedBox(
-                                    width: 24,
-                                    height: 24,
-                                    child: CircularProgressIndicator(
-                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : IconButton(
-                                    icon: Icon(
-                                      _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
-                                      color: _isInWatchlist ? Colors.green : Colors.white,
-                                      size: 24,
-                                    ),
+                              backgroundColor: Colors.black54,
+                              radius: 20,
+                              child: _isProcessingWatchlist
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : IconButton(
+                                      icon: Icon(
+                                        _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
+                                        color: _isInWatchlist ? Colors.green : Colors.white,
+                                        size: 20,
+                                      ),
                                     onPressed: () async {
                                       final ws = widget.watchlistService!;
                                       setState(() {
@@ -307,15 +328,25 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                           SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
                                         );
                                       } else {
+                                        // Fast add: use cache-only lookup (no network) so UI is snappy
+                                        int parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
+                                        int? knownMax = _knownMaxEpisode;
+                                        if (knownMax == null) {
+                                          knownMax = await widget.crunchyrollService.getMaxEpisodeFromCache(id, widget.release.title);
+                                        }
+                                        final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
                                         final entry = WatchlistEntry(
                                           animeId: id,
                                           title: widget.release.title,
                                           imageUrl: widget.release.imageUrl,
                                           episodesWatched: 0,
-                                          totalEpisodes: int.tryParse(widget.release.episodeNumber) ?? 0,
+                                          totalEpisodes: total,
                                         );
                                         ws.watchlist.addEntry(entry);
                                         await ws.saveWatchlist();
+                                        // Schedule a background check (may perform network) to update the entry later
+                                        widget.crunchyrollService.scheduleWatchlistEntryUpdate(ws, entry);
                                         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
                                         );
@@ -519,42 +550,20 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
-                        child: Column(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: _openCrunchyrollEpisode,
-                              icon: const Icon(Icons.play_circle),
-                              label: const Text('Auf Crunchyroll ansehen'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.primary,
-                                foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                    ? Colors.black
-                                    : Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
+                        child: ElevatedButton.icon(
+                          onPressed: _openCrunchyrollEpisode,
+                          icon: const Icon(Icons.play_circle),
+                          label: const Text('Auf Crunchyroll ansehen'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Theme.of(context).colorScheme.primary,
+                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                ? Colors.black
+                                : Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
                             ),
-                            const SizedBox(height: 8),
-                            ElevatedButton.icon(
-                              onPressed: widget.onAddToWatchlist != null
-                                  ? () => widget.onAddToWatchlist!(release)
-                                  : null,
-                              icon: const Icon(Icons.playlist_add),
-                              label: const Text('Zur Watchlist hinzufügen'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Theme.of(context).colorScheme.secondary,
-                                foregroundColor: Theme.of(context).colorScheme.secondary.computeLuminance() > 0.5
-                                    ? Colors.black
-                                    : Colors.white,
-                                padding: const EdgeInsets.symmetric(vertical: 14),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     ],

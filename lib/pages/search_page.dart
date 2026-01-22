@@ -107,18 +107,25 @@ class _SearchPageState extends State<SearchPage> {
     _performSearch(suggestion);
   }
 
-  void _addToWatchlist(AnimeRelease release) {
+  Future<void> _addToWatchlist(AnimeRelease release) async {
     if (widget.watchlistService == null) return;
+    final cs = CrunchyrollService();
+    final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
+    final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
+    final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
     final entry = WatchlistEntry(
       animeId: release.seriesUrl,
       title: release.title,
       imageUrl: release.imageUrl,
       episodesWatched: 0,
-      totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+      totalEpisodes: total,
     );
     widget.watchlistService!.watchlist.addEntry(entry);
-    widget.watchlistService!.saveWatchlist();
-    ScaffoldMessenger.of(context).showSnackBar(
+    await widget.watchlistService!.saveWatchlist();
+    // schedule background update (may perform network)
+    cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
     );
   }

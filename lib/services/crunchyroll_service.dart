@@ -7,6 +7,11 @@ import 'dart:convert';
 import 'dart:async';
 import '../models/anime_release.dart';
 import '../settings.dart';
+import '../services/watchlist_service.dart';
+import '../repositories/notification_repository.dart';
+import '../models/notification_log.dart';
+import '../utils/episode_parser.dart';
+import '../models/watchlist.dart';
 
 class CrunchyrollService {
   static const String calendarUrl = 'https://www.crunchyroll.com/de/simulcastcalendar?filter=premium';
@@ -588,6 +593,242 @@ class CrunchyrollService {
     } catch (e) {
       if (kDebugMode) print('Error saving to cache: $e');
     }
+  }
+  
+  /// Synchronisiert die Watchlist-Einträge mit den gecachten Releases.
+  /// Aktualisiert `totalEpisodes` wenn eine höhere Folge bekannt ist und loggt neue Folgen in NotificationRepository.
+  Future<void> syncWatchlistWithReleases(WatchlistService watchlistService, NotificationRepository notificationRepo) async {
+    try {
+      if (_cachedReleases.isEmpty) {
+        await getReleasesForWeek(DateTime.now());
+      }
+
+      var updated = false;
+      String normalize(String? s) => s == null ? '' : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+      for (final entry in watchlistService.watchlist.entries) {
+        final normEntryTitle = normalize(entry.title);
+        final matches = _cachedReleases.where((r) {
+          // Prefer exact seriesUrl match
+          if (r.seriesUrl != null && entry.animeId != null && r.seriesUrl == entry.animeId) return true;
+          // Normalize titles and allow contains / equality to be resilient to minor differences
+          final rt = normalize(r.title);
+          if (rt.isEmpty || normEntryTitle.isEmpty) return false;
+          return rt == normEntryTitle || rt.contains(normEntryTitle) || normEntryTitle.contains(rt);
+        }).toList();
+        if (matches.isEmpty) continue;
+
+        int maxEp = entry.totalEpisodes;
+        AnimeRelease? maxRelease;
+        for (final r in matches) {
+          final parsed = parseEpisodeNumber(r.episodeNumber);
+          if (parsed != null && parsed > maxEp) {
+            maxEp = parsed;
+            maxRelease = r;
+          }
+        }
+
+        if (maxEp > entry.totalEpisodes) {
+          // Create a new WatchlistEntry with the updated totalEpisodes (immutable field)
+          final newEntry = WatchlistEntry(
+            animeId: entry.animeId,
+            title: entry.title,
+            imageUrl: entry.imageUrl,
+            episodesWatched: entry.episodesWatched,
+            totalEpisodes: maxEp,
+            status: entry.status,
+            note: entry.note,
+            rating: entry.rating,
+          );
+          // Replace the entry in the watchlist
+          watchlistService.watchlist.updateEntry(newEntry);
+          updated = true;
+
+          if (maxRelease != null) {
+            final log = NotificationLog(
+              favoriteId: null,
+              favoriteTitle: entry.title,
+              releaseTitle: maxRelease.title,
+              episodeNumber: normalizeEpisodeString(maxRelease.episodeNumber),
+              notifyTime: DateTime.now(),
+            );
+            final hash = log.generateContentHash();
+            final duplicate = await notificationRepo.isDuplicate(hash);
+            if (!duplicate) {
+              await notificationRepo.logNotification(log.copyWith(contentHash: hash));
+            } else {
+              if (kDebugMode) print('⏭️ Sync: notification duplicate for ${entry.title} ep ${log.episodeNumber}');
+            }
+          }
+        }
+      }
+
+      if (updated) {
+        await watchlistService.saveWatchlist();
+        if (kDebugMode) print('✓ Watchlist totals updated from releases');
+      } else {
+        if (kDebugMode) print('✓ No watchlist updates needed');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error syncing watchlist with releases: $e');
+    }
+  }
+
+  /// Liefert die höchste gefundene Episodennummer für eine Serie aus dem Cache
+  /// Versucht zuerst nach `seriesUrl` zu matchen, fällt zurück auf `title`.
+  Future<int?> getMaxEpisodeForSeries(String? seriesUrl, String? title) async {
+    try {
+      // Ensure some cached releases exist
+      if (_cachedReleases.isEmpty) {
+        if (kDebugMode) print('ℹ️ [CrunchyrollService] Cache empty, fetching week releases');
+        await getReleasesForWeek(DateTime.now());
+      }
+
+      String normalize(String? s) => s == null ? '' : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+      // First try exact seriesUrl match
+      List<AnimeRelease> matches = [];
+      if (seriesUrl != null) {
+        matches = _cachedReleases.where((r) => r.seriesUrl != null && r.seriesUrl == seriesUrl).toList();
+        if (kDebugMode) print('ℹ️ [CrunchyrollService] getMaxEpisodeForSeries: found ${matches.length} matches by seriesUrl=$seriesUrl');
+      }
+
+      // If none, try normalized/fuzzy title matching
+      if (matches.isEmpty && title != null) {
+        final normTitle = normalize(title);
+        matches = _cachedReleases.where((r) {
+          final rt = normalize(r.title);
+          if (rt.isEmpty || normTitle.isEmpty) return false;
+          return rt == normTitle || rt.contains(normTitle) || normTitle.contains(rt);
+        }).toList();
+        if (kDebugMode) print('ℹ️ [CrunchyrollService] getMaxEpisodeForSeries: found ${matches.length} matches by title="$title"');
+      }
+
+      // If still none, try a broader refresh (month) and retry once
+      if (matches.isEmpty) {
+        if (kDebugMode) print('ℹ️ [CrunchyrollService] No matches in cache, forcing month refresh');
+        await forceRefresh(forMonth: DateTime.now());
+        final normTitle = normalize(title);
+        matches = _cachedReleases.where((r) {
+          if (seriesUrl != null && r.seriesUrl != null && r.seriesUrl == seriesUrl) return true;
+          final rt = normalize(r.title);
+          if (rt.isEmpty || normTitle.isEmpty) return false;
+          return rt == normTitle || rt.contains(normTitle) || normTitle.contains(rt);
+        }).toList();
+        if (kDebugMode) print('ℹ️ [CrunchyrollService] After refresh: found ${matches.length} matches');
+      }
+
+      if (matches.isEmpty) {
+        if (kDebugMode) print('⚠️ [CrunchyrollService] getMaxEpisodeForSeries: no matches for seriesUrl=$seriesUrl title=$title');
+        return null;
+      }
+
+      int maxEp = 0;
+      for (final r in matches) {
+        final parsed = parseEpisodeNumber(r.episodeNumber);
+        if (kDebugMode) print('   - candidate: "${r.title}" ep="${r.episodeNumber}" parsed=$parsed');
+        if (parsed != null && parsed > maxEp) maxEp = parsed;
+      }
+
+      if (kDebugMode) print('✅ [CrunchyrollService] getMaxEpisodeForSeries -> maxEp=$maxEp for title=$title');
+      return maxEp > 0 ? maxEp : null;
+    } catch (e) {
+      if (kDebugMode) print('❌ Error getting max episode for series: $e');
+      return null;
+    }
+  }
+
+  /// Schnell: Liefert die höchste gefundene Episodennummer aus dem LOCALEN Cache (kein Network)
+  /// Lädt bei Bedarf den persistenten Cache aus SharedPreferences, aber macht KEINE Scrape/Network-Calls.
+  Future<int?> getMaxEpisodeFromCache(String? seriesUrl, String? title) async {
+    try {
+      if (_cachedReleases.isEmpty) {
+        // Load cached releases from SharedPreferences only (no network)
+        await _loadFromCache();
+      }
+
+      String normalize(String? s) => s == null ? '' : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+
+      List<AnimeRelease> matches = [];
+      if (seriesUrl != null) {
+        matches = _cachedReleases.where((r) => r.seriesUrl != null && r.seriesUrl == seriesUrl).toList();
+      }
+      if (matches.isEmpty && title != null) {
+        final normTitle = normalize(title);
+        matches = _cachedReleases.where((r) {
+          final rt = normalize(r.title);
+          if (rt.isEmpty || normTitle.isEmpty) return false;
+          return rt == normTitle || rt.contains(normTitle) || normTitle.contains(rt);
+        }).toList();
+      }
+
+      if (matches.isEmpty) return null;
+
+      int maxEp = 0;
+      for (final r in matches) {
+        final parsed = parseEpisodeNumber(r.episodeNumber);
+        if (parsed != null && parsed > maxEp) maxEp = parsed;
+      }
+      return maxEp > 0 ? maxEp : null;
+    } catch (e) {
+      if (kDebugMode) print('❌ Error in getMaxEpisodeFromCache: $e');
+      return null;
+    }
+  }
+
+  /// Schedules an asynchronous background check to update a watchlist entry if a higher
+  /// episode number is discovered. This returns immediately and performs network work
+  /// in the background so UI add operations remain fast.
+  Future<void> scheduleWatchlistEntryUpdate(WatchlistService watchlistService, WatchlistEntry entry) async {
+    // Run in a microtask so caller isn't blocked
+    Future.microtask(() async {
+      try {
+        final known = await getMaxEpisodeForSeries(entry.animeId, entry.title);
+        if (known != null && known > entry.totalEpisodes) {
+          final newEntry = WatchlistEntry(
+            animeId: entry.animeId,
+            title: entry.title,
+            imageUrl: entry.imageUrl,
+            episodesWatched: entry.episodesWatched,
+            totalEpisodes: known,
+            status: entry.status,
+            note: entry.note,
+            rating: entry.rating,
+          );
+          watchlistService.watchlist.updateEntry(newEntry);
+          await watchlistService.saveWatchlist();
+
+          // Log discovered newest episode into NotificationRepository
+          try {
+            final notificationRepo = NotificationRepository();
+            AnimeRelease? candidate;
+            try {
+              candidate = _cachedReleases.firstWhere((r) => (r.seriesUrl != null && r.seriesUrl == entry.animeId) || r.title.toLowerCase().contains(entry.title.toLowerCase()));
+            } catch (_) {
+              candidate = null;
+            }
+            if (candidate != null) {
+              final log = NotificationLog(
+                favoriteId: null,
+                favoriteTitle: entry.title,
+                releaseTitle: candidate.title,
+                episodeNumber: normalizeEpisodeString(candidate.episodeNumber),
+                notifyTime: DateTime.now(),
+              );
+              final hash = log.generateContentHash();
+              final duplicate = await notificationRepo.isDuplicate(hash);
+              if (!duplicate) {
+                await notificationRepo.logNotification(log.copyWith(contentHash: hash));
+              }
+            }
+          } catch (e) {
+            if (kDebugMode) print('❌ scheduleWatchlistEntryUpdate: failed to log notification: $e');
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) print('❌ scheduleWatchlistEntryUpdate error: $e');
+      }
+    });
   }
   
   /// Generiert einen eindeutigen Cache-Key für einen Monat

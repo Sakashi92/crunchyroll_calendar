@@ -1,0 +1,18 @@
+{
+    "sourceFile": "lib/utils/episode_parser.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1769108434955,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1769108434955,
+            "name": "Commit-0",
+            "content": "// Lightweight episode number parser utilities\r\nint? parseEpisodeNumber(String? raw) {\r\n  if (raw == null) return null;\r\n  final s = raw.trim();\r\n\r\n  // Try SxxExx patterns first\r\n  final seMatch = RegExp(r'[sS]\\d{1,2}[eE](\\d{1,4})').firstMatch(s);\r\n  if (seMatch != null) {\r\n    return int.tryParse(seMatch.group(1)!);\r\n  }\r\n\r\n  // Try common words: Ep, Ep., Episode, Folge\r\n  final wordMatch = RegExp(r'(?:ep(?:isode)?|folg(?:e)?|ep\\.?)[^0-9]*(\\d{1,4})', caseSensitive: false).firstMatch(s);\r\n  if (wordMatch != null) return int.tryParse(wordMatch.group(1)!);\r\n\r\n  // Fallback: find all integer sequences and return the largest\r\n  final all = RegExp(r'(\\d{1,4})').allMatches(s).map((m) => int.tryParse(m.group(1)!) ?? 0).toList();\r\n  if (all.isEmpty) return null;\r\n  return all.reduce((a, b) => a > b ? a : b);\r\n}\r\n\r\n// Normalize episode string for display / hashing: prefer original if numeric parse fails\r\nString normalizeEpisodeString(String? raw) {\r\n  if (raw == null) return '';\r\n  final parsed = parseEpisodeNumber(raw);\r\n  return parsed != null ? parsed.toString() : raw.trim();\r\n}\r\n"
+        }
+    ]
+}
