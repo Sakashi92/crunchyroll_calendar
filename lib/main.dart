@@ -21,7 +21,16 @@ import 'models/favorite_anime.dart';
 import 'models/notification_log.dart';
 import 'settings.dart';
 import 'pages/favorites_page.dart';
+import 'pages/watchlist_page.dart';
+import 'pages/search_page.dart' as search_page;
+import 'models/watchlist.dart';
+import 'services/watchlist_service.dart';
+import 'widgets/anime_details_dialog.dart';
+import 'pages/watchlist_page.dart';
+import 'pages/search_page.dart';
 import 'utils/favorites_notifier.dart';
+import 'models/watchlist.dart';
+import 'services/watchlist_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -41,8 +50,9 @@ void main() async {
 // Simple in-app search page for locally loaded releases
 class SearchPage extends StatefulWidget {
   final Map<DateTime, List<AnimeRelease>> releases;
+  final WatchlistService? watchlistService;
 
-  const SearchPage({super.key, required this.releases});
+  const SearchPage({super.key, required this.releases, this.watchlistService});
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -160,10 +170,31 @@ class _SearchPageState extends State<SearchPage> {
     // show details dialog
     await showDialog(
       context: context,
-      builder: (BuildContext ctx) => _AnimeDetailsDialog(
+      builder: (BuildContext ctx) => AnimeDetailsDialog(
         release: r,
         crunchyrollService: CrunchyrollService(),
+        watchlistService: widget.watchlistService,
+        onAddToWatchlist: (release) {
+          _addToWatchlist(release);
+          Navigator.of(ctx).pop();
+        },
       ),
+    );
+  }
+
+  void _addToWatchlist(AnimeRelease release) {
+    if (widget.watchlistService == null) return;
+    final entry = WatchlistEntry(
+      animeId: release.seriesUrl,
+      title: release.title,
+        imageUrl: release.imageUrl,
+      episodesWatched: 0,
+      totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+    );
+    widget.watchlistService!.watchlist.addEntry(entry);
+    widget.watchlistService!.saveWatchlist();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
     );
   }
 
@@ -278,10 +309,13 @@ class MainApp extends StatefulWidget {
 
 class _MainAppState extends State<MainApp> {
   Color _accentColor = Colors.orange;
+  final Watchlist watchlist = Watchlist();
+  late final WatchlistService watchlistService;
 
   @override
   void initState() {
     super.initState();
+    watchlistService = WatchlistService(watchlist);
     _loadAccentColor();
   }
 
@@ -292,8 +326,13 @@ class _MainAppState extends State<MainApp> {
     });
   }
 
+  int _selectedIndex = 0;
+
   @override
   Widget build(BuildContext context) {
+    final pages = [
+      CalendarPage(onAccentColorChanged: _loadAccentColor, watchlistService: watchlistService),
+    ];
     return MaterialApp(
       title: 'Crunchyroll Anime Kalender',
       theme: ThemeData(
@@ -310,15 +349,18 @@ class _MainAppState extends State<MainApp> {
         ),
         useMaterial3: true,
       ),
-      home: CalendarPage(onAccentColorChanged: _loadAccentColor),
+      home: Scaffold(
+        body: pages[0],
+      ),
     );
   }
 }
 
 class CalendarPage extends StatefulWidget {
   final VoidCallback? onAccentColorChanged;
+  final WatchlistService? watchlistService;
 
-  const CalendarPage({super.key, this.onAccentColorChanged});
+  const CalendarPage({super.key, this.onAccentColorChanged, this.watchlistService});
 
   @override
   State<CalendarPage> createState() => _CalendarPageState();
@@ -390,6 +432,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     
     // Registriere Callback wenn Bilder geladen wurden - UI aktualisieren
     _crunchyrollService.onImageLoaded = () {
+      if (kDebugMode) print('🔔 CrunchyrollService.onImageLoaded triggered');
       if (mounted) {
         setState(() {
           // Trigger rebuild um neue Bilder anzuzeigen
@@ -1024,7 +1067,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => SearchPage(releases: _releases),
+                  builder: (context) => SearchPage(releases: _releases, watchlistService: widget.watchlistService),
                 ),
               );
               if (result != null && result is Map) {
@@ -1033,9 +1076,26 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                 // Show details dialog for the selected release (do not change calendar focus)
                 await showDialog(
                   context: context,
-                  builder: (BuildContext ctx) => _AnimeDetailsDialog(
+                  builder: (BuildContext ctx) => AnimeDetailsDialog(
                     release: r,
                     crunchyrollService: CrunchyrollService(),
+                    watchlistService: widget.watchlistService,
+                    onAddToWatchlist: (release) {
+                      if (widget.watchlistService == null) return;
+                      final entry = WatchlistEntry(
+                        animeId: release.seriesUrl,
+                        title: release.title,
+                        imageUrl: release.imageUrl,
+                        episodesWatched: 0,
+                        totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+                      );
+                      widget.watchlistService!.watchlist.addEntry(entry);
+                      widget.watchlistService!.saveWatchlist();
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
+                      );
+                      Navigator.of(ctx).pop();
+                    },
                   ),
                 );
               }
@@ -1050,7 +1110,21 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                 MaterialPageRoute(
                   builder: (context) => FavoritesPage(
                     onAccentColorChanged: widget.onAccentColorChanged,
+                    watchlistService: widget.watchlistService,
                   ),
+                ),
+              );
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.playlist_add_check),
+            tooltip: 'Watchlist',
+            onPressed: () {
+              if (widget.watchlistService == null) return;
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => WatchlistPage(service: widget.watchlistService!),
                 ),
               );
             },
@@ -1207,7 +1281,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                         selectedDayPredicate: (day) {
                           return isSameDay(_selectedDay, day);
                         },
-                                                onDaySelected: (selectedDay, focusedDay) {
+                                                                        onDaySelected: (selectedDay, focusedDay) {
                           if (!isSameDay(_selectedDay, selectedDay)) {
                             // Bestimme Animationsrichtung basierend auf Datum-Differenz
                             final previous = _selectedDay ?? _focusedDay;
@@ -1223,6 +1297,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                             setState(() {
                               _selectedDay = selectedDay;
                               _focusedDay = focusedDay;
+                              _isLoadingReleases = true; // Zeige Ladeindikator während Wechsel
                             });
                             // Lade Releases für den neuen ausgewählten Tag
                             _loadReleases();
@@ -1323,12 +1398,42 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     );
   }
 
-  Widget _buildReleaseList() {
+    Widget _buildReleaseList() {
+    // Zeige Ladeindikator während Releases geladen werden
+    // Dies verhindert das kurze Aufblitzen von alten Daten
+    if (_isLoadingReleases) {
+      final dayKey = ValueKey('loading_${(_selectedDay ?? _focusedDay).toIso8601String()}');
+      return SizedBox(
+        key: dayKey,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 200,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: const [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text(
+                      'Lade Releases…',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     final releases = _getReleasesForDay(_selectedDay ?? _focusedDay);
 
     Widget content;
 
-    if (_isLoadingReleases) {
+    if (false) {
       content = ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
@@ -1350,37 +1455,43 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
           ),
         ],
       );
-    } else if (releases.isEmpty) {
-      content = ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        children: [
-          SizedBox(
-            height: 200,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Keine Anime-Releases an diesem Tag bisher.',
-                    style: TextStyle(fontSize: 16, color: Colors.grey),
-                  ),
-                ],
+        } else if (releases.isEmpty) {
+      content = Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            SizedBox(
+              height: 200,
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.event_busy, size: 64, color: Colors.grey[400]),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Keine Anime-Releases an diesem Tag bisher.',
+                      style: TextStyle(fontSize: 16, color: Colors.grey),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     } else {
-      content = ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(8),
-        itemCount: releases.length,
-        itemBuilder: (context, index) {
-          final release = releases[index];
-          return _buildReleaseCard(release);
-        },
+            content = Container(
+        color: Theme.of(context).colorScheme.surface,
+        child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(8),
+          itemCount: releases.length,
+          itemBuilder: (context, index) {
+            final release = releases[index];
+            return _buildReleaseCard(release);
+          },
+        ),
       );
     }
 
@@ -1599,6 +1710,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     return _ReleaseCard(
       key: ValueKey('${release.title}_${release.episodeInfo}'),
       release: release,
+      watchlistService: widget.watchlistService,
     );
   }
 }
@@ -1606,8 +1718,8 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
 /// Stateful Widget für Release Card mit Favoriten-Status
 class _ReleaseCard extends StatefulWidget {
   final AnimeRelease release;
-
-  const _ReleaseCard({super.key, required this.release});
+  final WatchlistService? watchlistService;
+  const _ReleaseCard({super.key, required this.release, this.watchlistService});
 
   @override
   State<_ReleaseCard> createState() => _ReleaseCardState();
@@ -1616,6 +1728,9 @@ class _ReleaseCard extends StatefulWidget {
 class _ReleaseCardState extends State<_ReleaseCard> {
   bool _isFavorite = false;
   late final FavoritesRepository _favoritesRepository;
+  // Watchlist state
+  bool _isProcessingWatchlist = false;
+  bool _isInWatchlist = false;
   bool _isInitialized = false; // Track if we've loaded the status
   static final Map<String, bool> _favoriteCache = {}; // In-memory cache to prevent flickering
 
@@ -1635,6 +1750,24 @@ class _ReleaseCardState extends State<_ReleaseCard> {
     
     // Load favorite status immediately
     _checkIfFavorite();
+
+    // Initialize watchlist status if a service was provided
+    _initWatchlistStatus();
+  }
+
+  Future<void> _initWatchlistStatus() async {
+    if (widget.watchlistService == null) return;
+    try {
+      final exists = widget.watchlistService!.watchlist.entries
+          .any((e) => e.animeId == widget.release.seriesUrl);
+      if (mounted) {
+        setState(() {
+          _isInWatchlist = exists;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error initializing watchlist status: $e');
+    }
   }
 
   @override
@@ -1746,9 +1879,26 @@ class _ReleaseCardState extends State<_ReleaseCard> {
     await showDialog(
       context: context,
       builder: (BuildContext context) {
-        return _AnimeDetailsDialog(
+        return AnimeDetailsDialog(
           release: widget.release,
           crunchyrollService: CrunchyrollService(),
+          watchlistService: widget.watchlistService,
+          onAddToWatchlist: (release) {
+            if (widget.watchlistService == null) return;
+            final entry = WatchlistEntry(
+              animeId: release.seriesUrl,
+              title: release.title,
+              imageUrl: release.imageUrl,
+              episodesWatched: 0,
+              totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+            );
+            widget.watchlistService!.watchlist.addEntry(entry);
+            widget.watchlistService!.saveWatchlist();
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
+            );
+            Navigator.of(context).pop();
+          },
         );
       },
     );
@@ -1794,9 +1944,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                           radius: 20,
                           child: IconButton(
                             icon: Icon(
-                              _isFavorite
-                                  ? Icons.favorite
-                                  : Icons.favorite_border,
+                              _isFavorite ? Icons.favorite : Icons.favorite_border,
                               color: _isFavorite ? Colors.red : Colors.white,
                               size: 20,
                             ),
@@ -1804,20 +1952,80 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                             padding: EdgeInsets.zero,
                           ),
                         )
-                      : CircleAvatar(
+                      : const CircleAvatar(
                           backgroundColor: Colors.black54,
                           radius: 20,
-                          child: const SizedBox(
+                          child: SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           ),
                         ),
                 ),
+                // Watchlist-Button (oben links, neben Favorit)
+                if (widget.watchlistService != null)
+                  Positioned(
+                    top: 8,
+                    left: 56,
+                    child: CircleAvatar(
+                      backgroundColor: Colors.black54,
+                      radius: 22,
+                      child: _isProcessingWatchlist
+                          ? const SizedBox(
+                              width: 24,
+                              height: 24,
+                              child: CircularProgressIndicator(
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : IconButton(
+                              icon: Icon(
+                                _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
+                                color: _isInWatchlist ? Colors.green : Colors.white,
+                                size: 24,
+                              ),
+                              onPressed: () async {
+                                final ws = widget.watchlistService!;
+                                setState(() {
+                                  _isProcessingWatchlist = true;
+                                });
+                                final id = widget.release.seriesUrl;
+                                final exists = ws.watchlist.entries.any((e) => e.animeId == id);
+                                if (exists) {
+                                  ws.watchlist.removeEntry(id);
+                                  await ws.saveWatchlist();
+                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
+                                  );
+                                } else {
+                                  final entry = WatchlistEntry(
+                                    animeId: id,
+                                    title: widget.release.title,
+                                    imageUrl: widget.release.imageUrl,
+                                    episodesWatched: 0,
+                                    totalEpisodes: int.tryParse(widget.release.episodeNumber) ?? 0,
+                                  );
+                                  ws.watchlist.addEntry(entry);
+                                  await ws.saveWatchlist();
+                                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
+                                  );
+                                }
+                                if (mounted) {
+                                  setState(() {
+                                    _isProcessingWatchlist = false;
+                                    _isInWatchlist = !exists;
+                                  });
+                                }
+                              },
+                              padding: EdgeInsets.zero,
+                            ),
+                    ),
+                  ),
                 if (widget.release.isPremiere)
                   Positioned(
                     top: 8,
@@ -2033,10 +2241,14 @@ class _AnimePatternPainter extends CustomPainter {
 class _AnimeDetailsDialog extends StatefulWidget {
   final AnimeRelease release;
   final CrunchyrollService crunchyrollService;
+  final void Function(AnimeRelease release)? onAddToWatchlist;
+  final WatchlistService? watchlistService;
 
   const _AnimeDetailsDialog({
     required this.release,
     required this.crunchyrollService,
+    this.onAddToWatchlist,
+    this.watchlistService,
   });
 
   @override
@@ -2054,6 +2266,8 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
   bool _isLoadingFavorite = true; // Loading State für Favoriten
   final _translator = GoogleTranslator();
   late final FavoritesRepository _favoritesRepository;
+  bool _isInWatchlist = false;
+  bool _isProcessingWatchlist = false;
 
   @override
   void initState() {
@@ -2061,6 +2275,14 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
     _favoritesRepository = FavoritesRepository();
     _loadDescription();
     _checkIfFavorite();
+    _updateWatchlistState();
+  }
+
+  void _updateWatchlistState() {
+    final ws = widget.watchlistService;
+    if (ws == null) return;
+    final id = widget.release.seriesUrl;
+    _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
   Future<void> _checkIfFavorite() async {
@@ -2482,23 +2704,43 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                         ),
                       const SizedBox(height: 20),
 
-                      // Button zu Crunchyroll
+                      // Buttons: Crunchyroll + Zur Watchlist
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _openCrunchyrollEpisode,
-                          icon: const Icon(Icons.play_circle),
-                          label: const Text('Auf Crunchyroll ansehen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                ? Colors.black
-                                : Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _openCrunchyrollEpisode,
+                              icon: const Icon(Icons.play_circle),
+                              label: const Text('Auf Crunchyroll ansehen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                    ? Colors.black
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: widget.onAddToWatchlist != null ? () => widget.onAddToWatchlist!(release) : null,
+                              icon: const Icon(Icons.playlist_add),
+                              label: const Text('Zur Watchlist hinzufügen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.secondary,
+                                foregroundColor: Theme.of(context).colorScheme.secondary.computeLuminance() > 0.5
+                                    ? Colors.black
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
@@ -2508,7 +2750,6 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
             ),
           ),
         ),
-      ),
-    );
+      ));
   }
 }

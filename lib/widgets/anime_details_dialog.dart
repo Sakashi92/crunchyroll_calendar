@@ -9,16 +9,24 @@ import '../repositories/favorites_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../settings.dart';
 import '../utils/favorites_notifier.dart';
+import '../services/watchlist_service.dart';
+import '../models/watchlist.dart';
 
 /// Dialog Widget für Anime-Details mit asynchronem Laden der Beschreibung
 class AnimeDetailsDialog extends StatefulWidget {
   final AnimeRelease release;
   final CrunchyrollService crunchyrollService;
+  final VoidCallback? onFavoriteRemoved;
+  final void Function(AnimeRelease release)? onAddToWatchlist;
+  final WatchlistService? watchlistService;
 
   const AnimeDetailsDialog({
     super.key,
     required this.release,
     required this.crunchyrollService,
+    this.onFavoriteRemoved,
+    this.onAddToWatchlist,
+    this.watchlistService,
   });
 
   @override
@@ -36,6 +44,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   bool _isLoadingFavorite = true;
   final _translator = GoogleTranslator();
   late final FavoritesRepository _favoritesRepository;
+  bool _isInWatchlist = false;
+  bool _isProcessingWatchlist = false;
 
   @override
   void initState() {
@@ -43,6 +53,14 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     _favoritesRepository = FavoritesRepository();
     _loadDescription();
     _checkIfFavorite();
+    _updateWatchlistState();
+  }
+
+  void _updateWatchlistState() {
+    final ws = widget.watchlistService;
+    if (ws == null) return;
+    final id = widget.release.seriesUrl;
+    _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
   Future<void> _checkIfFavorite() async {
@@ -77,6 +95,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
             ),
           );
         }
+        // Notify caller that a favorite was removed (e.g., favorites page)
+        if (widget.onFavoriteRemoved != null) widget.onFavoriteRemoved!();
       } else {
         final favorite = FavoriteAnime(
           title: widget.release.title,
@@ -251,6 +271,66 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                               ),
                       ),
                     ),
+                      if (widget.watchlistService != null)
+                        Positioned(
+                          top: 8,
+                          left: 56,
+                          child: CircleAvatar(
+                            backgroundColor: Colors.black54,
+                            radius: 22,
+                            child: _isProcessingWatchlist
+                                ? const SizedBox(
+                                    width: 24,
+                                    height: 24,
+                                    child: CircularProgressIndicator(
+                                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : IconButton(
+                                    icon: Icon(
+                                      _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
+                                      color: _isInWatchlist ? Colors.green : Colors.white,
+                                      size: 24,
+                                    ),
+                                    onPressed: () async {
+                                      final ws = widget.watchlistService!;
+                                      setState(() {
+                                        _isProcessingWatchlist = true;
+                                      });
+                                      final id = widget.release.seriesUrl;
+                                      final exists = ws.watchlist.entries.any((e) => e.animeId == id);
+                                      if (exists) {
+                                        ws.watchlist.removeEntry(id);
+                                        await ws.saveWatchlist();
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
+                                        );
+                                      } else {
+                                        final entry = WatchlistEntry(
+                                          animeId: id,
+                                          title: widget.release.title,
+                                          imageUrl: widget.release.imageUrl,
+                                          episodesWatched: 0,
+                                          totalEpisodes: int.tryParse(widget.release.episodeNumber) ?? 0,
+                                        );
+                                        ws.watchlist.addEntry(entry);
+                                        await ws.saveWatchlist();
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
+                                        );
+                                      }
+                                      if (mounted) {
+                                        setState(() {
+                                          _isProcessingWatchlist = false;
+                                          _isInWatchlist = !exists;
+                                        });
+                                      }
+                                    },
+                                    padding: EdgeInsets.zero,
+                                  ),
+                          ),
+                        ),
                     Positioned(
                       top: 8,
                       right: 8,
@@ -439,20 +519,42 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       const SizedBox(height: 20),
                       SizedBox(
                         width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _openCrunchyrollEpisode,
-                          icon: const Icon(Icons.play_circle),
-                          label: const Text('Auf Crunchyroll ansehen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                ? Colors.black
-                                : Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                        child: Column(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _openCrunchyrollEpisode,
+                              icon: const Icon(Icons.play_circle),
+                              label: const Text('Auf Crunchyroll ansehen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.primary,
+                                foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                    ? Colors.black
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
                             ),
-                          ),
+                            const SizedBox(height: 8),
+                            ElevatedButton.icon(
+                              onPressed: widget.onAddToWatchlist != null
+                                  ? () => widget.onAddToWatchlist!(release)
+                                  : null,
+                              icon: const Icon(Icons.playlist_add),
+                              label: const Text('Zur Watchlist hinzufügen'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Theme.of(context).colorScheme.secondary,
+                                foregroundColor: Theme.of(context).colorScheme.secondary.computeLuminance() > 0.5
+                                    ? Colors.black
+                                    : Colors.white,
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],

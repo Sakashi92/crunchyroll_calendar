@@ -12,11 +12,15 @@ import '../models/anime_release.dart';
 import '../services/crunchyroll_service.dart';
 import '../settings.dart'; // Für AppSettings 
 import '../utils/favorites_notifier.dart'; // Für favoritesChangeNotifier
+import '../services/watchlist_service.dart';
+import '../models/watchlist.dart';
+import '../widgets/anime_details_dialog.dart';
 
 class FavoritesPage extends StatefulWidget {
   final VoidCallback? onAccentColorChanged;
+  final WatchlistService? watchlistService;
 
-  const FavoritesPage({super.key, this.onAccentColorChanged});
+  const FavoritesPage({super.key, this.onAccentColorChanged, this.watchlistService});
 
   @override
   State<FavoritesPage> createState() => _FavoritesPageState();
@@ -27,6 +31,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
   late final CrunchyrollService _crunchyrollService;
   List<FavoriteAnime> _favorites = [];
   bool _isLoading = true;
+  Watchlist? _watchlist;
 
   @override
   void initState() {
@@ -34,6 +39,21 @@ class _FavoritesPageState extends State<FavoritesPage> {
     _favoritesRepo = FavoritesRepository();
     _crunchyrollService = CrunchyrollService();
     _loadFavorites();
+    if (widget.watchlistService != null) {
+      _watchlist = widget.watchlistService!.watchlist;
+      widget.watchlistService!.loadWatchlist();
+      _watchlist!.addListener(_onWatchlistChanged);
+    }
+  }
+
+  @override
+  void dispose() {
+    _watchlist?.removeListener(_onWatchlistChanged);
+    super.dispose();
+  }
+
+  void _onWatchlistChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadFavorites() async {
@@ -146,6 +166,7 @@ class _FavoritesPageState extends State<FavoritesPage> {
                   ],
                 ),
               ),
+              
               const PopupMenuItem(
                 value: 'import',
                 child: Row(
@@ -238,23 +259,46 @@ class _FavoritesPageState extends State<FavoritesPage> {
                         ),
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 8),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.favorite,
-                                size: 10,
-                                color: Colors.red.shade400,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                'Hinzugefügt: ${_formatDate(anime.addedDate)}',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                          child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.favorite,
+                                      size: 10,
+                                      color: Colors.red.shade400,
+                                    ),
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      'Hinzugefügt: ${_formatDate(anime.addedDate)}',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                      ),
+                                    ),
+                                  ],
                                 ),
-                              ),
-                            ],
-                          ),
+                                if (_watchlist != null && anime.seriesUrl != null)
+                                  Builder(builder: (context) {
+                                    final matches = _watchlist!.entries.where((e) => e.animeId == anime.seriesUrl).toList();
+                                    if (matches.isNotEmpty) {
+                                      final match = matches.first;
+                                      return Padding(
+                                        padding: const EdgeInsets.only(top: 6.0),
+                                        child: Text(
+                                          'Watchlist: ${match.episodesWatched}/${match.totalEpisodes} Folgen',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                          ),
+                                        ),
+                                      );
+                                    }
+                                    return const SizedBox.shrink();
+                                  }),
+                              ],
+                            ),
                         ),
                         trailing: SizedBox(
                           width: 100,
@@ -351,10 +395,10 @@ class _FavoritesPageState extends State<FavoritesPage> {
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
-        return _FavoriteAnimeDetailsDialog(
-          anime: anime,
+        return AnimeDetailsDialog(
           release: release,
           crunchyrollService: _crunchyrollService,
+          watchlistService: widget.watchlistService,
           onFavoriteRemoved: () {
             favoritesChangeNotifier.value++;
             _loadFavorites();
@@ -610,12 +654,14 @@ class _FavoriteAnimeDetailsDialog extends StatefulWidget {
   final AnimeRelease release;
   final CrunchyrollService crunchyrollService;
   final VoidCallback onFavoriteRemoved;
+  final WatchlistService? watchlistService;
 
   const _FavoriteAnimeDetailsDialog({
     required this.anime,
     required this.release,
     required this.crunchyrollService,
     required this.onFavoriteRemoved,
+    this.watchlistService,
   });
 
   @override
@@ -633,11 +679,21 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
   bool _isFavorite = true; // Immer true, da es aus Favoriten kommt
   bool _isLoadingFavorite = false;
   bool _autoTranslateEnabled = true;
+  bool _isInWatchlist = false;
+  bool _isProcessingWatchlist = false;
 
   @override
   void initState() {
     super.initState();
     _loadDescription();
+    _updateWatchlistState();
+  }
+
+  void _updateWatchlistState() {
+    final ws = widget.watchlistService;
+    if (ws == null) return;
+    final id = widget.anime.seriesUrl ?? widget.anime.title;
+    _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
   Future<void> _loadDescription() async {
@@ -852,6 +908,73 @@ class _FavoriteAnimeDetailsDialogState extends State<_FavoriteAnimeDetailsDialog
                               ),
                       ),
                     ),
+                    // Watchlist Button (oben links, neben Favorit)
+                    if (widget.watchlistService != null)
+                      Positioned(
+                        top: 8,
+                        left: 56,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          radius: 22,
+                          child: _isProcessingWatchlist
+                              ? const SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                      Colors.white,
+                                    ),
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    _isInWatchlist ? Icons.playlist_add_check : Icons.playlist_add,
+                                    color: _isInWatchlist ? Colors.green : Colors.white,
+                                    size: 24,
+                                  ),
+                                  onPressed: () async {
+                                    final ws = widget.watchlistService!;
+                                    setState(() {
+                                      _isProcessingWatchlist = true;
+                                    });
+                                    final id = widget.anime.seriesUrl ?? widget.anime.title;
+                                    final exists = ws.watchlist.entries.any((e) => e.animeId == id);
+                                    if (exists) {
+                                      ws.watchlist.removeEntry(id);
+                                      await ws.saveWatchlist();
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.anime.title} aus Watchlist entfernt')),
+                                        );
+                                      }
+                                    } else {
+                                      final entry = WatchlistEntry(
+                                        animeId: id,
+                                        title: widget.anime.title,
+                                        imageUrl: widget.anime.imageUrl,
+                                        episodesWatched: 0,
+                                        totalEpisodes: 0,
+                                      );
+                                      ws.watchlist.addEntry(entry);
+                                      await ws.saveWatchlist();
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.anime.title} zur Watchlist hinzugefügt')),
+                                        );
+                                      }
+                                    }
+                                    if (mounted) {
+                                      setState(() {
+                                        _isProcessingWatchlist = false;
+                                        _isInWatchlist = !exists;
+                                      });
+                                    }
+                                  },
+                                  padding: EdgeInsets.zero,
+                                ),
+                        ),
+                      ),
                     // Close Button
                     Positioned(
                       top: 8,

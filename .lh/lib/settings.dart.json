@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 79,
+            "activePatchIndex": 81,
             "patches": [
                 {
                     "date": 1768743284045,
@@ -324,6 +324,14 @@
                 {
                     "date": 1769027328111,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -36,8 +36,9 @@\n     2: '2 Minuten',\r\n     5: '5 Minuten',\r\n     10: '10 Minuten',\r\n     15: '15 Minuten',\r\n+    20: '20 Minuten',\r\n     30: '30 Minuten',\r\n     60: '1 Stunde',\r\n   };\r\n \r\n"
+                },
+                {
+                    "date": 1769036711164,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1186,9 +1186,9 @@\n   Widget _buildInfoTile() {\r\n     return const ListTile(\r\n       leading: Icon(Icons.info_outline),\r\n       title: Text('Crunchyroll Kalender'),\r\n-      subtitle: Text('Version 0.5.8\\nBilder werden von Kitsu.io geladen'),\r\n+      subtitle: Text('Version 0.8.0\\nBilder werden von Kitsu.io geladen'),\r\n       isThreeLine: true,\r\n     );\r\n   }\r\n \r\n"
+                },
+                {
+                    "date": 1769102234763,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1186,9 +1186,9 @@\n   Widget _buildInfoTile() {\r\n     return const ListTile(\r\n       leading: Icon(Icons.info_outline),\r\n       title: Text('Crunchyroll Kalender'),\r\n-      subtitle: Text('Version 0.8.0\\nBilder werden von Kitsu.io geladen'),\r\n+      subtitle: Text('Version 0.8.0\\nBilder werden von MyAnimeList.net geladen'),\r\n       isThreeLine: true,\r\n     );\r\n   }\r\n \r\n"
                 }
             ],
             "date": 1768743284045,

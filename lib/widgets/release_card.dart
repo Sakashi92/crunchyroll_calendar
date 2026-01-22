@@ -7,6 +7,7 @@ import '../models/notification_log.dart';
 import '../repositories/favorites_repository.dart';
 import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
+import '../services/watchlist_service.dart';
 import '../utils/favorites_notifier.dart';
 import 'anime_placeholder.dart';
 import 'anime_details_dialog.dart';
@@ -14,8 +15,9 @@ import 'anime_details_dialog.dart';
 /// Stateful Widget für Release Card mit Favoriten-Status
 class ReleaseCard extends StatefulWidget {
   final AnimeRelease release;
+  final WatchlistService? watchlistService;
 
-  const ReleaseCard({super.key, required this.release});
+  const ReleaseCard({super.key, required this.release, this.watchlistService});
 
   @override
   State<ReleaseCard> createState() => _ReleaseCardState();
@@ -145,6 +147,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
         return AnimeDetailsDialog(
           release: widget.release,
           crunchyrollService: CrunchyrollService(),
+          watchlistService: widget.watchlistService,
         );
       },
     );
@@ -154,6 +157,10 @@ class _ReleaseCardState extends State<ReleaseCard> {
 
   @override
   Widget build(BuildContext context) {
+    if (kDebugMode) {
+      final img = widget.release.imageUrl ?? '<null>'; 
+      print('🔎 ReleaseCard.build: ${widget.release.title} imageUrl=$img');
+    }
     return Card(
       elevation: 3,
       margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),

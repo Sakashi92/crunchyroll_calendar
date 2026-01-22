@@ -4,16 +4,19 @@ import 'package:intl/intl.dart';
 import 'dart:async';
 import '../models/anime_release.dart';
 import '../models/notification_log.dart';
+import '../models/watchlist.dart';
 import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
+import '../services/watchlist_service.dart';
 import '../settings.dart';
 import '../widgets/anime_details_dialog.dart';
 
 /// Einfache In-App Suchseite für lokal geladene Releases
 class SearchPage extends StatefulWidget {
   final Map<DateTime, List<AnimeRelease>> releases;
+  final WatchlistService? watchlistService;
 
-  const SearchPage({super.key, required this.releases});
+  const SearchPage({super.key, required this.releases, this.watchlistService});
 
   @override
   State<SearchPage> createState() => _SearchPageState();
@@ -104,6 +107,22 @@ class _SearchPageState extends State<SearchPage> {
     _performSearch(suggestion);
   }
 
+  void _addToWatchlist(AnimeRelease release) {
+    if (widget.watchlistService == null) return;
+    final entry = WatchlistEntry(
+      animeId: release.seriesUrl,
+      title: release.title,
+      imageUrl: release.imageUrl,
+      episodesWatched: 0,
+      totalEpisodes: int.tryParse(release.episodeNumber) ?? 0,
+    );
+    widget.watchlistService!.watchlist.addEntry(entry);
+    widget.watchlistService!.saveWatchlist();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
+    );
+  }
+
   Future<void> _onResultTap(AnimeRelease r, DateTime date) async {
     await AppSettings.addToSearchHistory(r.title);
     final list = await AppSettings.getSearchHistory();
@@ -127,6 +146,11 @@ class _SearchPageState extends State<SearchPage> {
       builder: (BuildContext ctx) => AnimeDetailsDialog(
         release: r,
         crunchyrollService: CrunchyrollService(),
+        onAddToWatchlist: (release) {
+          _addToWatchlist(release);
+          Navigator.of(ctx).pop();
+        },
+        watchlistService: widget.watchlistService,
       ),
     );
   }

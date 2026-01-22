@@ -1,0 +1,26 @@
+{
+    "sourceFile": "lib/models/watchlist.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 2,
+            "patches": [
+                {
+                    "date": 1769104293147,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1769104990196,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -48,5 +48,12 @@\n       _entries[index] = entry;\r\n       notifyListeners();\r\n     }\r\n   }\r\n+\r\n+  /// Ersetzt alle Einträge in der Watchlist.\r\n+  void replaceAll(List<WatchlistEntry> entries) {\r\n+    _entries.clear();\r\n+    _entries.addAll(entries);\r\n+    notifyListeners();\r\n+  }\r\n }\r\n"
+                },
+                {
+                    "date": 1769105573498,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -9,8 +9,9 @@\n \r\n class WatchlistEntry {\r\n   final String animeId;\r\n   final String title;\r\n+  final String? imageUrl;\r\n   int episodesWatched;\r\n   final int totalEpisodes;\r\n   WatchStatus status;\r\n   String? note;\r\n@@ -18,8 +19,9 @@\n \r\n   WatchlistEntry({\r\n     required this.animeId,\r\n     required this.title,\r\n+    this.imageUrl,\r\n     required this.episodesWatched,\r\n     required this.totalEpisodes,\r\n     this.status = WatchStatus.watching,\r\n     this.note,\r\n"
+                }
+            ],
+            "date": 1769104293147,
+            "name": "Commit-0",
+            "content": "import 'package:flutter/foundation.dart';\r\n\r\nenum WatchStatus {\r\n  watching,\r\n  completed,\r\n  paused,\r\n  dropped,\r\n}\r\n\r\nclass WatchlistEntry {\r\n  final String animeId;\r\n  final String title;\r\n  int episodesWatched;\r\n  final int totalEpisodes;\r\n  WatchStatus status;\r\n  String? note;\r\n  double? rating;\r\n\r\n  WatchlistEntry({\r\n    required this.animeId,\r\n    required this.title,\r\n    required this.episodesWatched,\r\n    required this.totalEpisodes,\r\n    this.status = WatchStatus.watching,\r\n    this.note,\r\n    this.rating,\r\n  });\r\n}\r\n\r\nclass Watchlist extends ChangeNotifier {\r\n  final List<WatchlistEntry> _entries = [];\r\n\r\n  List<WatchlistEntry> get entries => List.unmodifiable(_entries);\r\n\r\n  void addEntry(WatchlistEntry entry) {\r\n    _entries.add(entry);\r\n    notifyListeners();\r\n  }\r\n\r\n  void removeEntry(String animeId) {\r\n    _entries.removeWhere((e) => e.animeId == animeId);\r\n    notifyListeners();\r\n  }\r\n\r\n  void updateEntry(WatchlistEntry entry) {\r\n    final index = _entries.indexWhere((e) => e.animeId == entry.animeId);\r\n    if (index != -1) {\r\n      _entries[index] = entry;\r\n      notifyListeners();\r\n    }\r\n  }\r\n}\r\n"
+        }
+    ]
+}

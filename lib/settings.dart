@@ -1187,7 +1187,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.5.8\nBilder werden von Kitsu.io geladen'),
+      subtitle: Text('Version 0.8.0\nBilder werden von MyAnimeList.net geladen'),
       isThreeLine: true,
     );
   }
