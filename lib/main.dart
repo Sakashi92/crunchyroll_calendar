@@ -22,15 +22,11 @@ import 'models/notification_log.dart';
 import 'settings.dart';
 import 'pages/favorites_page.dart';
 import 'pages/watchlist_page.dart';
-import 'pages/search_page.dart' as search_page;
+//import 'pages/search_page.dart' as search_page;
 import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'widgets/anime_details_dialog.dart';
-import 'pages/watchlist_page.dart';
-import 'pages/search_page.dart';
 import 'utils/favorites_notifier.dart';
-import 'models/watchlist.dart';
-import 'services/watchlist_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -1805,6 +1801,10 @@ class _ReleaseCardState extends State<_ReleaseCard> {
 
     // Initialize watchlist status if a service was provided
     _initWatchlistStatus();
+    // Listen to watchlist changes so the card updates immediately
+    if (widget.watchlistService != null) {
+      widget.watchlistService!.watchlist.addListener(_onWatchlistChanged);
+    }
   }
 
   Future<void> _initWatchlistStatus() async {
@@ -1825,7 +1825,25 @@ class _ReleaseCardState extends State<_ReleaseCard> {
   @override
   void dispose() {
     favoritesChangeNotifier.removeListener(_onFavoritesChanged);
+    if (widget.watchlistService != null) {
+      widget.watchlistService!.watchlist.removeListener(_onWatchlistChanged);
+    }
     super.dispose();
+  }
+
+  void _onWatchlistChanged() {
+    if (widget.watchlistService == null) return;
+    try {
+      final exists = widget.watchlistService!.watchlist.entries
+          .any((e) => e.animeId == widget.release.seriesUrl);
+      if (mounted) {
+        setState(() {
+          _isInWatchlist = exists;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error handling watchlist change: $e');
+    }
   }
 
   void _onFavoritesChanged() {
@@ -2033,7 +2051,8 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                         ),
                 ),
                 // Watchlist-Button (oben links, neben Favorit)
-                if (widget.watchlistService != null)
+                // Hidden when the anime is already in the watchlist
+                if (widget.watchlistService != null && !_isInWatchlist)
                   Positioned(
                     top: 8,
                     left: 56,
@@ -2100,7 +2119,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
                   ),
                 if (widget.release.isPremiere)
                   Positioned(
-                    top: 8,
+                    bottom: 8,
                     right: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(
@@ -2594,11 +2613,11 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
                         ),
                       ),
                     ),
-                    // Premiere Badge (Rechts neben Favorit Button, wenn vorhanden)
+                    // Premiere Badge — position bottom-right of the cover
                     if (release.isPremiere)
                       Positioned(
-                        top: 16,
-                        left: 66,
+                        bottom: 8,
+                        right: 8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,

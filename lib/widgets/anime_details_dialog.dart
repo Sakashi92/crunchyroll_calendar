@@ -16,6 +16,9 @@ import '../models/watchlist.dart';
 class AnimeDetailsDialog extends StatefulWidget {
   final AnimeRelease release;
   final CrunchyrollService crunchyrollService;
+  final int? totalEpisodes;
+  final bool showEpisodeBadge;
+  final bool showTimeBadge;
   final VoidCallback? onFavoriteRemoved;
   final void Function(AnimeRelease release)? onAddToWatchlist;
   final WatchlistService? watchlistService;
@@ -24,6 +27,9 @@ class AnimeDetailsDialog extends StatefulWidget {
     super.key,
     required this.release,
     required this.crunchyrollService,
+    this.totalEpisodes,
+    this.showEpisodeBadge = true,
+    this.showTimeBadge = true,
     this.onFavoriteRemoved,
     this.onAddToWatchlist,
     this.watchlistService,
@@ -54,7 +60,12 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     _favoritesRepository = FavoritesRepository();
     _loadDescription();
     _checkIfFavorite();
-    _prefetchKnownMaxEpisode();
+    // If caller provided a total episode count (e.g., from Watchlist), use it immediately
+    if (widget.totalEpisodes != null) {
+      _knownMaxEpisode = widget.totalEpisodes;
+    } else {
+      _prefetchKnownMaxEpisode();
+    }
     _updateWatchlistState();
   }
 
@@ -214,17 +225,34 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
 
   Future<void> _openCrunchyrollEpisode() async {
     try {
-      final Uri url = Uri.parse(widget.release.episodeUrl);
+      // Prefer episode URL, fall back to series URL when episode URL is empty
+      String? urlString = (widget.release.episodeUrl != null && widget.release.episodeUrl!.isNotEmpty)
+          ? widget.release.episodeUrl
+          : (widget.release.seriesUrl.isNotEmpty ? widget.release.seriesUrl : null);
+
+      if (urlString == null || urlString.isEmpty) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Keine URL verfügbar')));
+        return;
+      }
+
+      final Uri? url = Uri.tryParse(urlString);
+      if (url == null) {
+        if (kDebugMode) print('Invalid URL: $urlString');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ungültige URL')));
+        return;
+      }
+
       if (await canLaunchUrl(url)) {
-        await launchUrl(url, mode: LaunchMode.externalApplication);
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
+        final launched = await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (!launched && kDebugMode) print('launchUrl returned false for $url');
+        if (mounted) Navigator.of(context).pop();
       } else {
         if (kDebugMode) print('Cannot launch $url');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('URL kann nicht geöffnet werden')));
       }
     } catch (e) {
       if (kDebugMode) print('Error opening URL: $e');
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Fehler beim Öffnen der URL')));
     }
   }
 
@@ -381,8 +409,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                     ),
                     if (release.isPremiere)
                       Positioned(
-                        top: 16,
-                        left: 66,
+                        bottom: 8,
+                        right: 8,
                         child: Container(
                           padding: const EdgeInsets.symmetric(
                             horizontal: 10,
@@ -422,53 +450,57 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       const SizedBox(height: 10),
                       Row(
                         children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              release.episodeInfo,
-                              style: TextStyle(
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
+                          if (widget.showEpisodeBadge) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Text(
+                                '${release.episodeInfo}${_knownMaxEpisode != null ? ' / ${_knownMaxEpisode}' : ''}',
+                                style: TextStyle(
+                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primaryContainer,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.access_time,
-                                  size: 14,
-                                  color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                ),
-                                const SizedBox(width: 4),
-                                Text(
-                                  release.timeString,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
+                            const SizedBox(width: 8),
+                          ],
+
+                          if (widget.showTimeBadge)
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primaryContainer,
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.access_time,
+                                    size: 14,
                                     color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                    fontSize: 12,
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    release.timeString,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 16),

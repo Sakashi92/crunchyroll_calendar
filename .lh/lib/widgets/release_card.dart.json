@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 5,
+            "activePatchIndex": 6,
             "patches": [
                 {
                     "date": 1769032874874,
@@ -28,6 +28,10 @@
                 {
                     "date": 1769107946863,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -188,9 +188,9 @@\n                   left: 8,\r\n                   child: _isInitialized\r\n                       ? CircleAvatar(\r\n                           backgroundColor: Colors.black54,\r\n-                          radius: 5,\r\n+                          radius: 20,\r\n                           child: IconButton(\r\n                             icon: Icon(\r\n                               _isFavorite ? Icons.favorite : Icons.favorite_border,\r\n                               color: _isFavorite ? Colors.red : Colors.white,\r\n"
+                },
+                {
+                    "date": 1769111385703,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -214,9 +214,9 @@\n                         ),\r\n                 ),\r\n                 if (widget.release.isPremiere)\r\n                   Positioned(\r\n-                    top: 8,\r\n+                    bottom: 8,\r\n                     right: 8,\r\n                     child: Container(\r\n                       padding: const EdgeInsets.symmetric(\r\n                         horizontal: 12,\r\n"
                 }
             ],
             "date": 1769032874874,

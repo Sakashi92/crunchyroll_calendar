@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../models/anime_release.dart';
+import '../services/crunchyroll_service.dart';
+import '../widgets/anime_details_dialog.dart';
 import '../models/watchlist.dart';
 import '../services/watchlist_service.dart';
 
@@ -14,12 +17,60 @@ class WatchlistPage extends StatefulWidget {
 class _WatchlistPageState extends State<WatchlistPage> {
   late Watchlist watchlist;
 
+  Future<int?> _promptForEpisodeNumber(BuildContext ctx, String title, int initial) async {
+    final controller = TextEditingController(text: initial.toString());
+    return await showDialog<int?>(
+      context: ctx,
+      builder: (dCtx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(labelText: 'Folgenanzahl'),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dCtx, null), child: Text('Abbrechen')),
+          ElevatedButton(onPressed: () {
+            final v = int.tryParse(controller.text.trim());
+            Navigator.pop(dCtx, v ?? initial);
+          }, child: Text('OK')),
+        ],
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     watchlist = widget.service.watchlist;
     widget.service.loadWatchlist();
     watchlist.addListener(_onWatchlistChanged);
+  }
+
+  void _openDetailsDialog(WatchlistEntry entry) {
+    final release = AnimeRelease(
+      title: entry.title,
+      episodeNumber: entry.episodesWatched.toString(),
+      episodeTitle: '',
+      releaseTime: DateTime.now(),
+      imageUrl: entry.imageUrl,
+      description: null,
+      seriesUrl: entry.animeId,
+      episodeUrl: '',
+      isPremiere: false,
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AnimeDetailsDialog(
+        release: release,
+        crunchyrollService: CrunchyrollService(),
+        watchlistService: widget.service,
+        totalEpisodes: entry.totalEpisodes,
+        showTimeBadge: false,
+      ),
+    );
   }
 
   @override
@@ -51,7 +102,16 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 children: [
                   Expanded(child: Text('Gesehene Folgen')),
                   IconButton(onPressed: () { if (episodes>0) setState(() => episodes--); }, icon: Icon(Icons.remove_circle_outline)),
-                  Text('$episodes', style: TextStyle(fontSize: 16)),
+                  InkWell(
+                    onTap: () async {
+                      final v = await _promptForEpisodeNumber(context, 'Gesehene Folgen eingeben', episodes);
+                      if (v != null) setState(() => episodes = v);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      child: Text('$episodes', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
                   IconButton(onPressed: () => setState(() => episodes++), icon: Icon(Icons.add_circle_outline)),
                 ],
               ),
@@ -59,7 +119,16 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 children: [
                   Expanded(child: Text('Gesamtfolgen')),
                   IconButton(onPressed: () { if (total>0) setState(() => total--); }, icon: Icon(Icons.remove_circle_outline)),
-                  Text('$total', style: TextStyle(fontSize: 16)),
+                  InkWell(
+                    onTap: () async {
+                      final v = await _promptForEpisodeNumber(context, 'Gesamtfolgen eingeben', total);
+                      if (v != null) setState(() => total = v);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      child: Text('$total', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
                   IconButton(onPressed: () => setState(() => total++), icon: Icon(Icons.add_circle_outline)),
                 ],
               ),
@@ -139,18 +208,24 @@ class _WatchlistPageState extends State<WatchlistPage> {
             clipBehavior: Clip.antiAlias,
             child: Row(
               children: [
-                // Cover image
+                // Cover image (tappable to open details)
                 if (entry.imageUrl != null && entry.imageUrl!.isNotEmpty)
-                  CachedNetworkImage(
-                    imageUrl: entry.imageUrl!,
-                    width: 96,
-                    height: 120,
-                    fit: BoxFit.cover,
-                    placeholder: (context, url) => Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.image, color: Colors.grey.shade400)),
-                    errorWidget: (context, url, error) => Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.broken_image, color: Colors.grey.shade400)),
+                  InkWell(
+                    onTap: () => _openDetailsDialog(entry),
+                    child: CachedNetworkImage(
+                      imageUrl: entry.imageUrl!,
+                      width: 96,
+                      height: 120,
+                      fit: BoxFit.cover,
+                      placeholder: (context, url) => Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.image, color: Colors.grey.shade400)),
+                      errorWidget: (context, url, error) => Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.broken_image, color: Colors.grey.shade400)),
+                    ),
                   )
                 else
-                  Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.image_not_supported, color: Colors.grey.shade400)),
+                  InkWell(
+                    onTap: () => _openDetailsDialog(entry),
+                    child: Container(width: 96, height: 120, color: Colors.grey.shade200, child: Icon(Icons.image_not_supported, color: Colors.grey.shade400)),
+                  ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Padding(
@@ -173,8 +248,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           children: [
                             TextButton(
                               onPressed: () async {
-                                // Edit dialog with stepper for episodes
+                                // Edit dialog with stepper for episodes and manual total input
                                 int episodes = entry.episodesWatched;
+                                int total = entry.totalEpisodes;
                                 final noteController = TextEditingController(text: entry.note ?? '');
                                 WatchStatus status = entry.status;
                                 await showDialog(
@@ -189,8 +265,34 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                             children: [
                                               Expanded(child: Text('Gesehene Folgen')),
                                               IconButton(onPressed: () { if (episodes>0) setState(() => episodes--); }, icon: Icon(Icons.remove_circle_outline)),
-                                              Text('$episodes', style: TextStyle(fontSize: 16)),
+                                              InkWell(
+                                                onTap: () async {
+                                                  final v = await _promptForEpisodeNumber(ctx, 'Gesehene Folgen eingeben', episodes);
+                                                  if (v != null) setState(() => episodes = v);
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                                  child: Text('$episodes', style: TextStyle(fontSize: 16)),
+                                                ),
+                                              ),
                                               IconButton(onPressed: () => setState(() => episodes++), icon: Icon(Icons.add_circle_outline)),
+                                            ],
+                                          ),
+                                          Row(
+                                            children: [
+                                              Expanded(child: Text('Gesamtfolgen')),
+                                              IconButton(onPressed: () { if (total>0) setState(() => total--); }, icon: Icon(Icons.remove_circle_outline)),
+                                              InkWell(
+                                                onTap: () async {
+                                                  final v = await _promptForEpisodeNumber(ctx, 'Gesamtfolgen eingeben', total);
+                                                  if (v != null) setState(() => total = v);
+                                                },
+                                                child: Padding(
+                                                  padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                                  child: Text('$total', style: TextStyle(fontSize: 16)),
+                                                ),
+                                              ),
+                                              IconButton(onPressed: () => setState(() => total++), icon: Icon(Icons.add_circle_outline)),
                                             ],
                                           ),
                                           DropdownButton<WatchStatus>(
@@ -205,10 +307,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Abbrechen')),
                                         ElevatedButton(
                                           onPressed: () {
-                                            entry.episodesWatched = episodes;
-                                            entry.status = status;
-                                            entry.note = noteController.text;
-                                            watchlist.updateEntry(entry);
+                                            final newEntry = WatchlistEntry(
+                                              animeId: entry.animeId,
+                                              title: entry.title,
+                                              imageUrl: entry.imageUrl,
+                                              episodesWatched: episodes,
+                                              totalEpisodes: total,
+                                              status: status,
+                                              note: noteController.text,
+                                              rating: entry.rating,
+                                            );
+                                            watchlist.updateEntry(newEntry);
                                             widget.service.saveWatchlist();
                                             Navigator.pop(ctx);
                                           },

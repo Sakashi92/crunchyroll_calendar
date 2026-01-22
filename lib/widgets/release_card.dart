@@ -215,7 +215,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                 ),
                 if (widget.release.isPremiere)
                   Positioned(
-                    top: 8,
+                    bottom: 8,
                     right: 8,
                     child: Container(
                       padding: const EdgeInsets.symmetric(

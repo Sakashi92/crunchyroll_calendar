@@ -392,13 +392,39 @@ class _FavoritesPageState extends State<FavoritesPage> {
       imageUrl: anime.imageUrl,
     );
 
+    // If this favorite exists in the watchlist, prefill episode info and total
+    int? totalEpisodes;
+    AnimeRelease dialogRelease = release;
+    if (_watchlist != null && anime.seriesUrl != null) {
+      final matches = _watchlist!.entries.where((e) => e.animeId == anime.seriesUrl).toList();
+      if (matches.isNotEmpty) {
+        final match = matches.first;
+        // build a new AnimeRelease with episodeNumber set to watched count
+        dialogRelease = AnimeRelease(
+          title: release.title,
+          episodeTitle: release.episodeTitle,
+          episodeNumber: match.episodesWatched.toString(),
+          episodeUrl: release.episodeUrl,
+          releaseTime: release.releaseTime,
+          seriesUrl: release.seriesUrl,
+          isPremiere: release.isPremiere,
+          imageUrl: release.imageUrl,
+          description: release.description,
+        );
+        totalEpisodes = match.totalEpisodes;
+      }
+    }
+
     showDialog(
       context: context,
       builder: (BuildContext dialogContext) {
         return AnimeDetailsDialog(
-          release: release,
+          release: dialogRelease,
           crunchyrollService: _crunchyrollService,
           watchlistService: widget.watchlistService,
+          totalEpisodes: totalEpisodes,
+          showEpisodeBadge: false,
+          showTimeBadge: false,
           onFavoriteRemoved: () {
             favoritesChangeNotifier.value++;
             _loadFavorites();
