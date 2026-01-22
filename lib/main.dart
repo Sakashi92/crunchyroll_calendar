@@ -321,6 +321,25 @@ class _MainAppState extends State<MainApp> {
     super.initState();
     watchlistService = WatchlistService(watchlist);
     _loadAccentColor();
+    // Versuche einmalig Migration von Favoriten-Notification-Settings in die Watchlist
+    _runWatchlistMigration();
+  }
+
+  void _runWatchlistMigration() async {
+    try {
+      final migrated = await watchlistService.migrateNotificationSettingsFromFavorites();
+      if (migrated > 0) {
+        if (kDebugMode) print('🔁 Migrated $migrated notification settings from favorites to watchlist');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('🔁 $migrated Favoriten-Benachrichtigungen in Watchlist übernommen')),
+          );
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Migration error: $e');
+    }
   }
 
   Future<void> _loadAccentColor() async {

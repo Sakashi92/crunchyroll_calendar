@@ -14,8 +14,10 @@ class WatchlistEntry {
   int episodesWatched;
   final int totalEpisodes;
   WatchStatus status;
+  bool notificationsEnabled;
   String? note;
   double? rating;
+  DateTime? addedAt;
 
   WatchlistEntry({
     required this.animeId,
@@ -24,8 +26,10 @@ class WatchlistEntry {
     required this.episodesWatched,
     required this.totalEpisodes,
     this.status = WatchStatus.watching,
+    this.notificationsEnabled = false,
     this.note,
     this.rating,
+    this.addedAt,
   });
 }
 

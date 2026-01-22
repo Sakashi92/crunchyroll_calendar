@@ -154,7 +154,7 @@ class NotificationService {
         iOS: iosDetails,
       );
       
-      final int notifId = id ?? DateTime.now().millisecondsSinceEpoch;
+      final int notifId = id ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
       if (kDebugMode) print('📲 [NOTIF] Showing notification id=$notifId title=$title');
       await _notificationsPlugin.show(
         notifId,
@@ -220,7 +220,7 @@ class NotificationService {
         iOS: iosDetails,
       );
       
-      final int schedId = id ?? DateTime.now().millisecondsSinceEpoch;
+      final int schedId = id ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
       if (kDebugMode) print('📲 [NOTIF] Scheduling notification id=$schedId at=${scheduledTime.toIso8601String()} title=$title');
       await _notificationsPlugin.zonedSchedule(
         schedId,

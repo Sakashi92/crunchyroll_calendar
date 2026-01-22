@@ -14,11 +14,11 @@ import '../models/notification_log.dart';
 int _notificationIdFromHash(String contentHash) {
   try {
     final hex = contentHash.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
-    if (hex.length < 8) return DateTime.now().millisecondsSinceEpoch;
+    if (hex.length < 8) return DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
     final sub = hex.substring(0, 8);
     return int.parse(sub, radix: 16) & 0x7fffffff;
   } catch (_) {
-    return DateTime.now().millisecondsSinceEpoch;
+    return DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
   }
 }
 
@@ -277,7 +277,6 @@ Future<bool> _executeBackgroundScraper() async {
     
     // 1. Initialisiere Services
     if (kDebugMode) print('🔧 [BACKGROUND-SCRAPER] Initializing services...');
-    final favoritesRepo = FavoritesRepository();
     final notificationRepo = NotificationRepository();
     final crunchyrollService = CrunchyrollService();
     final notificationService = NotificationService();
@@ -313,56 +312,54 @@ Future<bool> _executeBackgroundScraper() async {
       return true;
     }
     
-    // 3. Hole alle Favoriten
-    if (kDebugMode) print('📚 [BACKGROUND-SCRAPER] Loading favorites from database...');
-    final favorites = await favoritesRepo.getAllFavorites();
-    
-    if (favorites.isEmpty) {
-      if (kDebugMode) print('ℹ️  [BACKGROUND-SCRAPER] No favorites configured - cache updated, done');
-      return true;
-    }
-    
-    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Loaded ${favorites.length} total favorites');
+    // 3. Hole Watchlist-Einträge mit aktivierten Notifications (nur Watchlist)
+    if (kDebugMode) print('📚 [BACKGROUND-SCRAPER] Loading watchlist from prefs...');
+    final watchlist = Watchlist();
+    final watchlistService = WatchlistService(watchlist);
+    await watchlistService.loadWatchlist();
 
-    // Filtere nur Favoriten mit aktivierten Benachrichtigungen
-    final enabledFavorites = favorites.where((f) => f.notificationsEnabled).toList();
-    if (enabledFavorites.isEmpty) {
-      if (kDebugMode) print('🔕 [BACKGROUND-SCRAPER] All favorites muted - cache updated, skipping notifications');
+    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Loaded ${watchlist.entries.length} watchlist entries');
+
+    // Sammle alle aktivierten Ziele (nur Watchlist)
+    final enabledWatchlist = watchlist.entries.where((e) => e.notificationsEnabled).toList();
+
+    if (enabledWatchlist.isEmpty) {
+      if (kDebugMode) print('🔕 [BACKGROUND-SCRAPER] No enabled watchlist entries - skipping notifications');
       return true;
     }
-    
-    if (kDebugMode) print('🔔 [BACKGROUND-SCRAPER] Checking ${enabledFavorites.length} favorites with notifications on');
-    
+
+    if (kDebugMode) print('🔔 [BACKGROUND-SCRAPER] Checking ${enabledWatchlist.length} watchlist items with notifications on');
+
     // WICHTIG: Filtere nur Releases von HEUTE (nicht aus der Vergangenheit!)
     final todayStart = DateTime(now.year, now.month, now.day);
     final todayEnd = todayStart.add(const Duration(days: 1));
-    
+
     final todaysReleases = allReleases.where((release) {
-      return release.releaseTime.isAfter(todayStart) && 
-             release.releaseTime.isBefore(todayEnd);
+      return release.releaseTime.isAfter(todayStart) && release.releaseTime.isBefore(todayEnd);
     }).toList();
-    
+
     if (kDebugMode) print('📅 [BACKGROUND-SCRAPER] Releases from today only: ${todaysReleases.length}');
-    
+
     if (todaysReleases.isEmpty) {
       if (kDebugMode) print('ℹ️  [BACKGROUND-SCRAPER] Keine Releases für heute gefunden - cache updated, done');
       return true;
     }
-    
-    // 4. Filtere nach Favoriten
-    if (kDebugMode) print('🔍 [BACKGROUND-SCRAPER] Filtering releases by favorites...');
-    final favoritesTitles = enabledFavorites.map((f) => f.title).toList();
+
+    // 4. Filtere nach Favoriten/Watchlist-Titeln
+    if (kDebugMode) print('🔍 [BACKGROUND-SCRAPER] Filtering releases by watchlist...');
+    final watchlistTitles = enabledWatchlist.map((w) => w.title.toLowerCase()).toList();
+
     final relevantReleases = ReleaseComparator.filterByFavorites(
-      releases: todaysReleases,  // Nur heutige Releases!
-      favorites: favoritesTitles,
+      releases: todaysReleases,
+      favorites: watchlistTitles,
     );
-    
+
     if (relevantReleases.isEmpty) {
-      if (kDebugMode) print('✓ [BACKGROUND-SCRAPER] No new releases for favorites today - cache updated, done');
+      if (kDebugMode) print('✓ [BACKGROUND-SCRAPER] No new releases for watchlist today - cache updated, done');
       return true;
     }
-    
-    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Found ${relevantReleases.length} releases for favorites today');
+
+    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Found ${relevantReleases.length} releases for watchlist today');
     
     // 5. Prüfe auf bereits gesendete Benachrichtigungen
     final uniqueReleases = ReleaseComparator.sortByRelevance(relevantReleases);
@@ -454,16 +451,11 @@ Future<bool> _executeBackgroundScraper() async {
       }
     }
     
-    // 7. Aktualisiere lastChecked für alle Favoriten
-    for (final favorite in enabledFavorites) {
-      await favoritesRepo.updateLastChecked(favorite.title);
-    }
-    
     final duration = DateTime.now().difference(startTime);
-    
+
     if (kDebugMode) {
       print('✅ [BACKGROUND-SCRAPER] Completed in ${duration.inSeconds}s');
-      print('   - Favorites checked: ${favorites.length}');
+      print('   - Watchlist entries checked: ${watchlist.entries.length}');
       print('   - Releases found: ${uniqueReleases.length}');
       print('   - Notifications sent: $notificationCount');
       print('   - Duplicates skipped: $skippedDuplicates');
@@ -525,18 +517,23 @@ Future<bool> _executeFavoritesTestNotification() async {
       return false;
     }
     
-    // Lade alle Favoriten
+    // Lade alle Favoriten + Watchlist und filtere aktivierte Benachrichtigungen
     if (kDebugMode) print('📚 [BACKGROUND] Loading favorites from database...');
     final allFavorites = await favoritesRepo.getAllFavorites();
     if (kDebugMode) print('📚 [BACKGROUND] Loaded ${allFavorites.length} favorites');
-    
-    // Filtere nur Favoriten mit aktivierter Benachrichtigung
-    final enabledFavorites = 
-        allFavorites.where((f) => f.notificationsEnabled).toList();
-    if (kDebugMode) print('🔔 [BACKGROUND] Enabled favorites: ${enabledFavorites.length}');
-    
-    if (enabledFavorites.isEmpty) {
-      if (kDebugMode) print('ℹ️  [BACKGROUND] Keine Favoriten mit aktivierten Benachrichtigungen');
+
+    if (kDebugMode) print('📚 [BACKGROUND] Loading watchlist from prefs...');
+    final watchlist = Watchlist();
+    final watchlistService = WatchlistService(watchlist);
+    await watchlistService.loadWatchlist();
+    if (kDebugMode) print('📚 [BACKGROUND] Loaded ${watchlist.entries.length} watchlist entries');
+
+    // Filtere nur Favoriten / Watchlist-Einträge mit aktivierter Benachrichtigung
+    final enabledFavorites = allFavorites.where((f) => f.notificationsEnabled).toList();
+    final enabledWatchlist = watchlist.entries.where((e) => e.notificationsEnabled).toList();
+
+    if (enabledFavorites.isEmpty && enabledWatchlist.isEmpty) {
+      if (kDebugMode) print('ℹ️  [BACKGROUND] Keine aktivierten Favoriten/Watchlist-Einträge');
       return true;
     }
     
@@ -562,10 +559,14 @@ Future<bool> _executeFavoritesTestNotification() async {
       return true;
     }
     
-    // Finde Favoriten mit Releases von HEUTE
-    final favoritesWithTodaysReleases = enabledFavorites.where((fav) {
-      return todaysReleases.any((release) =>
-          release.title.toLowerCase() == fav.title.toLowerCase());
+    // Finde Favoriten/Watchlist-Einträge mit Releases von HEUTE
+    final enabledTitles = {
+      ...enabledFavorites.map((f) => f.title.toLowerCase()),
+      ...enabledWatchlist.map((w) => w.title.toLowerCase()),
+    };
+
+    final favoritesWithTodaysReleases = enabledTitles.where((t) {
+      return todaysReleases.any((release) => release.title.toLowerCase() == t);
     }).toList();
     
     if (favoritesWithTodaysReleases.isEmpty) {
@@ -573,16 +574,16 @@ Future<bool> _executeFavoritesTestNotification() async {
       return true;
     }
     
-    if (kDebugMode) print('📤 [BACKGROUND] Sending notifications for ${favoritesWithTodaysReleases.length} favorites with releases today');
+    if (kDebugMode) print('📤 [BACKGROUND] Sending notifications for ${favoritesWithTodaysReleases.length} enabled entries with releases today');
     
     // Sende Benachrichtigungen für jeden Favoriten mit Release heute
     final notificationRepo = NotificationRepository();
     for (int i = 0; i < favoritesWithTodaysReleases.length; i++) {
       final favorite = favoritesWithTodaysReleases[i];
 
-      // Finde die passenden Releases für diesen Favoriten
-      final matchingReleases = todaysReleases.where((release) =>
-          release.title.toLowerCase() == favorite.title.toLowerCase()).toList();
+        // Finde die passenden Releases für diesen Favoriten/Eintrag (favorite ist hier ein String-Titel)
+        final matchingReleases = todaysReleases.where((release) =>
+          release.title.toLowerCase() == (favorite as String)).toList();
 
       for (final release in matchingReleases) {
         // Erstelle NotificationLog und prüfe Dedupe anhand des Content-Hash
