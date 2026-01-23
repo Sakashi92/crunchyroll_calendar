@@ -1,0 +1,18 @@
+{
+    "sourceFile": "lib/services/anilist_cache.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 0,
+            "patches": [
+                {
+                    "date": 1769174439386,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                }
+            ],
+            "date": 1769174439386,
+            "name": "Commit-0",
+            "content": "import 'package:shared_preferences/shared_preferences.dart';\r\nimport 'dart:convert';\r\nimport '../models/anime_metadata.dart';\r\n\r\nclass AnilistCache {\r\n  static const String _storageKey = 'anilist_metadata_cache_v1';\r\n\r\n  Future<AnimeMetadata?> get(String key) async {\r\n    try {\r\n      final prefs = await SharedPreferences.getInstance();\r\n      final raw = prefs.getString(_storageKey);\r\n      if (raw == null) return null;\r\n      final Map<String, dynamic> map = json.decode(raw) as Map<String, dynamic>;\r\n      if (!map.containsKey(key)) return null;\r\n      final val = map[key];\r\n      if (val is Map) {\r\n        return AnimeMetadata.fromJson(Map<String, dynamic>.from(val));\r\n      }\r\n      if (val is String) {\r\n        final decoded = json.decode(val);\r\n        return AnimeMetadata.fromJson(Map<String, dynamic>.from(decoded));\r\n      }\r\n      return null;\r\n    } catch (e) {\r\n      return null;\r\n    }\r\n  }\r\n\r\n  Future<void> save(String key, AnimeMetadata meta) async {\r\n    try {\r\n      final prefs = await SharedPreferences.getInstance();\r\n      final raw = prefs.getString(_storageKey);\r\n      final Map<String, dynamic> map = raw != null ? json.decode(raw) as Map<String, dynamic> : <String, dynamic>{};\r\n      map[key] = meta.toJson();\r\n      await prefs.setString(_storageKey, json.encode(map));\r\n    } catch (e) {\r\n      // ignore cache failures\r\n    }\r\n  }\r\n\r\n  Future<void> clear() async {\r\n    final prefs = await SharedPreferences.getInstance();\r\n    await prefs.remove(_storageKey);\r\n  }\r\n}\r\n"
+        }
+    ]
+}

@@ -22,6 +22,7 @@ class AppSettings {
   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
   static const String _searchHistoryKey = 'search_history';
   static const String _watchlistSortModeKey = 'watchlist_sort_mode';
+    static const String _episodeProviderKey = 'episode_provider';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -219,6 +220,18 @@ class AppSettings {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_watchlistSortModeKey, index);
   }
+
+  /// Lädt den aktuell gewählten Episode-Provider (z.B. 'crunchyroll' oder 'anilist')
+  static Future<String> getEpisodeProviderName() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_episodeProviderKey) ?? 'crunchyroll';
+  }
+
+  /// Speichert den Episode-Provider Namen
+  static Future<void> setEpisodeProviderName(String name) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_episodeProviderKey, name);
+  }
 }
 
 /// Einstellungs-Seite
@@ -242,6 +255,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _autoMinimizeCalendar = true;
   double _autoMinimizeScrollThreshold = 200.0;
   bool _hideDuplicateReleases = true;
+  String _episodeProvider = 'crunchyroll';
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -261,6 +275,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final autoMinimizeCalendar = await AppSettings.getAutoMinimizeCalendar();
     final autoMinimizeScrollThreshold = await AppSettings.getAutoMinimizeScrollThreshold();
     final hideDuplicateReleases = await AppSettings.getHideDuplicateReleases();
+    final episodeProvider = await AppSettings.getEpisodeProviderName();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -273,9 +288,19 @@ class _SettingsPageState extends State<SettingsPage> {
       _autoMinimizeCalendar = autoMinimizeCalendar;
       _autoMinimizeScrollThreshold = autoMinimizeScrollThreshold;
       _hideDuplicateReleases = hideDuplicateReleases;
+      _episodeProvider = episodeProvider;
       _permissions = permissions;
       _isLoading = false;
     });
+  }
+
+  Future<void> _saveEpisodeProvider(String name) async {
+    await AppSettings.setEpisodeProviderName(name);
+    setState(() {
+      _episodeProvider = name;
+    });
+    widget.onSettingsChanged?.call();
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Datenanbieter gesetzt: $name'), duration: const Duration(seconds: 2)));
   }
 
   Future<void> _saveImageQuality(String quality) async {
@@ -614,6 +639,24 @@ class _SettingsPageState extends State<SettingsPage> {
               subtitle: const Text('Versteckt doppelte Einträge (gleiche Folge/URL) im Kalender'),
               value: _hideDuplicateReleases,
               onChanged: (v) => _saveHideDuplicateReleases(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.cloud),
+              title: const Text('Datenanbieter'),
+              subtitle: Text('Aktuell: ${_episodeProvider}'),
+              trailing: DropdownButton<String>(
+                value: _episodeProvider,
+                items: const [
+                  DropdownMenuItem(value: 'crunchyroll', child: Text('Crunchyroll (Scraper)')),
+                  DropdownMenuItem(value: 'anilist', child: Text('Anilist.co (GraphQL)')),
+                ],
+                onChanged: (v) {
+                  if (v != null) _saveEpisodeProvider(v);
+                },
+              ),
             ),
           ),
           Padding(

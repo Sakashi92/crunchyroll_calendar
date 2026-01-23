@@ -5,6 +5,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
 import '../models/anime_release.dart';
 import '../services/crunchyroll_service.dart';
+import '../services/episode_provider_factory.dart';
+import '../models/anime_metadata.dart';
 import '../settings.dart';
  
 import '../services/watchlist_service.dart';
@@ -48,6 +50,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   bool _isInWatchlist = false;
   bool _isProcessingWatchlist = false;
   int? _knownMaxEpisode;
+  bool _hideTotalForAnilist = false;
 
   @override
   void initState() {
@@ -63,6 +66,10 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     if (widget.watchlistService != null) {
       widget.watchlistService!.watchlist.addListener(_onWatchlistChanged);
     }
+    // Determine if AniList is selected to hide totals in badges
+    AppSettings.getEpisodeProviderName().then((name) {
+      if (mounted) setState(() { _hideTotalForAnilist = (name == 'anilist'); });
+    });
   }
 
   Future<void> _prefetchKnownMaxEpisode() async {
@@ -98,7 +105,29 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   // Favorite feature removed; no-op placeholder kept for API stability if needed.
 
   Future<void> _loadDescription() async {
-    final description = await widget.crunchyrollService.fetchDescription(widget.release);
+    // First, always get the Crunchyroll description (calendar source)
+    String? description = await widget.crunchyrollService.fetchDescription(widget.release);
+
+    // Next, attempt to enrich metadata from the selected provider (e.g., Anilist)
+    try {
+      final provider = await EpisodeProviderFactory.getProvider();
+      final meta = await provider.fetchSeriesMetadata(widget.release.seriesUrl, widget.release.title);
+      if (meta != null) {
+        // Apply metadata where available (prefer provider over Crunchyroll)
+        if (meta.imageUrl != null && meta.imageUrl!.isNotEmpty) {
+          widget.release.imageUrl = meta.imageUrl;
+        }
+        if (meta.description != null && meta.description!.isNotEmpty) {
+          description = meta.description;
+        }
+        if (meta.totalEpisodes != null) {
+          _knownMaxEpisode = meta.totalEpisodes;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error enriching metadata: $e');
+    }
+
     if (mounted) {
       setState(() {
         _descriptionOriginal = description;
@@ -393,7 +422,9 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: Text(
-                                '${release.episodeInfo}${_knownMaxEpisode != null ? ' / ${_knownMaxEpisode}' : ''}',
+                                _hideTotalForAnilist
+                                    ? '${release.episodeInfo}'
+                                    : '${release.episodeInfo}${_knownMaxEpisode != null ? ' / ${_knownMaxEpisode}' : ''}',
                                 style: TextStyle(
                                   color: Theme.of(context).colorScheme.onPrimaryContainer,
                                   fontWeight: FontWeight.bold,

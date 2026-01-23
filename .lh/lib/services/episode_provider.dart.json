@@ -1,0 +1,22 @@
+{
+    "sourceFile": "lib/services/episode_provider.dart",
+    "activeCommit": 0,
+    "commits": [
+        {
+            "activePatchIndex": 1,
+            "patches": [
+                {
+                    "date": 1769173839347,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n"
+                },
+                {
+                    "date": 1769174230595,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1,14 +1,17 @@\n import '../models/anime_release.dart';\r\n import '../services/watchlist_service.dart';\r\n import '../models/watchlist.dart';\r\n+import '../models/anime_metadata.dart';\r\n \r\n /// Abstrakte Schnittstelle für Episode-/Release-Provider.\r\n /// Implementierungen: `CrunchyrollService`, `AnilistService`, ...\r\n abstract class EpisodeProvider {\r\n   Future<void> loadCacheOnStartup();\r\n   Future<List<AnimeRelease>> getReleasesForWeek(DateTime startDate);\r\n   Future<List<AnimeRelease>> forceRefresh({DateTime? forMonth});\r\n   Future<int?> getMaxEpisodeForSeries(String? seriesUrl, String? title);\r\n+  /// Fetch richer metadata (cover, description, total episodes, site url)\r\n+  Future<AnimeMetadata?> fetchSeriesMetadata(String? seriesUrl, String? title);\r\n   Future<void> scheduleWatchlistEntryUpdate(WatchlistService watchlistService, WatchlistEntry entry);\r\n   Future<void> clearImageCache();\r\n }\r\n"
+                }
+            ],
+            "date": 1769173839347,
+            "name": "Commit-0",
+            "content": "import '../models/anime_release.dart';\r\nimport '../services/watchlist_service.dart';\r\nimport '../models/watchlist.dart';\r\n\r\n/// Abstrakte Schnittstelle für Episode-/Release-Provider.\r\n/// Implementierungen: `CrunchyrollService`, `AnilistService`, ...\r\nabstract class EpisodeProvider {\r\n  Future<void> loadCacheOnStartup();\r\n  Future<List<AnimeRelease>> getReleasesForWeek(DateTime startDate);\r\n  Future<List<AnimeRelease>> forceRefresh({DateTime? forMonth});\r\n  Future<int?> getMaxEpisodeForSeries(String? seriesUrl, String? title);\r\n  Future<void> scheduleWatchlistEntryUpdate(WatchlistService watchlistService, WatchlistEntry entry);\r\n  Future<void> clearImageCache();\r\n}\r\n"
+        }
+    ]
+}

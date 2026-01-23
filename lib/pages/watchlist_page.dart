@@ -137,6 +137,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
         watchlistService: widget.service,
         totalEpisodes: entry.totalEpisodes,
         showTimeBadge: false,
+        showEpisodeBadge: false,
       ),
     );
   }

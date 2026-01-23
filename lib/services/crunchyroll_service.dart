@@ -12,8 +12,10 @@ import '../repositories/notification_repository.dart';
 import '../models/notification_log.dart';
 import '../utils/episode_parser.dart';
 import '../models/watchlist.dart';
+import 'episode_provider.dart';
+import '../models/anime_metadata.dart';
 
-class CrunchyrollService {
+class CrunchyrollService implements EpisodeProvider {
   static const String calendarUrl = 'https://www.crunchyroll.com/de/simulcastcalendar?filter=premium';
   static const String _cacheKey = 'cached_anime_releases_v4'; // Kitsu images
   static const String _lastUpdateKey = 'last_update_time_v4';
@@ -736,6 +738,32 @@ class CrunchyrollService {
       return maxEp > 0 ? maxEp : null;
     } catch (e) {
       if (kDebugMode) print('❌ Error getting max episode for series: $e');
+      return null;
+    }
+  }
+
+  /// Provide metadata fallback from Crunchyroll cached releases.
+  Future<AnimeMetadata?> fetchSeriesMetadata(String? seriesUrl, String? title) async {
+    try {
+      // Try to find a cached release that matches
+      if (_cachedReleases.isEmpty) await _loadFromCache();
+      AnimeRelease? found;
+      if (seriesUrl != null) {
+        try { found = _cachedReleases.firstWhere((r) => r.seriesUrl != null && r.seriesUrl == seriesUrl); } catch (_) { found = null; }
+      }
+      if (found == null && title != null) {
+        final norm = (String s) => s.toLowerCase();
+        try { found = _cachedReleases.firstWhere((r) => norm(r.title).contains(norm(title!)) || norm(title!).contains(norm(r.title))); } catch (_) { found = null; }
+      }
+      if (found == null) return null;
+      return AnimeMetadata(
+        imageUrl: found.imageUrl,
+        description: null,
+        totalEpisodes: null,
+        siteUrl: found.seriesUrl,
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error in fetchSeriesMetadata (Crunchyroll fallback): $e');
       return null;
     }
   }
