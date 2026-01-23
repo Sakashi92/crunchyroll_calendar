@@ -15,6 +15,7 @@ class WatchlistEntry {
   final int totalEpisodes;
   WatchStatus status;
   bool notificationsEnabled;
+  bool autoSyncTotal;
   String? note;
   double? rating;
   DateTime? addedAt;
@@ -27,6 +28,7 @@ class WatchlistEntry {
     required this.totalEpisodes,
     this.status = WatchStatus.watching,
     this.notificationsEnabled = false,
+    this.autoSyncTotal = true,
     this.note,
     this.rating,
     this.addedAt,

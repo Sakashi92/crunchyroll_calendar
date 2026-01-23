@@ -628,7 +628,7 @@ class CrunchyrollService {
           }
         }
 
-        if (maxEp > entry.totalEpisodes) {
+        if (maxEp > entry.totalEpisodes && entry.autoSyncTotal) {
           // Create a new WatchlistEntry with the updated totalEpisodes (immutable field)
           final newEntry = WatchlistEntry(
             animeId: entry.animeId,
@@ -637,6 +637,8 @@ class CrunchyrollService {
             episodesWatched: entry.episodesWatched,
             totalEpisodes: maxEp,
             status: entry.status,
+            notificationsEnabled: entry.notificationsEnabled,
+            autoSyncTotal: entry.autoSyncTotal,
             note: entry.note,
             rating: entry.rating,
           );
@@ -784,7 +786,7 @@ class CrunchyrollService {
     Future.microtask(() async {
       try {
         final known = await getMaxEpisodeForSeries(entry.animeId, entry.title);
-        if (known != null && known > entry.totalEpisodes) {
+        if (known != null && known > entry.totalEpisodes && entry.autoSyncTotal) {
           final newEntry = WatchlistEntry(
             animeId: entry.animeId,
             title: entry.title,
@@ -792,6 +794,8 @@ class CrunchyrollService {
             episodesWatched: entry.episodesWatched,
             totalEpisodes: known,
             status: entry.status,
+            notificationsEnabled: entry.notificationsEnabled,
+            autoSyncTotal: entry.autoSyncTotal,
             note: entry.note,
             rating: entry.rating,
           );

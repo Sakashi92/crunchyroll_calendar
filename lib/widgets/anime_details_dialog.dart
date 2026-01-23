@@ -4,11 +4,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
 import '../models/anime_release.dart';
-import '../models/favorite_anime.dart';
-import '../repositories/favorites_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../settings.dart';
-import '../utils/favorites_notifier.dart';
+ 
 import '../services/watchlist_service.dart';
 import '../models/watchlist.dart';
 
@@ -19,7 +17,6 @@ class AnimeDetailsDialog extends StatefulWidget {
   final int? totalEpisodes;
   final bool showEpisodeBadge;
   final bool showTimeBadge;
-  final VoidCallback? onFavoriteRemoved;
   final void Function(AnimeRelease release)? onAddToWatchlist;
   final WatchlistService? watchlistService;
 
@@ -30,7 +27,6 @@ class AnimeDetailsDialog extends StatefulWidget {
     this.totalEpisodes,
     this.showEpisodeBadge = true,
     this.showTimeBadge = true,
-    this.onFavoriteRemoved,
     this.onAddToWatchlist,
     this.watchlistService,
   });
@@ -46,10 +42,9 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   bool _isTranslating = false;
   bool _showGerman = true;
   bool _autoTranslateEnabled = true;
-  bool _isFavorite = false;
-  bool _isLoadingFavorite = true;
+  
   final _translator = GoogleTranslator();
-  late final FavoritesRepository _favoritesRepository;
+  
   bool _isInWatchlist = false;
   bool _isProcessingWatchlist = false;
   int? _knownMaxEpisode;
@@ -57,9 +52,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   @override
   void initState() {
     super.initState();
-    _favoritesRepository = FavoritesRepository();
     _loadDescription();
-    _checkIfFavorite();
     // If caller provided a total episode count (e.g., from Watchlist), use it immediately
     if (widget.totalEpisodes != null) {
       _knownMaxEpisode = widget.totalEpisodes;
@@ -67,6 +60,9 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
       _prefetchKnownMaxEpisode();
     }
     _updateWatchlistState();
+    if (widget.watchlistService != null) {
+      widget.watchlistService!.watchlist.addListener(_onWatchlistChanged);
+    }
   }
 
   Future<void> _prefetchKnownMaxEpisode() async {
@@ -96,67 +92,10 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   }
 
   Future<void> _checkIfFavorite() async {
-    try {
-      final isFav = await _favoritesRepository.isFavorite(widget.release.title);
-      if (mounted) {
-        setState(() {
-          _isFavorite = isFav;
-          _isLoadingFavorite = false;
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) print('❌ Error checking favorite: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingFavorite = false;
-        });
-      }
-    }
+    // favorite feature removed; no-op
   }
 
-  Future<void> _toggleFavorite() async {
-    try {
-      if (_isFavorite) {
-        await _favoritesRepository.removeFavorite(widget.release.title);
-        if (mounted) {
-          setState(() => _isFavorite = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✓ Aus Favoriten entfernt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-        // Notify caller that a favorite was removed (e.g., favorites page)
-        if (widget.onFavoriteRemoved != null) widget.onFavoriteRemoved!();
-      } else {
-        final favorite = FavoriteAnime(
-          title: widget.release.title,
-          imageUrl: widget.release.imageUrl,
-          seriesUrl: widget.release.seriesUrl,
-          addedDate: DateTime.now(),
-        );
-        await _favoritesRepository.addFavorite(favorite);
-        if (mounted) {
-          setState(() => _isFavorite = true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❤️ Zu Favoriten hinzugefügt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      }
-      favoritesChangeNotifier.value++;
-    } catch (e) {
-      if (kDebugMode) print('❌ Error toggling favorite: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Fehler beim Speichern')),
-        );
-      }
-    }
-  }
+  // Favorite feature removed; no-op placeholder kept for API stability if needed.
 
   Future<void> _loadDescription() async {
     final description = await widget.crunchyrollService.fetchDescription(widget.release);
@@ -301,7 +240,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       child: CircleAvatar(
                         backgroundColor: Colors.black54,
                         radius: 20,
-                        child: _isLoadingFavorite
+                        child: _isProcessingWatchlist
                             ? const SizedBox(
                                 width: 20,
                                 height: 20,
@@ -600,5 +539,37 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
         ),
       ),
     );
+  }
+
+  void _onWatchlistChanged() {
+    if (!mounted) return;
+    final prev = _isInWatchlist;
+    _updateWatchlistState();
+    if (prev != _isInWatchlist && mounted) {
+      setState(() {});
+    }
+  }
+
+  @override
+  void dispose() {
+    if (widget.watchlistService != null) {
+      widget.watchlistService!.watchlist.removeListener(_onWatchlistChanged);
+    }
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant AnimeDetailsDialog oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.watchlistService != widget.watchlistService) {
+      if (oldWidget.watchlistService != null) {
+        oldWidget.watchlistService!.watchlist.removeListener(_onWatchlistChanged);
+      }
+      if (widget.watchlistService != null) {
+        widget.watchlistService!.watchlist.addListener(_onWatchlistChanged);
+      }
+      _updateWatchlistState();
+      if (mounted) setState(() {});
+    }
   }
 }

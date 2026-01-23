@@ -7,9 +7,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/anime_release.dart';
 import '../services/crunchyroll_service.dart';
+import '../repositories/notification_repository.dart';
 import '../widgets/anime_details_dialog.dart';
 import '../models/watchlist.dart';
 import '../services/watchlist_service.dart';
+import '../settings.dart';
+
+// Sorting modes for the watchlist
+enum SortMode { addedAtDesc, alphabet, status }
 
 class WatchlistPage extends StatefulWidget {
   final WatchlistService service;
@@ -21,8 +26,12 @@ class WatchlistPage extends StatefulWidget {
 
 class _WatchlistPageState extends State<WatchlistPage> {
   late Watchlist watchlist;
+  late List<WatchlistEntry> _displayEntries;
+  SortMode _sortMode = SortMode.addedAtDesc;
   bool _fabVisible = true;
   late ScrollController _scrollController;
+
+  
 
   Future<int?> _promptForEpisodeNumber(BuildContext ctx, String title, int initial) async {
     final controller = TextEditingController(text: initial.toString());
@@ -51,8 +60,21 @@ class _WatchlistPageState extends State<WatchlistPage> {
   void initState() {
     super.initState();
     watchlist = widget.service.watchlist;
-    widget.service.loadWatchlist();
     watchlist.addListener(_onWatchlistChanged);
+    _displayEntries = List.from(watchlist.entries);
+    // Load watchlist and refresh totals asynchronously
+    _initAsync();
+    // Load saved sort mode then apply
+    AppSettings.getWatchlistSortModeIndex().then((idx) {
+      if (!mounted) return;
+      setState(() {
+        _sortMode = SortMode.values.elementAt(idx.clamp(0, SortMode.values.length - 1));
+        _applySort();
+      });
+    }).catchError((e) {
+      if (kDebugMode) print('Failed to load saved watchlist sort mode: $e');
+      _applySort();
+    });
     _scrollController = ScrollController();
     _scrollController.addListener(() {
       try {
@@ -66,6 +88,32 @@ class _WatchlistPageState extends State<WatchlistPage> {
         if (kDebugMode) print('ScrollController listener error: $e');
       }
     });
+  }
+
+  Future<void> _initAsync() async {
+    try {
+      await widget.service.loadWatchlist();
+      if (!mounted) return;
+      setState(() {
+        _displayEntries = List.from(watchlist.entries);
+        _applySort();
+      });
+
+      // Try to sync totals from cached releases and update watchlist
+      final crunch = CrunchyrollService();
+      final notifRepo = NotificationRepository();
+      // Ensure cache loaded then sync
+      await crunch.loadCacheOnStartup();
+      await crunch.syncWatchlistWithReleases(widget.service, notifRepo);
+
+      if (!mounted) return;
+      setState(() {
+        _displayEntries = List.from(watchlist.entries);
+        _applySort();
+      });
+    } catch (e) {
+      if (kDebugMode) print('Error updating watchlist totals: $e');
+    }
   }
 
   void _openDetailsDialog(WatchlistEntry entry) {
@@ -101,7 +149,38 @@ class _WatchlistPageState extends State<WatchlistPage> {
   }
 
   void _onWatchlistChanged() {
+    _displayEntries = List.from(watchlist.entries);
+    _applySort();
     setState(() {});
+  }
+
+  String _statusLabel(WatchStatus s) {
+    switch (s) {
+      case WatchStatus.watching:
+        return 'Am Schauen';
+      case WatchStatus.completed:
+        return 'Abgeschlossen';
+      case WatchStatus.paused:
+        return 'Pausiert';
+      case WatchStatus.dropped:
+        return 'Abgebrochen';
+      default:
+        return s.name;
+    }
+  }
+
+  void _applySort() {
+    if (_sortMode == SortMode.addedAtDesc) {
+      _displayEntries.sort((a, b) {
+        final da = a.addedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = b.addedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return db.compareTo(da); // newest first
+      });
+    } else if (_sortMode == SortMode.alphabet) {
+      _displayEntries.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    } else if (_sortMode == SortMode.status) {
+      _displayEntries.sort((a, b) => a.status.index.compareTo(b.status.index));
+    }
   }
 
   String _formatAddedAt(DateTime? dt) {
@@ -208,6 +287,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
   Future<void> _showEditDialog(WatchlistEntry entry) async {
     int episodes = entry.episodesWatched;
     int total = entry.totalEpisodes;
+    bool autoSync = entry.autoSyncTotal;
     final noteController = TextEditingController(text: entry.note ?? '');
     WatchStatus status = entry.status;
     await showDialog(
@@ -238,23 +318,52 @@ class _WatchlistPageState extends State<WatchlistPage> {
               Row(
                 children: [
                   Expanded(child: Text('Gesamtfolgen')),
-                  IconButton(onPressed: () { if (total>0) setState(() => total--); }, icon: Icon(Icons.remove_circle_outline)),
+                  IconButton(onPressed: () { if (total>0) setState(() { total--; autoSync = false; }); }, icon: Icon(Icons.remove_circle_outline)),
                   InkWell(
                     onTap: () async {
                       final v = await _promptForEpisodeNumber(ctx, 'Gesamtfolgen eingeben', total);
-                      if (v != null) setState(() => total = v);
+                      if (v != null) setState(() { total = v; autoSync = false; });
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
                       child: Text('$total', style: TextStyle(fontSize: 16)),
                     ),
                   ),
-                  IconButton(onPressed: () => setState(() => total++), icon: Icon(Icons.add_circle_outline)),
+                  IconButton(onPressed: () => setState(() { total++; autoSync = false; }), icon: Icon(Icons.add_circle_outline)),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: Text('Automatisch Gesamtfolgen abgleichen')),
+                  StatefulBuilder(
+                    builder: (ctx2, setState2) => Switch(
+                      value: autoSync,
+                      onChanged: (v) async {
+                        // Update local toggle immediately
+                        setState(() {
+                          autoSync = v;
+                        });
+
+                        if (v) {
+                          try {
+                            final crunch = CrunchyrollService();
+                            final known = await crunch.getMaxEpisodeForSeries(entry.animeId, entry.title);
+                            if (known != null && known > total) {
+                              if (mounted) setState(() => total = known);
+                            }
+                          } catch (e) {
+                            if (kDebugMode) print('Error fetching max episode on toggle: $e');
+                          }
+                        }
+                      },
+                    ),
+                  ),
                 ],
               ),
               DropdownButton<WatchStatus>(
                 value: status,
-                items: WatchStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(s.name))).toList(),
+                items: WatchStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(_statusLabel(s)))).toList(),
                 onChanged: (s) { if (s != null) setState(() => status = s); },
               ),
               TextField(controller: noteController, decoration: InputDecoration(labelText: 'Notiz')),
@@ -272,6 +381,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   totalEpisodes: total,
                   status: status,
                   notificationsEnabled: entry.notificationsEnabled,
+                  autoSyncTotal: autoSync,
                   note: noteController.text,
                   rating: entry.rating,
                   addedAt: entry.addedAt,
@@ -455,6 +565,27 @@ class _WatchlistPageState extends State<WatchlistPage> {
             tooltip: 'Händisch hinzufügen',
             onPressed: _addAnime,
           ),
+          // Sort button
+          PopupMenuButton<SortMode>(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sortieren',
+            onSelected: (m) {
+              setState(() {
+                _sortMode = m;
+                _displayEntries = List.from(watchlist.entries);
+                _applySort();
+              });
+              // persist selection
+              AppSettings.setWatchlistSortModeIndex(m.index).catchError((e) {
+                if (kDebugMode) print('Failed to save watchlist sort mode: $e');
+              });
+            },
+            itemBuilder: (ctx) => [
+              CheckedPopupMenuItem(value: SortMode.addedAtDesc, checked: _sortMode == SortMode.addedAtDesc, child: Text('Datum: zuletzt hinzugefügt')),
+              CheckedPopupMenuItem(value: SortMode.alphabet, checked: _sortMode == SortMode.alphabet, child: Text('Alphabet')),
+              CheckedPopupMenuItem(value: SortMode.status, checked: _sortMode == SortMode.status, child: Text('Status')),
+            ],
+          ),
           PopupMenuButton<String>(
             icon: const Icon(Icons.more_vert),
             tooltip: 'Optionen',
@@ -492,9 +623,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
       ),
       body: ListView.builder(
         controller: _scrollController,
-        itemCount: watchlist.entries.length,
+        itemCount: _displayEntries.length,
         itemBuilder: (ctx, i) {
-          final entry = watchlist.entries[i];
+          final entry = _displayEntries[i];
           return Card(
             margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
             clipBehavior: Clip.antiAlias,
@@ -613,7 +744,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         const SizedBox(height: 4),
                         Text('Folgen: ${entry.episodesWatched}/${entry.totalEpisodes}', maxLines: 1, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
-                        Text('Status: ${entry.status.name}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        Text('Status: ${_statusLabel(entry.status)}', maxLines: 1, overflow: TextOverflow.ellipsis),
                         if (entry.note != null && entry.note!.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text('Notiz: ${entry.note}', maxLines: 2, overflow: TextOverflow.ellipsis),

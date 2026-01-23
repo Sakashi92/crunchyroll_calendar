@@ -21,6 +21,7 @@ class AppSettings {
   static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';
   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
   static const String _searchHistoryKey = 'search_history';
+  static const String _watchlistSortModeKey = 'watchlist_sort_mode';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -205,6 +206,18 @@ class AppSettings {
   static Future<void> clearSearchHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_searchHistoryKey);
+  }
+
+  /// Lädt die gespeicherte Sortier-Einstellung für die Watchlist (als Index des SortMode)
+  static Future<int> getWatchlistSortModeIndex() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_watchlistSortModeKey) ?? 0; // default: addedAtDesc
+  }
+
+  /// Speichert die Sortier-Einstellung für die Watchlist (als Index des SortMode)
+  static Future<void> setWatchlistSortModeIndex(int index) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_watchlistSortModeKey, index);
   }
 }
 

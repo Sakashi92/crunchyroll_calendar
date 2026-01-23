@@ -15,9 +15,7 @@ import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'services/permission_service.dart';
 import 'services/battery_optimization_service.dart';
-import 'repositories/favorites_repository.dart';
 import 'repositories/seen_repository.dart';
-import 'models/favorite_anime.dart';
 import 'models/notification_log.dart';
 import 'settings.dart';
 import 'pages/watchlist_page.dart';
@@ -25,7 +23,7 @@ import 'pages/watchlist_page.dart';
 import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'widgets/anime_details_dialog.dart';
-import 'utils/favorites_notifier.dart';
+// favorites UI removed
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -319,6 +317,10 @@ class _MainAppState extends State<MainApp> {
   void initState() {
     super.initState();
     watchlistService = WatchlistService(watchlist);
+    // Load stored watchlist asynchronously so widgets reflect initial state
+    watchlistService.loadWatchlist().catchError((e) {
+      if (kDebugMode) print('❌ Failed to load watchlist on startup: $e');
+    });
     _loadAccentColor();
     // Versuche einmalig Migration von Favoriten-Notification-Settings in die Watchlist
     _runWatchlistMigration();
@@ -1778,31 +1780,14 @@ class _ReleaseCard extends StatefulWidget {
 }
 
 class _ReleaseCardState extends State<_ReleaseCard> {
-  bool _isFavorite = false;
-  late final FavoritesRepository _favoritesRepository;
   // Watchlist state
   bool _isProcessingWatchlist = false;
   bool _isInWatchlist = false;
-  bool _isInitialized = false; // Track if we've loaded the status
-  static final Map<String, bool> _favoriteCache = {}; // In-memory cache to prevent flickering
+  bool _isInitialized = true;
 
   @override
   void initState() {
     super.initState();
-    _favoritesRepository = FavoritesRepository();
-    
-    // Höre auf globale Favoriten-Änderungen
-    favoritesChangeNotifier.addListener(_onFavoritesChanged);
-    
-    // Check cache first for instant display
-    if (_favoriteCache.containsKey(widget.release.title)) {
-      _isFavorite = _favoriteCache[widget.release.title]!;
-      _isInitialized = true;
-    }
-    
-    // Load favorite status immediately
-    _checkIfFavorite();
-
     // Initialize watchlist status if a service was provided
     _initWatchlistStatus();
     // Listen to watchlist changes so the card updates immediately
@@ -1828,7 +1813,6 @@ class _ReleaseCardState extends State<_ReleaseCard> {
 
   @override
   void dispose() {
-    favoritesChangeNotifier.removeListener(_onFavoritesChanged);
     if (widget.watchlistService != null) {
       widget.watchlistService!.watchlist.removeListener(_onWatchlistChanged);
     }
@@ -1850,90 +1834,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
     }
   }
 
-  void _onFavoritesChanged() {
-    // Lade Status neu wenn sich Favoriten ändern
-    _checkIfFavorite();
-  }
-
-  Future<void> _checkIfFavorite() async {
-    try {
-      final isFav = await _favoritesRepository.isFavorite(widget.release.title);
-      // Update cache
-      _favoriteCache[widget.release.title] = isFav;
-      if (mounted) {
-        setState(() {
-          _isFavorite = isFav;
-          _isInitialized = true; // Mark as initialized to prevent white flash
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) print('❌ Error checking favorite: $e');
-      if (mounted) {
-        setState(() {
-          _isInitialized = true; // Mark as initialized even on error
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleFavorite() async {
-    // Speichere den ALTEN Zustand vor dem optimistischen Update
-    final wasAlreadyFavorite = _isFavorite;
-    
-    // Optimistisches UI Update
-    setState(() {
-      _isFavorite = !_isFavorite;
-    });
-    
-    try {
-      if (wasAlreadyFavorite) {
-        // War favorisiert → jetzt entfernen
-        await _favoritesRepository.removeFavorite(widget.release.title);
-        _favoriteCache[widget.release.title] = false; // Update cache
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✓ Aus Favoriten entfernt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      } else {
-        // War nicht favorisiert → jetzt hinzufügen
-        final favorite = FavoriteAnime(
-          title: widget.release.title,
-          imageUrl: widget.release.imageUrl,
-          seriesUrl: widget.release.seriesUrl,
-          addedDate: DateTime.now(),
-        );
-        await _favoritesRepository.addFavorite(favorite);
-        _favoriteCache[widget.release.title] = true; // Update cache
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❤️ Zu Favoriten hinzugefügt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      }
-      
-      // Benachrichtige alle anderen Cards über die Änderung
-      favoritesChangeNotifier.value++;
-      
-    } catch (e) {
-      if (kDebugMode) print('❌ Error toggling favorite: $e');
-      // Bei Fehler zurücksetzen
-      if (mounted) {
-        setState(() {
-          _isFavorite = !_isFavorite;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Fehler beim Speichern')),
-        );
-      }
-    }
-  }
+  
 
   void _showAnimeDetailsDialog() async {
     // Mark as seen (generate content-hash and store)
@@ -1992,8 +1893,7 @@ class _ReleaseCardState extends State<_ReleaseCard> {
       },
     );
 
-    // Nach dem Schließen des Dialogs, Status neu laden
-    _checkIfFavorite();
+    // Nach dem Schließen des Dialogs, Watchlist-Status bereits aktualisiert
   }
 
   @override
@@ -2359,19 +2259,14 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
   bool _isTranslating = false;
   bool _showGerman = true; // Zeige standardmäßig Deutsch
   bool _autoTranslateEnabled = true; // Steuert, ob der Sprach-Button angezeigt wird
-  bool _isFavorite = false; // Track Favoriten-Status
-  bool _isLoadingFavorite = true; // Loading State für Favoriten
   final _translator = GoogleTranslator();
-  late final FavoritesRepository _favoritesRepository;
   bool _isInWatchlist = false;
   bool _isProcessingWatchlist = false;
 
   @override
   void initState() {
     super.initState();
-    _favoritesRepository = FavoritesRepository();
     _loadDescription();
-    _checkIfFavorite();
     _updateWatchlistState();
   }
 
@@ -2382,69 +2277,7 @@ class _AnimeDetailsDialogState extends State<_AnimeDetailsDialog> {
     _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
-  Future<void> _checkIfFavorite() async {
-    try {
-      final isFav = await _favoritesRepository.isFavorite(widget.release.title);
-      if (mounted) {
-        setState(() {
-          _isFavorite = isFav;
-          _isLoadingFavorite = false;
-        });
-      }
-    } catch (e) {
-      if (kDebugMode) print('❌ Error checking favorite: $e');
-      if (mounted) {
-        setState(() {
-          _isLoadingFavorite = false;
-        });
-      }
-    }
-  }
-
-  Future<void> _toggleFavorite() async {
-    try {
-      if (_isFavorite) {
-        // Aus Favoriten entfernen
-        await _favoritesRepository.removeFavorite(widget.release.title);
-        if (mounted) {
-          setState(() => _isFavorite = false);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✓ Aus Favoriten entfernt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      } else {
-        // Zu Favoriten hinzufügen
-        final favorite = FavoriteAnime(
-          title: widget.release.title,
-          imageUrl: widget.release.imageUrl,
-          seriesUrl: widget.release.seriesUrl,
-          addedDate: DateTime.now(),
-        );
-        await _favoritesRepository.addFavorite(favorite);
-        if (mounted) {
-          setState(() => _isFavorite = true);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('❤️ Zu Favoriten hinzugefügt'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-      }
-      // Alle anderen Cards benachrichtigen
-      favoritesChangeNotifier.value++;
-    } catch (e) {
-      if (kDebugMode) print('❌ Error toggling favorite: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('❌ Fehler beim Speichern')),
-        );
-      }
-    }
-  }
+  // Favorite feature removed from UI; placeholder removed.
 
   Future<void> _loadDescription() async {
     final description = await widget.crunchyrollService.fetchDescription(

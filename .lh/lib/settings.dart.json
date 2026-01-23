@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 81,
+            "activePatchIndex": 82,
             "patches": [
                 {
                     "date": 1768743284045,
@@ -332,6 +332,10 @@
                 {
                     "date": 1769102234763,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -1186,9 +1186,9 @@\n   Widget _buildInfoTile() {\r\n     return const ListTile(\r\n       leading: Icon(Icons.info_outline),\r\n       title: Text('Crunchyroll Kalender'),\r\n-      subtitle: Text('Version 0.8.0\\nBilder werden von Kitsu.io geladen'),\r\n+      subtitle: Text('Version 0.8.0\\nBilder werden von MyAnimeList.net geladen'),\r\n       isThreeLine: true,\r\n     );\r\n   }\r\n \r\n"
+                },
+                {
+                    "date": 1769122374443,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -20,8 +20,9 @@\n   static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';\r\n   static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';\r\n   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';\r\n   static const String _searchHistoryKey = 'search_history';\r\n+  static const String _watchlistSortModeKey = 'watchlist_sort_mode';\r\n   \r\n   /// Verfügbare Bildqualitäten\r\n   static const Map<String, String> imageQualities = {\r\n     'original': 'Original (Höchste Qualität, ~2000x3000)',\r\n@@ -205,8 +206,20 @@\n   static Future<void> clearSearchHistory() async {\r\n     final prefs = await SharedPreferences.getInstance();\r\n     await prefs.remove(_searchHistoryKey);\r\n   }\r\n+\r\n+  /// Lädt die gespeicherte Sortier-Einstellung für die Watchlist (als Index des SortMode)\r\n+  static Future<int> getWatchlistSortModeIndex() async {\r\n+    final prefs = await SharedPreferences.getInstance();\r\n+    return prefs.getInt(_watchlistSortModeKey) ?? 0; // default: addedAtDesc\r\n+  }\r\n+\r\n+  /// Speichert die Sortier-Einstellung für die Watchlist (als Index des SortMode)\r\n+  static Future<void> setWatchlistSortModeIndex(int index) async {\r\n+    final prefs = await SharedPreferences.getInstance();\r\n+    await prefs.setInt(_watchlistSortModeKey, index);\r\n+  }\r\n }\r\n \r\n /// Einstellungs-Seite\r\n class SettingsPage extends StatefulWidget {\r\n"
                 }
             ],
             "date": 1768743284045,
