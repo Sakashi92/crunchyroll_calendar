@@ -429,8 +429,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _savePredictionEnabled(bool enabled) async {
-    // Persist preference in background so UI updates immediately
-    AppSettings.setPredictionEnabled(enabled);
+    // Persist preference and wait so subsequent reloads read the new value
+    await AppSettings.setPredictionEnabled(enabled);
     setState(() {
       _predictionEnabled = enabled;
     });

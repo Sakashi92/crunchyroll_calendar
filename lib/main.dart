@@ -197,6 +197,12 @@ class _SearchPageState extends State<SearchPage> {
     await widget.watchlistService!.saveWatchlist();
     // schedule background update (may perform network) - don't await
     cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
+    // Trigger prediction generation for recently added watchlist entries (non-blocking)
+    widget.watchlistService!.generateForecastForRecentEntries().then((count) {
+      if (kDebugMode) print('🔔 Forecast generation started after add (count=$count)');
+    }).catchError((e) {
+      if (kDebugMode) print('❌ Error generating forecast after add (search): $e');
+    });
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
     );
@@ -1234,18 +1240,21 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         builder: (context) => SettingsPage(
           crunchyrollService: _crunchyrollService,
           onSettingsChanged: () {
-            // Direkt Releases neu laden (z.B. nach Aktivieren von "Doppelte Releases ausblenden")
-            _loadReleases();
-            // Starte/aktualisiere Auto-Update mit neuen Einstellungen
-            _crunchyrollService.restartAutoUpdate(() {
-              if (mounted) {
-                _loadReleases();
-              }
+            // Ensure service cache is reloaded from prefs (matching manual refresh behavior)
+            _crunchyrollService.loadCacheOnStartup().whenComplete(() async {
+              // Direkt Releases neu laden (z.B. nach Aktivieren von "Doppelte Releases ausblenden")
+              await _loadReleases();
+              // Starte/aktualisiere Auto-Update mit neuen Einstellungen
+              _crunchyrollService.restartAutoUpdate(() {
+                if (mounted) {
+                  _loadReleases();
+                }
+              });
+              // Lade neue Einstellung für automatisches Minimieren
+              _loadAutoMinimizeSetting();
+              // Benachrichtige MainApp dass sich die Accent-Farbe geändert hat
+              widget.onAccentColorChanged?.call();
             });
-            // Lade neue Einstellung für automatisches Minimieren
-            _loadAutoMinimizeSetting();
-            // Benachrichtige MainApp dass sich die Accent-Farbe geändert hat
-            widget.onAccentColorChanged?.call();
           },
         ),
       ),

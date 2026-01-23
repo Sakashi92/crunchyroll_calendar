@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 117,
+            "activePatchIndex": 118,
             "patches": [
                 {
                     "date": 1768743284045,
@@ -476,6 +476,10 @@
                 {
                     "date": 1769187432715,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -837,9 +837,9 @@\n               leading: const Icon(Icons.timeline),\r\n               title: const Text('Vorhersage für nächste Episoden'),\r\n               subtitle: const Text('Verwendet lokale Release-Historie und AniList, um nächste Episoden zu prognostizieren'),\r\n               trailing: Transform.translate(\r\n-                offset: const Offset(4, 0), // nudge switch 4px to the right\r\n+                offset: const Offset(7, 0), // nudge switch 7px to the right (added +3px)\r\n                 child: Switch(\r\n                   value: _predictionEnabled,\r\n                   onChanged: (v) => _savePredictionEnabled(v),\r\n                 ),\r\n"
+                },
+                {
+                    "date": 1769194561041,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -428,10 +428,10 @@\n     }\r\n   }\r\n \r\n   Future<void> _savePredictionEnabled(bool enabled) async {\r\n-    // Persist preference in background so UI updates immediately\r\n-    AppSettings.setPredictionEnabled(enabled);\r\n+    // Persist preference and wait so subsequent reloads read the new value\r\n+    await AppSettings.setPredictionEnabled(enabled);\r\n     setState(() {\r\n       _predictionEnabled = enabled;\r\n     });\r\n     if (kDebugMode) print('🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}');\r\n"
                 }
             ],
             "date": 1768743284045,
