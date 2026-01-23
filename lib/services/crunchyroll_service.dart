@@ -13,7 +13,10 @@ import '../models/notification_log.dart';
 import '../utils/episode_parser.dart';
 import '../models/watchlist.dart';
 import 'episode_provider.dart';
+import 'episode_provider_factory.dart';
+import 'anilist_service.dart';
 import '../models/anime_metadata.dart';
+import 'prediction_notifier.dart';
 
 class CrunchyrollService implements EpisodeProvider {
   static const String calendarUrl = 'https://www.crunchyroll.com/de/simulcastcalendar?filter=premium';
@@ -68,6 +71,28 @@ class CrunchyrollService implements EpisodeProvider {
     }
     
     if (kDebugMode) print('✓ Image cache cleared - ${_imageCache.length} images, ${_processedAnimeTitles.length} processed titles');
+  }
+
+  /// Clears all monthly release caches and the in-memory release cache.
+  /// Used for a full manual refresh to force fresh scraping of all months.
+  Future<void> clearAllReleasesCache() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().toList();
+      for (final key in keys) {
+        if (key.startsWith('cached_anime_releases_month_')) {
+          await prefs.remove(key);
+          if (kDebugMode) print('Removed month cache key: $key');
+        }
+      }
+
+      // clear in-memory list
+      _cachedReleases.clear();
+
+      if (kDebugMode) print('✓ Cleared all releases cache (monthly + in-memory)');
+    } catch (e) {
+      if (kDebugMode) print('Error clearing all releases cache: $e');
+    }
   }
   
   /// Berechnet ein Datum X Monate zurück (mit Jahr-Überlauf)
@@ -562,6 +587,39 @@ class CrunchyrollService implements EpisodeProvider {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
   }
+
+  /// Normalisiert Namen für Vergleichs-Suchen: reinige, entferne Sonderzeichen, lower-case
+  String _normalizeForSearch(String name) {
+    var s = _cleanAnimeName(name);
+    s = s.replaceAll(RegExp(r'[^ -\w\s]'), ' '); // entferne exotische Sonderzeichen
+    s = s.replaceAll(RegExp(r'[\W_]+'), ' ');
+    s = s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
+    return s;
+  }
+
+  /// Levenshtein-Distanz (iterative) - verwendet zur fuzzy-Übereinstimmung
+  int _levenshteinDistance(String a, String b) {
+    if (a == b) return 0;
+    if (a.isEmpty) return b.length;
+    if (b.isEmpty) return a.length;
+
+    final la = a.length;
+    final lb = b.length;
+    List<int> prev = List<int>.generate(lb + 1, (i) => i);
+    List<int> cur = List<int>.filled(lb + 1, 0);
+
+    for (int i = 1; i <= la; i++) {
+      cur[0] = i;
+      for (int j = 1; j <= lb; j++) {
+        final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
+        cur[j] = [prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost].reduce((v, e) => v < e ? v : e);
+      }
+      final tmp = prev;
+      prev = cur;
+      cur = tmp;
+    }
+    return prev[lb];
+  }
   
   Future<void> _saveToCache(List<AnimeRelease> releases) async {
     try {
@@ -573,7 +631,30 @@ class CrunchyrollService implements EpisodeProvider {
         if (kDebugMode) print('⚠ Skipping saveToCache because releases is empty and existing cache present');
         return;
       }
-      final jsonList = releases.map((r) => r.toJson()).toList();
+      // Merge with any existing predicted entries for current month: keep predictions that are not superseded by real releases
+      final now = DateTime.now();
+      final monthKey = _getMonthCacheKey(now);
+      final existingMonthJson = prefs.getString(monthKey);
+      List<AnimeRelease> existingMonth = [];
+      if (existingMonthJson != null) {
+        try {
+          final jsonListExisting = json.decode(existingMonthJson) as List<dynamic>;
+          existingMonth = jsonListExisting.map((item) => AnimeRelease.fromJson(item)).toList();
+        } catch (_) {
+          existingMonth = [];
+        }
+      }
+
+      // Keep predicted entries that are not matched by any real release in `releases`
+      final keptPredicted = <AnimeRelease>[];
+      for (final p in existingMonth.where((e) => e.isPredicted)) {
+        final superseded = releases.any((r) => r.seriesUrl == p.seriesUrl && r.episodeNumber == p.episodeNumber);
+        if (!superseded) keptPredicted.add(p);
+      }
+
+      final merged = [...releases, ...keptPredicted];
+
+      final jsonList = merged.map((r) => r.toJson()).toList();
       await prefs.setString(_cacheKey, json.encode(jsonList));
       await prefs.setString(_lastUpdateKey, DateTime.now().toIso8601String());
       
@@ -587,7 +668,7 @@ class CrunchyrollService implements EpisodeProvider {
       final newHash = _generateReleasesHash(releases);
       await prefs.setString(_releasesHashKey, newHash);
       
-      _cachedReleases = releases;
+      _cachedReleases = merged;
       _currentReleasesHash = newHash;
       if (kDebugMode) print('Saved ${releases.length} releases to cache');
       if (kDebugMode) print('Saved ${_imageCache.length} image URLs to cache');
@@ -874,24 +955,54 @@ class CrunchyrollService implements EpisodeProvider {
   }
   
   /// Speichert Releases eines spezifischen Monats in Cache
-  Future<void> _saveMonthToCache(DateTime dateInMonth, List<AnimeRelease> releases) async {
+  Future<void> _saveMonthToCache(DateTime dateInMonth, List<AnimeRelease> releases, {bool preservePredictions = true}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final cacheKey = _getMonthCacheKey(dateInMonth);
       final updateKey = _getMonthUpdateKey(dateInMonth);
+      // Do not filter out any Crunchyroll releases; store as-is
+      final filteredReleases = releases.toList();
+      // If caller requests to preserve predictions, merge predicted entries
+      if (preservePredictions) {
+        // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Monats-Cache.
+        final existingRaw = prefs.getString(cacheKey);
+        if (filteredReleases.isEmpty && existingRaw != null && existingRaw.isNotEmpty) {
+          if (kDebugMode) print('⚠ Skipping saveMonthToCache because releases is empty and existing month cache present');
+          return;
+        }
 
-      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Monats-Cache.
-      final existing = prefs.getString(cacheKey);
-      if (releases.isEmpty && existing != null && existing.isNotEmpty) {
-        if (kDebugMode) print('⚠ Skipping saveMonthToCache because releases is empty and existing month cache present');
-        return;
+        // Merge with existing month cache to preserve non-superseded predicted entries
+        final existingJson = prefs.getString(cacheKey);
+        List<AnimeRelease> existing = [];
+        if (existingJson != null) {
+          try {
+            final jsonListExisting = json.decode(existingJson) as List<dynamic>;
+            existing = jsonListExisting.map((item) => AnimeRelease.fromJson(item)).toList();
+          } catch (_) {
+            existing = [];
+          }
+        }
+
+        // Keep predicted entries from existing month that are not superseded by real `releases`
+        final keptPredicted = <AnimeRelease>[];
+        for (final p in existing.where((e) => e.isPredicted)) {
+          final superseded = filteredReleases.any((r) => r.seriesUrl == p.seriesUrl && r.episodeNumber == p.episodeNumber);
+          if (!superseded) keptPredicted.add(p);
+        }
+
+        final merged = [...filteredReleases, ...keptPredicted];
+        final jsonList = merged.map((r) => r.toJson()).toList();
+        await prefs.setString(cacheKey, json.encode(jsonList));
+        await prefs.setString(updateKey, DateTime.now().toIso8601String());
+
+        if (kDebugMode) print('✓ Saved ${filteredReleases.length} releases to month cache for ${dateInMonth.month}/${dateInMonth.year} (preserving predictions)');
+      } else {
+        // Overwrite month cache explicitly (used when removing predicted entries)
+        final jsonList = filteredReleases.map((r) => r.toJson()).toList();
+        await prefs.setString(cacheKey, json.encode(jsonList));
+        await prefs.setString(updateKey, DateTime.now().toIso8601String());
+        if (kDebugMode) print('✓ Overwrote month cache for ${dateInMonth.month}/${dateInMonth.year} (predictions removed)');
       }
-
-      final jsonList = releases.map((r) => r.toJson()).toList();
-      await prefs.setString(cacheKey, json.encode(jsonList));
-      await prefs.setString(updateKey, DateTime.now().toIso8601String());
-
-      if (kDebugMode) print('✓ Saved ${releases.length} releases to month cache for ${dateInMonth.month}/${dateInMonth.year}');
     } catch (e) {
       if (kDebugMode) print('Error saving month to cache: $e');
     }
@@ -1287,22 +1398,19 @@ class CrunchyrollService implements EpisodeProvider {
     }
     
     if (kDebugMode) print('📥 Loading $total missing images from Kitsu (${_processedAnimeTitles.length} already processed)...');
-    
+
     // Signalisiere Start des Ladens
     onImageLoadingChanged?.call(true, 0, total);
-    
+
     var loaded = 0;
-    
-    // Lade Bilder von Kitsu im Hintergrund
+
+    // Lade Bilder nur von Kitsu
     for (var release in newReleasesToProcess) {
       try {
         final imageUrl = await _fetchImageFromKitsu(release.title);
         if (imageUrl.isNotEmpty) {
-          // Update das Release-Objekt
           release.imageUrl = imageUrl;
           if (kDebugMode) print('✓ Kitsu: Found cover for ${release.title}');
-          
-          // Benachrichtige UI dass ein Bild geladen wurde
           onImageLoaded?.call();
         } else {
           if (kDebugMode) print('✗ Kitsu: No cover found for ${release.title}');
@@ -1310,25 +1418,22 @@ class CrunchyrollService implements EpisodeProvider {
       } catch (e) {
         if (kDebugMode) print('✗ Kitsu: Failed for ${release.title}: $e');
       }
-      
+
       // Markiere diesen Titel als verarbeitet (egal ob erfolgreich oder nicht)
       _processedAnimeTitles.add(release.title);
-      
-      // Speichere verarbeiteten Titel UND Image-Cache SOFORT nach jedem Bild
-      // damit bei App-Abbruch der Fortschritt nicht verloren geht
       await _saveProcessedTitles();
       await _saveImageCache();
-      
+
       loaded++;
       onImageLoadingChanged?.call(true, loaded, total);
-      
+
       // Kleine Pause um Kitsu API nicht zu überlasten
       await Future.delayed(const Duration(milliseconds: 100));
     }
-    
+
     // Signalisiere Ende des Ladens
     onImageLoadingChanged?.call(false, total, total);
-    
+
     // Speichere aktualisierten Cache inkl. verarbeitete Titel
     if (total > 0) {
       await _saveToCache(releases);
@@ -1495,6 +1600,27 @@ class CrunchyrollService implements EpisodeProvider {
     }
     return '';
   }
+
+  /// Public wrapper to fetch an image URL for a title (uses Kitsu and cache).
+  Future<String> fetchImageForTitle(String animeName) async {
+    try {
+      // Check cached values first
+      try {
+        final cached = _findCachedImageUrl(animeName);
+        if (cached != null && cached.isNotEmpty) return cached;
+      } catch (_) {}
+
+      final imageUrl = await _fetchImageFromKitsu(animeName);
+      if (imageUrl.isNotEmpty) {
+        // persist cache so subsequent calls are fast
+        try { await _saveImageCache(); } catch (_) {}
+        return imageUrl;
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error in fetchImageForTitle: $e');
+    }
+    return '';
+  }
   
   /// Lädt die Beschreibung eines Anime von Kitsu API
   Future<String> fetchDescription(AnimeRelease release) async {
@@ -1634,6 +1760,148 @@ class CrunchyrollService implements EpisodeProvider {
       return months.toList();
     } catch (e) {
       if (kDebugMode) print('Error getting cached months: $e');
+      return [];
+    }
+  }
+
+  /// Returns cached releases for a given series (no network). Scans all month caches and the in-memory cache.
+  Future<List<AnimeRelease>> getReleasesForSeriesCached(String? seriesUrl, String? title) async {
+    try {
+      final List<AnimeRelease> results = [];
+      // ensure in-memory cache loaded
+      if (_cachedReleases.isEmpty) await _loadFromCache();
+
+      // normalize search title
+      final normQuery = title != null && title.isNotEmpty ? _normalizeForSearch(title) : null;
+
+      bool _matches(AnimeRelease r) {
+        // seriesUrl exact match has highest priority
+        if (seriesUrl != null && seriesUrl.isNotEmpty && r.seriesUrl != null && r.seriesUrl == seriesUrl) return true;
+
+        if (normQuery == null || normQuery.isEmpty) return false;
+
+        final target = _normalizeForSearch(r.title ?? '');
+        if (target.isEmpty) return false;
+
+        // exact normalized match
+        if (target == normQuery) return true;
+
+        // contains
+        if (target.contains(normQuery) || normQuery.contains(target)) return true;
+
+        // token overlap: require at least half of query tokens to appear in target
+        final qTokens = normQuery.split(' ').where((s) => s.isNotEmpty).toList();
+        final tTokens = target.split(' ').where((s) => s.isNotEmpty).toSet();
+        if (qTokens.isNotEmpty) {
+          final matches = qTokens.where((tok) => tTokens.contains(tok)).length;
+          if (matches >= (qTokens.length / 2).ceil() && matches >= 1) return true;
+        }
+
+        // startsWith on first up to 3 words (useful for long titles)
+        final qShort = qTokens.take(3).join(' ');
+        if (qShort.isNotEmpty && target.startsWith(qShort)) return true;
+
+        // fuzzy via normalized Levenshtein (relative distance)
+        final maxLen = [target.length, normQuery.length].reduce((a, b) => a > b ? a : b);
+        if (maxLen > 4) {
+          final dist = _levenshteinDistance(target, normQuery);
+          final rel = dist / maxLen;
+          if (rel <= 0.25) return true; // allow up to 25% difference
+        }
+
+        return false;
+      }
+
+      // Check in-memory cache first
+      for (final r in _cachedReleases) {
+        if (_matches(r)) results.add(r);
+      }
+
+      // Also scan persisted month caches (avoid duplicates)
+      final months = await getCachedMonths();
+      for (final tuple in months) {
+        final monthReleases = await getReleasesForMonthFromCache(DateTime(tuple.$1, tuple.$2, 1));
+        for (final r in monthReleases) {
+          if (_matches(r) && !results.contains(r)) results.add(r);
+        }
+      }
+
+      return results;
+    } catch (e) {
+      if (kDebugMode) print('Error getReleasesForSeriesCached: $e');
+      return [];
+    }
+  }
+
+  /// Adds a predicted release into the month cache and updates in-memory cache.
+  Future<void> addPredictedRelease(AnimeRelease predicted) async {
+    try {
+      final monthKeyDate = DateTime(predicted.releaseTime.year, predicted.releaseTime.month, 1);
+      final existing = await _loadMonthFromCache(monthKeyDate);
+      // Avoid duplicates by episode and seriesUrl
+      final dup = existing.any((r) => r.seriesUrl == predicted.seriesUrl && r.episodeNumber == predicted.episodeNumber && r.releaseTime == predicted.releaseTime);
+      if (dup) {
+        if (kDebugMode) print('Predicted release already exists in cache, skipping');
+        return;
+      }
+      existing.add(predicted);
+      await _saveMonthToCache(monthKeyDate, existing);
+
+      // Also ensure in-memory cache contains the predicted release (avoid duplicates)
+      final existsInMemory = _cachedReleases.any((r) => r.seriesUrl == predicted.seriesUrl && r.episodeNumber == predicted.episodeNumber && r.releaseTime == predicted.releaseTime);
+      if (!existsInMemory) _cachedReleases.add(predicted);
+      if (kDebugMode) print('✓ Added predicted release to cache: ${predicted.title} ep ${predicted.episodeNumber}');
+    } catch (e) {
+      if (kDebugMode) print('Error adding predicted release: $e');
+    }
+  }
+
+  /// Removes all predicted releases from month caches and in-memory cache.
+  Future<void> removeAllPredictedReleases() async {
+    try {
+      // Remove from in-memory cache first
+      _cachedReleases.removeWhere((r) => r.isPredicted);
+
+      final months = await getCachedMonths();
+      for (final tuple in months) {
+        final monthDate = DateTime(tuple.$1, tuple.$2, 1);
+        final existing = await _loadMonthFromCache(monthDate);
+        final filtered = existing.where((r) => !r.isPredicted).toList();
+        if (filtered.length != existing.length) {
+          await _saveMonthToCache(monthDate, filtered, preservePredictions: false);
+          if (kDebugMode) print('Removed predicted releases from cache for ${monthDate.month}/${monthDate.year}');
+        }
+      }
+
+      // Notify UI to reload
+      try {
+        predictionsUpdated.value = true;
+      } catch (_) {}
+
+      if (kDebugMode) print('✓ All predicted releases removed');
+    } catch (e) {
+      if (kDebugMode) print('Error removing predicted releases: $e');
+    }
+  }
+
+  /// Returns all known series identifiers (seriesUrl) from cache.
+  Future<List<String>> getAllKnownSeriesIds() async {
+    try {
+      final Set<String> ids = {};
+      if (_cachedReleases.isEmpty) await _loadFromCache();
+      for (final r in _cachedReleases) {
+        if (r.seriesUrl != null && r.seriesUrl!.isNotEmpty) ids.add(r.seriesUrl!);
+      }
+      final months = await getCachedMonths();
+      for (final tuple in months) {
+        final monthReleases = await getReleasesForMonthFromCache(DateTime(tuple.$1, tuple.$2, 1));
+        for (final r in monthReleases) {
+          if (r.seriesUrl != null && r.seriesUrl!.isNotEmpty) ids.add(r.seriesUrl!);
+        }
+      }
+      return ids.toList();
+    } catch (e) {
+      if (kDebugMode) print('Error getAllKnownSeriesIds: $e');
       return [];
     }
   }

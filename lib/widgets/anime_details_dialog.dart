@@ -108,15 +108,12 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     // First, always get the Crunchyroll description (calendar source)
     String? description = await widget.crunchyrollService.fetchDescription(widget.release);
 
-    // Next, attempt to enrich metadata from the selected provider (e.g., Anilist)
+    // Next, attempt to enrich metadata from the selected provider (description/episodes only)
     try {
       final provider = await EpisodeProviderFactory.getProvider();
       final meta = await provider.fetchSeriesMetadata(widget.release.seriesUrl, widget.release.title);
       if (meta != null) {
-        // Apply metadata where available (prefer provider over Crunchyroll)
-        if (meta.imageUrl != null && meta.imageUrl!.isNotEmpty) {
-          widget.release.imageUrl = meta.imageUrl;
-        }
+        // Do NOT use provider images here; always prefer Kitsu for covers
         if (meta.description != null && meta.description!.isNotEmpty) {
           description = meta.description;
         }
@@ -126,6 +123,16 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
       }
     } catch (e) {
       if (kDebugMode) print('❌ Error enriching metadata: $e');
+    }
+
+    // Ensure we have a cover image — fetch from Kitsu only
+    try {
+      if (widget.release.imageUrl == null || widget.release.imageUrl!.isEmpty) {
+        final kitImage = await widget.crunchyrollService.fetchImageForTitle(widget.release.title);
+        if (kitImage.isNotEmpty) widget.release.imageUrl = kitImage;
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error fetching cover from Kitsu for popup: $e');
     }
 
     if (mounted) {
@@ -262,95 +269,96 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       )
                     else
                       Container(height: 220, color: Colors.grey.shade300),
-                    // Favorite (heart) button on details cover (top-left)
-                    Positioned(
-                      top: 8,
-                      left: 8,
-                      child: CircleAvatar(
-                        backgroundColor: Colors.black54,
-                        radius: 20,
-                        child: _isProcessingWatchlist
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : IconButton(
-                                icon: Icon(
-                                  _isInWatchlist ? Icons.favorite : Icons.favorite_border,
-                                  color: _isInWatchlist ? Colors.red : Colors.white,
-                                  size: 20,
-                                ),
-                                onPressed: () async {
-                                  final ws = widget.watchlistService;
-                                  if (ws == null) return;
-                                  setState(() { _isProcessingWatchlist = true; });
-                                  try {
-                                    final id = widget.release.seriesUrl;
-                                    final exists = ws.watchlist.entries.any((e) => e.animeId == id);
-                                    if (exists) {
-                                      final confirm = await showDialog<bool>(
-                                        context: context,
-                                        builder: (ctx) => AlertDialog(
-                                          title: const Text('Eintrag entfernen'),
-                                          content: Text('Möchtest du "${widget.release.title}" wirklich aus der Watchlist entfernen?'),
-                                          actions: [
-                                            TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Abbrechen')),
-                                            TextButton(
-                                              onPressed: () => Navigator.of(ctx).pop(true),
-                                              child: Text('Entfernen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                                            ),
-                                          ],
-                                        ),
-                                      );
-                                      if (confirm == true) {
-                                        ws.watchlist.removeEntry(id);
-                                        await ws.saveWatchlist();
-                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
+                    if (!release.isPredicted)
+                      // Favorite (heart) button on details cover (top-left)
+                      Positioned(
+                        top: 8,
+                        left: 8,
+                        child: CircleAvatar(
+                          backgroundColor: Colors.black54,
+                          radius: 20,
+                          child: _isProcessingWatchlist
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : IconButton(
+                                  icon: Icon(
+                                    _isInWatchlist ? Icons.favorite : Icons.favorite_border,
+                                    color: _isInWatchlist ? Colors.red : Colors.white,
+                                    size: 20,
+                                  ),
+                                  onPressed: () async {
+                                    final ws = widget.watchlistService;
+                                    if (ws == null) return;
+                                    setState(() { _isProcessingWatchlist = true; });
+                                    try {
+                                      final id = widget.release.seriesUrl;
+                                      final exists = ws.watchlist.entries.any((e) => e.animeId == id);
+                                      if (exists) {
+                                        final confirm = await showDialog<bool>(
+                                          context: context,
+                                          builder: (ctx) => AlertDialog(
+                                            title: const Text('Eintrag entfernen'),
+                                            content: Text('Möchtest du "${widget.release.title}" wirklich aus der Watchlist entfernen?'),
+                                            actions: [
+                                              TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('Abbrechen')),
+                                              TextButton(
+                                                onPressed: () => Navigator.of(ctx).pop(true),
+                                                child: Text('Entfernen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
+                                              ),
+                                            ],
+                                          ),
                                         );
+                                        if (confirm == true) {
+                                          ws.watchlist.removeEntry(id);
+                                          await ws.saveWatchlist();
+                                          if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                            SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
+                                          );
+                                        } else {
+                                          if (mounted) setState(() { _isProcessingWatchlist = false; });
+                                          return;
+                                        }
                                       } else {
-                                        if (mounted) setState(() { _isProcessingWatchlist = false; });
-                                        return;
+                                        int parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
+                                        int? knownMax = _knownMaxEpisode;
+                                        if (knownMax == null) {
+                                          knownMax = await widget.crunchyrollService.getMaxEpisodeFromCache(id, widget.release.title);
+                                        }
+                                        final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+                                        final entry = WatchlistEntry(
+                                          animeId: id,
+                                          title: widget.release.title,
+                                          imageUrl: widget.release.imageUrl,
+                                          episodesWatched: 0,
+                                          totalEpisodes: total,
+                                          addedAt: DateTime.now(),
+                                        );
+                                        ws.watchlist.addEntry(entry);
+                                        await ws.saveWatchlist();
+                                        widget.crunchyrollService.scheduleWatchlistEntryUpdate(ws, entry);
+                                        if (mounted) ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
+                                        );
                                       }
-                                    } else {
-                                      int parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
-                                      int? knownMax = _knownMaxEpisode;
-                                      if (knownMax == null) {
-                                        knownMax = await widget.crunchyrollService.getMaxEpisodeFromCache(id, widget.release.title);
-                                      }
-                                      final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
-                                      final entry = WatchlistEntry(
-                                        animeId: id,
-                                        title: widget.release.title,
-                                        imageUrl: widget.release.imageUrl,
-                                        episodesWatched: 0,
-                                        totalEpisodes: total,
-                                        addedAt: DateTime.now(),
-                                      );
-                                      ws.watchlist.addEntry(entry);
-                                      await ws.saveWatchlist();
-                                      widget.crunchyrollService.scheduleWatchlistEntryUpdate(ws, entry);
-                                      if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                                        SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
-                                      );
+                                      if (mounted) setState(() {
+                                        _isProcessingWatchlist = false;
+                                        _isInWatchlist = !exists;
+                                      });
+                                    } catch (e) {
+                                      if (kDebugMode) print('❌ Error toggling watchlist from details dialog: $e');
+                                      if (mounted) setState(() { _isProcessingWatchlist = false; });
                                     }
-                                    if (mounted) setState(() {
-                                      _isProcessingWatchlist = false;
-                                      _isInWatchlist = !exists;
-                                    });
-                                  } catch (e) {
-                                    if (kDebugMode) print('❌ Error toggling watchlist from details dialog: $e');
-                                    if (mounted) setState(() { _isProcessingWatchlist = false; });
-                                  }
-                                },
-                                padding: EdgeInsets.zero,
-                              ),
+                                  },
+                                  padding: EdgeInsets.zero,
+                                ),
+                        ),
                       ),
-                    ),
                     Positioned(
                       top: 8,
                       right: 8,
@@ -383,6 +391,29 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                           ),
                           child: const Text(
                             'PREMIERE',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (release.isPredicted)
+                      Positioned(
+                        bottom: 8,
+                        right: 8,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.orange.shade700,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'Vorhersage',
                             style: TextStyle(
                               color: Colors.white,
                               fontWeight: FontWeight.bold,
@@ -543,24 +574,25 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                           ),
                         ),
                       const SizedBox(height: 20),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: _openCrunchyrollEpisode,
-                          icon: const Icon(Icons.play_circle),
-                          label: const Text('Auf Crunchyroll ansehen'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Theme.of(context).colorScheme.primary,
-                            foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
-                                ? Colors.black
-                                : Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                      if (!widget.release.isPredicted)
+                        SizedBox(
+                          width: double.infinity,
+                          child: ElevatedButton.icon(
+                            onPressed: _openCrunchyrollEpisode,
+                            icon: const Icon(Icons.play_circle),
+                            label: const Text('Auf Crunchyroll ansehen'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Theme.of(context).colorScheme.primary,
+                              foregroundColor: Theme.of(context).colorScheme.primary.computeLuminance() > 0.5
+                                  ? Colors.black
+                                  : Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 14),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
                             ),
                           ),
                         ),
-                      ),
                     ],
                   ),
                 ),

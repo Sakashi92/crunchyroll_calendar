@@ -1,0 +1,134 @@
+import 'package:flutter/foundation.dart';
+import 'dart:math';
+import '../models/anime_release.dart';
+import 'anilist_service.dart';
+import 'crunchyroll_service.dart';
+import 'prediction_notifier.dart';
+import '../models/anime_metadata.dart';
+
+/// Simple next-episode predictor.
+/// - Reads recent releases for a series from the CrunchyrollService cache
+/// - Computes average interval between last N releases
+/// - Uses AniList metadata (if available) to bound predictions
+/// - Inserts a synthetic AnimeRelease into CrunchyrollService cache via `addPredictedRelease`
+class NextEpisodePredictor {
+  final CrunchyrollService crunchy;
+  final AnilistService anilist;
+
+  NextEpisodePredictor(this.crunchy, this.anilist);
+
+  /// Predict next episode for a given series (identified by seriesUrl or title)
+  /// Returns the predicted release or null if prediction not possible.
+  Future<AnimeRelease?> predictNextForSeries(String? seriesUrl, String? title) async {
+    try {
+      print('🔎 [PREDICTOR] Predicting next for seriesUrl=${seriesUrl ?? '-'} title=${title ?? '-'}');
+      // load cached releases
+      final releases = await crunchy.getReleasesForSeriesCached(seriesUrl, title);
+      if (releases == null || releases.length < 2) return null;
+
+      // sort by releaseTime
+      releases.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
+
+      // take last up to 6 intervals
+      final recent = releases.reversed.take(6).toList().reversed.toList();
+      final List<Duration> intervals = [];
+      for (var i = 1; i < recent.length; i++) {
+        intervals.add(recent[i].releaseTime.difference(recent[i - 1].releaseTime).abs());
+      }
+      if (intervals.isEmpty) return null;
+
+      // compute median interval (robust to outliers)
+      intervals.sort((a, b) => a.inSeconds.compareTo(b.inSeconds));
+      final median = intervals[intervals.length ~/ 2];
+
+      final lastRelease = recent.last;
+      final predictedDate = lastRelease.releaseTime.add(median);
+
+      // Only predict up to 7 days ahead from now
+      final now = DateTime.now();
+      final maxAllowed = now.add(const Duration(days: 7));
+      if (predictedDate.isBefore(now) || predictedDate.isAfter(maxAllowed)) {
+        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside 7-day window');
+        return null;
+      }
+
+      // fetch AniList metadata to get totalEpisodes (optional)
+      final effectiveTitle = title ?? lastRelease.title;
+      print('🔎 [PREDICTOR] Fetching AniList metadata for "$effectiveTitle" (seriesUrl=${seriesUrl ?? '-'})');
+      final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
+      print('🔎 [PREDICTOR] AniList metadata fetched for "$effectiveTitle": totalEpisodes=${meta?.totalEpisodes}');
+
+      // compute predicted episode number: try parse last episode number
+      int lastEp = int.tryParse(lastRelease.episodeNumber) ?? 0;
+      final predictedEpisode = (lastEp > 0) ? lastEp + 1 : (meta?.totalEpisodes != null ? (meta!.totalEpisodes! - 0) : lastEp + 1);
+
+      // cap predictedEpisode by totalEpisodes if known
+      int? totalEpisodes = meta?.totalEpisodes;
+      if (totalEpisodes != null && predictedEpisode > totalEpisodes) {
+        // no prediction if already at or beyond total
+        return null;
+      }
+
+      final predicted = AnimeRelease(
+        title: title ?? lastRelease.title,
+        episodeNumber: predictedEpisode.toString(),
+        episodeTitle: '',
+        releaseTime: predictedDate,
+        imageUrl: meta?.imageUrl ?? lastRelease.imageUrl,
+        description: meta?.description ?? lastRelease.description,
+        seriesUrl: seriesUrl ?? lastRelease.seriesUrl,
+        episodeUrl: meta?.siteUrl ?? lastRelease.episodeUrl,
+        isPremiere: false,
+        isPredicted: true,
+      );
+
+      // add prediction to CrunchyrollService cache (method added below should exist)
+      await crunchy.addPredictedRelease(predicted);
+      // Signal UI to reload cached predictions
+      predictionsUpdated.value = true;
+      print('✅ [PREDICTOR] Predicted next for $title -> ep ${predictedEpisode} @ $predictedDate');
+      return predicted;
+    } catch (e) {
+      print('❌ [PREDICTOR] Error predicting next episode for $title: $e');
+      return null;
+    }
+  }
+
+  /// Predict for all series known in cache/watchlist. This iterates over unique seriesUrls.
+  Future<void> predictForAllKnownSeries() async {
+    // Collect releases from the last 7 days and predict for each unique series
+    final now = DateTime.now();
+    final releases = <AnimeRelease>[];
+    for (int d = 0; d < 7; d++) {
+      final day = now.subtract(Duration(days: d));
+      try {
+        final dayReleases = await crunchy.getReleasesForDay(day);
+        releases.addAll(dayReleases);
+      } catch (e) {
+        if (kDebugMode) print('Error fetching releases for $day: $e');
+      }
+    }
+
+    // Deduplicate by seriesUrl first, fallback to title if missing
+    final Map<String, String?> uniqueSeries = {};
+    for (final r in releases) {
+      final key = (r.seriesUrl != null && r.seriesUrl!.isNotEmpty) ? r.seriesUrl! : (r.title ?? '');
+      if (!uniqueSeries.containsKey(key)) uniqueSeries[key] = r.title;
+    }
+
+    final seriesList = uniqueSeries.entries.toList();
+    print('🔎 [PREDICTOR] Running predictions for ${seriesList.length} series discovered in last 7 days');
+
+    int i = 0;
+    for (final entry in seriesList) {
+      i++;
+      final seriesId = entry.key;
+      final title = entry.value;
+      print('🔎 [PREDICTOR] (${i}/${seriesList.length}) Starting prediction for seriesId=$seriesId title=$title');
+      await predictNextForSeries(seriesId, title);
+      print('🔎 [PREDICTOR] (${i}/${seriesList.length}) Finished prediction for seriesId=$seriesId');
+    }
+
+    print('🔎 [PREDICTOR] All predictions complete');
+  }
+}

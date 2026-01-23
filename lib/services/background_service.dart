@@ -6,6 +6,9 @@ import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/notification_service.dart';
 import '../services/watchlist_service.dart';
+import '../settings.dart';
+import '../services/anilist_service.dart';
+import '../services/next_episode_predictor.dart';
 import '../models/watchlist.dart';
 import '../utils/release_comparator.dart';
 import '../models/notification_log.dart';
@@ -305,6 +308,26 @@ Future<bool> _executeBackgroundScraper() async {
       await crunchyrollService.syncWatchlistWithReleases(watchlistService, notificationRepo);
     } catch (e) {
       if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Failed to sync watchlist: $e');
+    }
+
+    // 2.b Wenn Vorhersagen aktiviert sind, führe den Predictor im Hintergrund aus
+    try {
+      final predEnabled = await AppSettings.getPredictionEnabled();
+      if (predEnabled) {
+        if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictions enabled - running predictor in background');
+        final anilist = AnilistService();
+        final predictor = NextEpisodePredictor(crunchyrollService, anilist);
+        try {
+          await predictor.predictForAllKnownSeries();
+          if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictor finished');
+        } catch (e) {
+          if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Predictor failed: $e');
+        }
+      } else {
+        if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictions disabled - skipping predictor');
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Error checking/running predictor: $e');
     }
 
     if (allReleases.isEmpty) {

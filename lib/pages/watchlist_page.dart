@@ -566,6 +566,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
             tooltip: 'Händisch hinzufügen',
             onPressed: _addAnime,
           ),
+          // AniList forecast removed — calendar icon intentionally omitted
           // Sort button
           PopupMenuButton<SortMode>(
             icon: const Icon(Icons.sort),

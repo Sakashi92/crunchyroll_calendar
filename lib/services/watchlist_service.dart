@@ -5,6 +5,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/watchlist.dart';
 import '../repositories/favorites_repository.dart';
+import 'crunchyroll_service.dart';
+import 'next_episode_predictor.dart';
+import 'anilist_service.dart';
 
 class WatchlistService {
   static const _storageKey = 'watchlist_data';
@@ -51,6 +54,35 @@ class WatchlistService {
     }
 
     return null;
+  }
+
+  /// Für alle Watchlist-Einträge, die in den letzten 7 Tagen hinzugefügt wurden,
+  /// versuche eine AniList-gestützte Vorhersage der nächsten Folge zu erstellen
+  /// und in den Crunchyroll-Cache als predicted release einzufügen.
+  /// Gibt die Anzahl erfolgreicher Vorhersagen zurück.
+  Future<int> generateForecastForRecentEntries() async {
+    final now = DateTime.now();
+    final since = now.subtract(const Duration(days: 7));
+    final crunch = CrunchyrollService();
+    final anilist = AnilistService();
+    final predictor = NextEpisodePredictor(crunch, anilist);
+
+    // ensure cache loaded
+    await crunch.loadCacheOnStartup();
+
+    int count = 0;
+    for (final e in watchlist.entries) {
+      try {
+        if (e.addedAt == null) continue;
+        if (e.addedAt!.isBefore(since)) continue;
+        final pred = await predictor.predictNextForSeries(e.animeId, e.title);
+        if (pred != null) count++;
+      } catch (_) {
+        // ignore
+      }
+    }
+
+    return count;
   }
 
   bool _parseBool(dynamic v) {

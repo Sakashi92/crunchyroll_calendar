@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 2,
+            "activePatchIndex": 3,
             "patches": [
                 {
                     "date": 1768666698940,
@@ -16,6 +16,10 @@
                 {
                     "date": 1768694217330,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -3,8 +3,9 @@\n   final String episodeNumber;\r\n   final String episodeTitle;\r\n   final DateTime releaseTime;\r\n   String? imageUrl; // Nicht final, damit AniList-Bilder nachgeladen werden können\r\n+  String? description; // Plot/Beschreibung des Anime\r\n   final String seriesUrl;\r\n   final String episodeUrl;\r\n   final bool isPremiere;\r\n \r\n@@ -13,8 +14,9 @@\n     required this.episodeNumber,\r\n     required this.episodeTitle,\r\n     required this.releaseTime,\r\n     this.imageUrl,\r\n+    this.description,\r\n     required this.seriesUrl,\r\n     required this.episodeUrl,\r\n     this.isPremiere = false,\r\n   });\r\n@@ -33,8 +35,9 @@\n       episodeNumber: json['episodeNumber'] as String,\r\n       episodeTitle: json['episodeTitle'] as String,\r\n       releaseTime: DateTime.parse(json['releaseTime'] as String),\r\n       imageUrl: json['imageUrl'] as String?,\r\n+      description: json['description'] as String?,\r\n       seriesUrl: json['seriesUrl'] as String,\r\n       episodeUrl: json['episodeUrl'] as String,\r\n       isPremiere: json['isPremiere'] as bool? ?? false,\r\n     );\r\n@@ -46,8 +49,9 @@\n       'episodeNumber': episodeNumber,\r\n       'episodeTitle': episodeTitle,\r\n       'releaseTime': releaseTime.toIso8601String(),\r\n       'imageUrl': imageUrl,\r\n+      'description': description,\r\n       'seriesUrl': seriesUrl,\r\n       'episodeUrl': episodeUrl,\r\n       'isPremiere': isPremiere,\r\n     };\r\n"
+                },
+                {
+                    "date": 1769175965822,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -7,8 +7,9 @@\n   String? description; // Plot/Beschreibung des Anime\r\n   final String seriesUrl;\r\n   final String episodeUrl;\r\n   final bool isPremiere;\r\n+  final bool isPredicted;\r\n \r\n   AnimeRelease({\r\n     required this.title,\r\n     required this.episodeNumber,\r\n@@ -18,8 +19,9 @@\n     this.description,\r\n     required this.seriesUrl,\r\n     required this.episodeUrl,\r\n     this.isPremiere = false,\r\n+    this.isPredicted = false,\r\n   });\r\n \r\n   String get episodeInfo => 'Folge $episodeNumber';\r\n   \r\n@@ -39,8 +41,9 @@\n       description: json['description'] as String?,\r\n       seriesUrl: json['seriesUrl'] as String,\r\n       episodeUrl: json['episodeUrl'] as String,\r\n       isPremiere: json['isPremiere'] as bool? ?? false,\r\n+      isPredicted: json['isPredicted'] as bool? ?? false,\r\n     );\r\n   }\r\n \r\n   Map<String, dynamic> toJson() {\r\n@@ -53,7 +56,8 @@\n       'description': description,\r\n       'seriesUrl': seriesUrl,\r\n       'episodeUrl': episodeUrl,\r\n       'isPremiere': isPremiere,\r\n+      'isPredicted': isPredicted,\r\n     };\r\n   }\r\n }\r\n"
                 }
             ],
             "date": 1768666698940,

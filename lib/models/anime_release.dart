@@ -8,6 +8,7 @@ class AnimeRelease {
   final String seriesUrl;
   final String episodeUrl;
   final bool isPremiere;
+  final bool isPredicted;
 
   AnimeRelease({
     required this.title,
@@ -19,6 +20,7 @@ class AnimeRelease {
     required this.seriesUrl,
     required this.episodeUrl,
     this.isPremiere = false,
+    this.isPredicted = false,
   });
 
   String get episodeInfo => 'Folge $episodeNumber';
@@ -40,6 +42,7 @@ class AnimeRelease {
       seriesUrl: json['seriesUrl'] as String,
       episodeUrl: json['episodeUrl'] as String,
       isPremiere: json['isPremiere'] as bool? ?? false,
+      isPredicted: json['isPredicted'] as bool? ?? false,
     );
   }
 
@@ -54,6 +57,7 @@ class AnimeRelease {
       'seriesUrl': seriesUrl,
       'episodeUrl': episodeUrl,
       'isPremiere': isPremiere,
+      'isPredicted': isPredicted,
     };
   }
 }

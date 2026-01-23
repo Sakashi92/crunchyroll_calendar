@@ -5,6 +5,9 @@ import 'dart:io';
 import 'services/crunchyroll_service.dart';
 import 'services/background_service.dart';
 import 'services/battery_optimization_service.dart';
+import 'services/anilist_service.dart';
+import 'services/next_episode_predictor.dart';
+import 'services/prediction_notifier.dart';
 import 'services/permission_service.dart';
 import 'repositories/notification_repository.dart';
 import 'models/notification_log.dart';
@@ -23,6 +26,7 @@ class AppSettings {
   static const String _searchHistoryKey = 'search_history';
   static const String _watchlistSortModeKey = 'watchlist_sort_mode';
     static const String _episodeProviderKey = 'episode_provider';
+    static const String _predictionEnabledKey = 'enable_next_episode_prediction';
   
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -224,13 +228,25 @@ class AppSettings {
   /// Lädt den aktuell gewählten Episode-Provider (z.B. 'crunchyroll' oder 'anilist')
   static Future<String> getEpisodeProviderName() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_episodeProviderKey) ?? 'crunchyroll';
+    return prefs.getString(_episodeProviderKey) ?? 'anilist';
   }
 
   /// Speichert den Episode-Provider Namen
   static Future<void> setEpisodeProviderName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_episodeProviderKey, name);
+  }
+
+  /// Lädt ob die Vorhersage für nächste Episoden aktiviert ist
+  static Future<bool> getPredictionEnabled() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_predictionEnabledKey) ?? true; // default: aktiviert
+  }
+
+  /// Speichert ob die Vorhersage für nächste Episoden aktiviert ist
+  static Future<void> setPredictionEnabled(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_predictionEnabledKey, enabled);
   }
 }
 
@@ -255,7 +271,11 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _autoMinimizeCalendar = true;
   double _autoMinimizeScrollThreshold = 200.0;
   bool _hideDuplicateReleases = true;
-  String _episodeProvider = 'crunchyroll';
+  String _episodeProvider = 'anilist';
+  bool _predictionEnabled = false;
+  // default true to enable predictions for users who expect forecasts
+  // this is overridden by stored preference when present
+  
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -276,6 +296,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final autoMinimizeScrollThreshold = await AppSettings.getAutoMinimizeScrollThreshold();
     final hideDuplicateReleases = await AppSettings.getHideDuplicateReleases();
     final episodeProvider = await AppSettings.getEpisodeProviderName();
+    final predictionEnabled = await AppSettings.getPredictionEnabled();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -289,6 +310,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _autoMinimizeScrollThreshold = autoMinimizeScrollThreshold;
       _hideDuplicateReleases = hideDuplicateReleases;
       _episodeProvider = episodeProvider;
+      _predictionEnabled = predictionEnabled;
       _permissions = permissions;
       _isLoading = false;
     });
@@ -328,16 +350,22 @@ class _SettingsPageState extends State<SettingsPage> {
       _updateIntervalMinutes = minutes;
     });
     widget.onSettingsChanged?.call();
-    // Restart background scraper only when effective interval increases above previous
+    // Restart background scraper and in-app auto-update when effective interval changed
     try {
       final prevEffective = previous < 15 ? 15 : previous;
       final newEffective = minutes < 15 ? 15 : minutes;
-      if (newEffective > prevEffective) {
+      if (newEffective != prevEffective) {
         await BackgroundService().stopPeriodicScraperTask();
         await BackgroundService().startPeriodicScraperTask(intervalMinutes: newEffective);
+        // Also restart the CrunchyrollService auto-update timer if provided
+        if (widget.crunchyrollService != null) {
+          widget.crunchyrollService!.restartAutoUpdate(() {
+            if (mounted) _loadSettings();
+          });
+        }
       }
     } catch (e) {
-      if (kDebugMode) print('❌ Error restarting background service: $e');
+      if (kDebugMode) print('❌ Error restarting background service or auto-update: $e');
     }
     
     if (mounted) {
@@ -398,23 +426,109 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Future<void> _savePredictionEnabled(bool enabled) async {
+    await AppSettings.setPredictionEnabled(enabled);
+    setState(() {
+      _predictionEnabled = enabled;
+    });
+    widget.onSettingsChanged?.call();
+    if (kDebugMode) print('🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}');
+    // If enabling predictions, load cache and run an immediate prediction pass
+    if (enabled) {
+      try {
+        if (kDebugMode) print('🔎 [SETTINGS] Preparing CrunchyrollService and predictor...');
+        final cs = widget.crunchyrollService ?? CrunchyrollService();
+        final provider = await AppSettings.getEpisodeProviderName();
+        if (kDebugMode) print('🔎 [SETTINGS] Episode provider: $provider');
+        // Clear any existing predicted entries, reload stored cache and rebuild predictions
+        await cs.removeAllPredictedReleases();
+        // Ensure the service has its cache loaded from SharedPreferences
+        await cs.loadCacheOnStartup();
+        final predictor = NextEpisodePredictor(cs, AnilistService());
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhersage läuft... Dies kann einige Minuten dauern.')));
+        }
+        if (kDebugMode) print('🔎 [SETTINGS] Running predictor for all known series...');
+        // Await so we know predictions were written before returning
+        await predictor.predictForAllKnownSeries();
+        if (kDebugMode) print('🔎 [SETTINGS] Predictor run completed');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhersage abgeschlossen')));
+        }
+        // Signal UI reload (predictor sets notifier per-prediction, but ensure final state)
+        try { predictionsUpdated.value = true; } catch (_) {}
+        // Notify parent that settings changed so views can refresh if needed
+        widget.onSettingsChanged?.call();
+      } catch (e) {
+        if (kDebugMode) print('Error triggering predictor from settings: $e');
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Ausführen der Vorhersage: $e')));
+      }
+    }
+    // If disabling predictions, remove previously created predicted entries from cache
+    else {
+      try {
+        final cs = widget.crunchyrollService ?? CrunchyrollService();
+        await cs.removeAllPredictedReleases();
+        try { predictionsUpdated.value = true; } catch (_) {}
+      } catch (e) {
+        if (kDebugMode) print('Error removing predicted releases from settings: $e');
+      }
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(enabled ? 'Vorhersage aktiviert' : 'Vorhersage deaktiviert'), duration: const Duration(seconds: 2)),
+      );
+    }
+  }
+
   Future<void> _clearImageCache() async {
     // Lösche In-Memory-Cache im Service (wichtig!)
-    if (widget.crunchyrollService != null) {
-      await widget.crunchyrollService!.clearImageCache();
-    } else {
-      // Fallback: Nur SharedPreferences löschen
+    final cs = widget.crunchyrollService ?? CrunchyrollService();
+    try {
+      await cs.clearImageCache();
+    } catch (e) {
+      if (kDebugMode) print('Error clearing in-memory image cache: $e');
+    }
+
+    // Lösche persistente Bild-Cache-Einträge
+    try {
       final prefs = await SharedPreferences.getInstance();
+      // CrunchyrollService._imageCacheKey is private; use the same key string here.
       await prefs.remove('cached_anime_images');
       await prefs.remove('processed_anime_titles_v4');
+    } catch (e) {
+      if (kDebugMode) print('Error clearing image cache in prefs: $e');
     }
-    
+
+    // Lade Service-Cache neu (stellt sicher, dass Releases/Images neu geladen werden)
+    try {
+      await cs.loadCacheOnStartup();
+    } catch (e) {
+      if (kDebugMode) print('Error reloading CrunchyrollService cache: $e');
+    }
+
+    // Falls Vorhersage aktiviert ist, Vorhersage neu ausführen
+    try {
+      final predictionEnabled = await AppSettings.getPredictionEnabled();
+      if (predictionEnabled) {
+        try {
+          await cs.removeAllPredictedReleases();
+        } catch (_) {}
+        final predictor = NextEpisodePredictor(cs, AnilistService());
+        await predictor.predictForAllKnownSeries();
+        try { predictionsUpdated.value = true; } catch (_) {}
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error re-running predictions after clearing image cache: $e');
+    }
+
+    // Signalisiere parent/Views, dass Einstellungen/Daten sich geändert haben
     widget.onSettingsChanged?.call();
-    
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Bild-Cache gelöscht. Bilder werden neu heruntergeladen.'),
+          content: Text('Bild-Cache gelöscht. Kalender und Vorhersage werden neu geladen.'),
           duration: Duration(seconds: 3),
         ),
       );
@@ -650,7 +764,7 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: DropdownButton<String>(
                 value: _episodeProvider,
                 items: const [
-                  DropdownMenuItem(value: 'crunchyroll', child: Text('Crunchyroll (Scraper)')),
+                  DropdownMenuItem(value: 'crunchyroll', child: Text('Kitsu.app')),
                   DropdownMenuItem(value: 'anilist', child: Text('Anilist.co (GraphQL)')),
                 ],
                 onChanged: (v) {
@@ -686,6 +800,16 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildSectionHeader('Aktualisierung'),
           _buildUpdateIntervalTile(),
           _buildShowRefreshMessageTile(),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SwitchListTile(
+              secondary: const Icon(Icons.timeline),
+              title: const Text('Vorhersage für nächste Episoden'),
+              subtitle: const Text('Verwendet lokale Release-Historie und AniList, um nächste Episoden zu prognostizieren'),
+              value: _predictionEnabled,
+              onChanged: (v) => _savePredictionEnabled(v),
+            ),
+          ),
           
           const Divider(),
           
@@ -1243,7 +1367,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.8.0\nBilder werden von MyAnimeList.net geladen'),
+      subtitle: Text('Version 0.8.5\nBilder werden von Kitsu.app geladen'),
       isThreeLine: true,
     );
   }
