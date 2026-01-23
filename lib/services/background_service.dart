@@ -299,29 +299,32 @@ Future<bool> _executeBackgroundScraper() async {
     
     if (kDebugMode) print('📺 [BACKGROUND-SCRAPER] Fetched and cached ${allReleases.length} releases for this week');
     
+    // Load watchlist once for all subsequent operations
+    if (kDebugMode) print('📚 [BACKGROUND-SCRAPER] Loading watchlist from prefs...');
+    final watchlist = Watchlist();
+    final watchlistService = WatchlistService(watchlist);
+    await watchlistService.loadWatchlist();
+    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Loaded ${watchlist.entries.length} watchlist entries');
+
     // 2.a Synchronisiere die Watchlist mit den gecachten Releases (falls vorhanden)
     try {
       if (kDebugMode) print('🔁 [BACKGROUND-SCRAPER] Syncing watchlist totals with cached releases...');
-      final watchlist = Watchlist();
-      final watchlistService = WatchlistService(watchlist);
-      await watchlistService.loadWatchlist();
       await crunchyrollService.syncWatchlistWithReleases(watchlistService, notificationRepo);
     } catch (e) {
       if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Failed to sync watchlist: $e');
     }
 
-    // 2.b Wenn Vorhersagen aktiviert sind, führe den Predictor im Hintergrund aus
+    // 2.b Wenn Vorhersagen aktiviert sind, führe den Predictor im Hintergrund aus (nur für Watchlist)
     try {
       final predEnabled = await AppSettings.getPredictionEnabled();
       if (predEnabled) {
-        if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictions enabled - running predictor in background');
-        final anilist = AnilistService();
-        final predictor = NextEpisodePredictor(crunchyrollService, anilist);
-        try {
-          await predictor.predictForAllKnownSeries();
-          if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictor finished');
-        } catch (e) {
-          if (kDebugMode) print('❌ [BACKGROUND-SCRAPER] Predictor failed: $e');
+        if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictions enabled - running watchlist-only predictor');
+        // Only predict for watchlist entries, not all known series
+        if (watchlist.entries.isNotEmpty) {
+          await watchlistService.generateForecastForAllEntries();
+          if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Watchlist predictor finished');
+        } else {
+          if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Watchlist empty - skipping predictions');
         }
       } else {
         if (kDebugMode) print('🔮 [BACKGROUND-SCRAPER] Predictions disabled - skipping predictor');
@@ -336,12 +339,6 @@ Future<bool> _executeBackgroundScraper() async {
     }
     
     // 3. Hole Watchlist-Einträge mit aktivierten Notifications (nur Watchlist)
-    if (kDebugMode) print('📚 [BACKGROUND-SCRAPER] Loading watchlist from prefs...');
-    final watchlist = Watchlist();
-    final watchlistService = WatchlistService(watchlist);
-    await watchlistService.loadWatchlist();
-
-    if (kDebugMode) print('✅ [BACKGROUND-SCRAPER] Loaded ${watchlist.entries.length} watchlist entries');
 
     // Sammle alle aktivierten Ziele (nur Watchlist)
     final enabledWatchlist = watchlist.entries.where((e) => e.notificationsEnabled).toList();

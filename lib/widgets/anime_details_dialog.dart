@@ -11,6 +11,11 @@ import '../settings.dart';
  
 import '../services/watchlist_service.dart';
 import '../models/watchlist.dart';
+import '../services/next_episode_predictor.dart';
+import '../services/anilist_service.dart';
+import '../services/anilist_cache.dart';
+import '../utils/title_utils.dart';
+import '../widgets/anilist_search_dialog.dart';
 
 /// Dialog Widget für Anime-Details mit asynchronem Laden der Beschreibung
 class AnimeDetailsDialog extends StatefulWidget {
@@ -21,6 +26,7 @@ class AnimeDetailsDialog extends StatefulWidget {
   final bool showTimeBadge;
   final void Function(AnimeRelease release)? onAddToWatchlist;
   final WatchlistService? watchlistService;
+  final bool showManualLink;
 
   const AnimeDetailsDialog({
     super.key,
@@ -31,6 +37,7 @@ class AnimeDetailsDialog extends StatefulWidget {
     this.showTimeBadge = true,
     this.onAddToWatchlist,
     this.watchlistService,
+    this.showManualLink = false,
   });
 
   @override
@@ -317,6 +324,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                         if (confirm == true) {
                                           ws.watchlist.removeEntry(id);
                                           await ws.saveWatchlist();
+                                          // Remove predicted releases for this series
+                                          await widget.crunchyrollService.removePredictedReleasesForSeries(id, widget.release.title);
                                           if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                                             SnackBar(content: Text('${widget.release.title} aus Watchlist entfernt')),
                                           );
@@ -345,6 +354,27 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
                                           SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
                                         );
+
+                                        // OPTIMIZED: Only fetch prediction for THIS anime (fast, ~1-2 seconds)
+                                        try {
+                                          final predictionsEnabled = await AppSettings.getPredictionEnabled();
+                                          if (predictionsEnabled) {
+                                            // Run in background to not block UI - only predict for this single item
+                                            Future.microtask(() async {
+                                              try {
+                                                if (kDebugMode) print('🔔 Fetching prediction for single item: ${widget.release.title}');
+                                                final anilist = AnilistService();
+                                                final predictor = NextEpisodePredictor(widget.crunchyrollService, anilist);
+                                                await predictor.predictNextForSeries(id, widget.release.title);
+                                                if (kDebugMode) print('✅ Single item prediction complete for ${widget.release.title}');
+                                              } catch (e) {
+                                                if (kDebugMode) print('❌ Error predicting single item: $e');
+                                              }
+                                            });
+                                          }
+                                        } catch (e) {
+                                           if (kDebugMode) print('❌ Error checking settings for prediction: $e');
+                                        }
                                       }
                                       if (mounted) setState(() {
                                         _isProcessingWatchlist = false;
@@ -356,7 +386,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                     }
                                   },
                                   padding: EdgeInsets.zero,
-                                ),
+                          ),
                         ),
                       ),
                     Positioned(
@@ -571,6 +601,73 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                             fontSize: 14,
                             color: Colors.grey.shade700,
                             height: 1.4,
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      // Manual AniList Link Button - Only visible if enabled (e.g. from Watchlist)
+                      if (widget.showManualLink)
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: () async {
+                                final currentTitle = widget.release.title;
+                                final seriesUrl = widget.release.seriesUrl;
+                                
+                                // Show search dialog
+                                final result = await showDialog<AnimeMetadata>(
+                                  context: context, 
+                                  builder: (_) => AnilistSearchDialog(initialQuery: currentTitle)
+                                );
+                                
+                                if (result != null && mounted) {
+                                  // Save the selection (cache key is based on normalized title/URL)
+                                  final cache = AnilistCache();
+                                  final key = normalizeTitle(seriesUrl ?? currentTitle);
+                                  await cache.save(key, result);
+                                  
+                                  // ALSO update the WatchlistEntry if present
+                                  if (_isInWatchlist && widget.watchlistService != null) {
+                                    try {
+                                      final ws = widget.watchlistService!;
+                                      final entryIndex = ws.watchlist.entries.indexWhere((e) => e.animeId == seriesUrl);
+                                      if (entryIndex != -1) {
+                                        final entry = ws.watchlist.entries[entryIndex];
+                                        entry.anilistId = result.id;
+                                        ws.watchlist.updateEntry(entry);
+                                        await ws.saveWatchlist();
+                                        if (kDebugMode) print('✅ Link: Updated watchlist entry with AniList ID: ${result.id}');
+                                      }
+                                    } catch (e) {
+                                      if (kDebugMode) print('❌ Link: Failed to update watchlist entry: $e');
+                                    }
+                                  }
+                                  
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('Verknüpft mit: ${result.siteUrl ?? "ID ${result.id}"}'))
+                                    );
+                                    
+                                    // Trigger immediate refresh of description/metadata
+                                    setState(() { _isLoadingDescription = true; });
+                                    _loadDescription();
+                                    
+                                    // Trigger single item prediction update if in watchlist
+                                    if (_isInWatchlist && widget.watchlistService != null) {
+                                       try {
+                                          final anilist = AnilistService();
+                                          final predictor = NextEpisodePredictor(widget.crunchyrollService, anilist);
+                                          await predictor.predictNextForSeries(widget.release.seriesUrl, widget.release.title); 
+                                       } catch (_) {}
+                                    }
+                                  }
+                                }
+                            },
+                            icon: const Icon(Icons.link),
+                            label: const Text('Manuelle AniList Verknüpfung'),
+                            style: OutlinedButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                            ),
                           ),
                         ),
                       const SizedBox(height: 20),

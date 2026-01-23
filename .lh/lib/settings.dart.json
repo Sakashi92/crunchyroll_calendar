@@ -3,7 +3,7 @@
     "activeCommit": 0,
     "commits": [
         {
-            "activePatchIndex": 118,
+            "activePatchIndex": 119,
             "patches": [
                 {
                     "date": 1768743284045,
@@ -480,6 +480,10 @@
                 {
                     "date": 1769194561041,
                     "content": "Index: \n===================================================================\n--- \n+++ \n@@ -428,10 +428,10 @@\n     }\r\n   }\r\n \r\n   Future<void> _savePredictionEnabled(bool enabled) async {\r\n-    // Persist preference in background so UI updates immediately\r\n-    AppSettings.setPredictionEnabled(enabled);\r\n+    // Persist preference and wait so subsequent reloads read the new value\r\n+    await AppSettings.setPredictionEnabled(enabled);\r\n     setState(() {\r\n       _predictionEnabled = enabled;\r\n     });\r\n     if (kDebugMode) print('🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}');\r\n"
+                },
+                {
+                    "date": 1769201386575,
+                    "content": "Index: \n===================================================================\n--- \n+++ \n@@ -459,9 +459,9 @@\n           if (raw != null) {\r\n             final wlObj = Watchlist();\r\n             final ws = WatchlistService(wlObj);\r\n             await ws.loadWatchlist();\r\n-            seeds = ws.watchlist.entries.map((e) => e.animeId?.toString() ?? '').where((s) => s.isNotEmpty).toList();\r\n+            seeds = ws.watchlist.entries.map((e) => e.animeId.toString()).where((s) => s.isNotEmpty).toList();\r\n           }\r\n         } catch (e) {\r\n           if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist seeds: $e');\r\n         }\r\n@@ -537,22 +537,17 @@\n     } catch (e) {\r\n       if (kDebugMode) print('Error reloading CrunchyrollService cache: $e');\r\n     }\r\n \r\n-    // Falls Vorhersage aktiviert ist, Vorhersage neu ausführen (nur für Watchlist)\r\n+    // Falls Vorhersage aktiviert ist, Vorhersage neu ausführen\r\n     try {\r\n       final predictionEnabled = await AppSettings.getPredictionEnabled();\r\n       if (predictionEnabled) {\r\n         try {\r\n           await cs.removeAllPredictedReleases();\r\n         } catch (_) {}\r\n-        // Only predict for watchlist entries, not all known series\r\n-        final watchlist = Watchlist();\r\n-        final watchlistService = WatchlistService(watchlist);\r\n-        await watchlistService.loadWatchlist();\r\n-        if (watchlist.entries.isNotEmpty) {\r\n-          await watchlistService.generateForecastForAllEntries();\r\n-        }\r\n+        final predictor = NextEpisodePredictor(cs, AnilistService());\r\n+        await predictor.predictForAllKnownSeries();\r\n         try { predictionsUpdated.value = true; } catch (_) {}\r\n       }\r\n     } catch (e) {\r\n       if (kDebugMode) print('Error re-running predictions after clearing image cache: $e');\r\n"
                 }
             ],
             "date": 1768743284045,

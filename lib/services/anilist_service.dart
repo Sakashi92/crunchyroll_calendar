@@ -190,6 +190,7 @@ class AnilistService implements EpisodeProvider {
       Media(search: $search, type: ANIME) {
         id
         title { userPreferred romaji english native }
+        title { userPreferred romaji english native }
         nextAiringEpisode { airingAt episode timeUntilAiring }
       }
     }''';
@@ -310,223 +311,246 @@ class AnilistService implements EpisodeProvider {
   Future<AnimeMetadata?> fetchSeriesMetadata(String? seriesUrl, String? title, {bool usePredictDelay = false}) async {
     if ((title == null || title.isEmpty) && (seriesUrl == null || seriesUrl.isEmpty)) return null;
 
-    // Extract anime name from URL if title is not provided
-    if ((title == null || title.isEmpty) && seriesUrl != null) {
-      title = extractAnimeName(seriesUrl);
-      if (kDebugMode) {
-        print('🔎 [ANILIST] Extracted title from URL: "$title"');
-      }
+    // Use seriesUrl as the primary stable cache key if available
+    final cacheKey = normalizeTitle(seriesUrl ?? title);
+    final cache = AnilistCache();
+    final cached = await cache.get(cacheKey);
+    
+    // If we have a cached ID, use it to fetch PRECISE fresh data (1 request, no search)
+    if (cached != null && cached.id != null) {
+        if (kDebugMode) print('🔎 [ANILIST] Cache hit for "$cacheKey" (ID: ${cached.id}) - fetching FRESH data by ID');
+        try {
+           final qId = '''
+            query (\$id: Int) {
+              Media(id: \$id, type: ANIME) {
+                id
+                siteUrl
+                title { romaji english native }
+                description(asHtml: false)
+                episodes
+                nextAiringEpisode { airingAt episode }
+                coverImage { large medium }
+                bannerImage
+                startDate { year month day }
+              }
+            }
+          ''';
+          
+          final resp = await _postWithOptionalPredictDelay(
+            Uri.parse('https://graphql.anilist.co'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({'query': qId, 'variables': {'id': cached.id}}),
+            timeout: const Duration(seconds: 10),
+            usePredictDelay: usePredictDelay,
+          );
+          
+          if (resp.statusCode == 200) {
+             final data = json.decode(resp.body);
+             final media = data['data']?['Media'];
+             if (media != null) {
+                 // Parse and return fresh metadata
+                 final cover = media['coverImage']?['large'] ?? media['coverImage']?['medium'];
+                 final desc = (media['description'] as String?)?.replaceAll(RegExp(r'<[^>]*>'), '')?.trim();
+                 int? episodes = media['episodes'] is int ? media['episodes'] : null;
+                 
+                 DateTime? start;
+                 try {
+                    if (media['startDate']?['year'] != null) {
+                      start = DateTime(media['startDate']['year'], media['startDate']['month'] ?? 1, media['startDate']['day'] ?? 1);
+                    }
+                 } catch (_) {}
+
+                 String? nEpNum;
+                 DateTime? nEpDate;
+                 if (media['nextAiringEpisode'] != null) {
+                   nEpNum = media['nextAiringEpisode']['episode']?.toString();
+                   if (media['nextAiringEpisode']['airingAt'] != null) {
+                     nEpDate = DateTime.fromMillisecondsSinceEpoch(media['nextAiringEpisode']['airingAt'] * 1000);
+                   }
+                 }
+                 
+                 final fresh = AnimeMetadata(
+                   id: media['id'],
+                   imageUrl: cover,
+                   description: desc,
+                   totalEpisodes: episodes,
+                   siteUrl: media['siteUrl'],
+                   bannerImage: media['bannerImage'],
+                   startDate: start,
+                   nextEpisodeNumber: nEpNum,
+                   nextEpisodeDate: nEpDate
+                 );
+                 
+                 // Update cache with fresh data
+                 await cache.save(cacheKey, fresh);
+                 return fresh;
+             }
+          }
+        } catch (e) {
+           if (kDebugMode) print('⚠️ Failed to refresh by ID ${cached.id}, falling back to search: $e');
+        }
     }
 
-    final cache = AnilistCache();
-    final key = normalizeTitle(title ?? seriesUrl);
-    final cached = await cache.get(key);
-    if (cached != null) return cached;
+    // STRICT MODE: User requested ONLY ID-based predictions.
+    // We disable the automatic text/heuristic search entirely.
+    // Metadata/Predictions will only appear if the anime has been MANUALLY LINKED via the UI.
+    if (kDebugMode) print('🔒 [ANILIST] Strict mode: No cached ID found for "$cacheKey" - skipping automatic search.');
+    return null;
+  }
 
+  /// Manually search for anime on AniList. Returns a list of candidates.
+  Future<List<AnimeMetadata>> searchAnime(String query) async {
     try {
-      // Try to fetch several candidate results (Page) so we can compare multiple titles
-      final q = '''
-      query (
-        \$search: String
-      ) {
-        Page(page: 1, perPage: 10) {
-          media(search: \$search, type: ANIME) {
-            id
-            siteUrl
-            title { romaji english native }
-            description(asHtml: false)
-            episodes
-            coverImage { large medium }
-            bannerImage
-            startDate { year month day }
+      // Check if query is a numeric ID
+      final int? searchId = int.tryParse(query.trim());
+      
+      String q;
+      Map<String, dynamic> variables;
+
+      if (searchId != null) {
+        // ID Search
+        q = '''
+        query (\$id: Int) {
+          Page(page: 1, perPage: 1) {
+            media(id: \$id, type: ANIME) {
+              id
+              siteUrl
+              title { romaji english native }
+              description(asHtml: false)
+              episodes
+              nextAiringEpisode { airingAt episode }
+              coverImage { large medium }
+              bannerImage
+              startDate { year month day }
+            }
           }
         }
-      }
-      ''';
-
-      // Generate a few search seeds to improve matching
-      String sanitizeSeed(String s) {
-        var out = s.trim();
-        // If looks like URL, try to extract a human-readable name
-        if (out.contains('://') || out.contains('/') || out.contains('crunchyroll.com')) {
-          final ex = extractAnimeName(out);
-          if (ex != null && ex.isNotEmpty) out = ex;
-        }
-        try {
-          out = Uri.decodeFull(out);
-        } catch (_) {}
-        // remove parenthetical parts
-        out = out.replaceAll(RegExp(r"\(.*?\)"), '');
-        // remove season/part indicators like "Season 2", "Staffel 1", "Part 3"
-        out = out.replaceAll(RegExp(r"\b(?:season|staffel|saison|part|teil|series)[:\s]*\d+\b", caseSensitive: false), '');
-        // strip standalone 4-digit years
-        out = out.replaceAll(RegExp(r"\b\d{4}\b"), '');
-        // replace dashes/underscores with spaces
-        out = out.replaceAll(RegExp(r"[-_]+"), ' ');
-        // collapse whitespace
-        out = out.replaceAll(RegExp(r"\s+"), ' ').trim();
-        return out;
-      }
-
-      final seeds = <String>{};
-      if (title != null && title.isNotEmpty) {
-        final raw = title.trim();
-        final clean = sanitizeSeed(title);
-        seeds.add(clean);
-        // also include the raw title (sometimes AniList matches raw casing/extra words)
-        seeds.add(raw);
-        // also try without parenthetical parts
-        seeds.add(sanitizeSeed(raw.replaceAll(RegExp(r"\(.*?\)"), '')));
-        // try left side before ':'
-        if (raw.contains(':')) seeds.add(sanitizeSeed(raw.split(':').first));
-        // split on common separators like '-' and '—' and include parts
-        final parts = raw.split(RegExp(r"\s[-—–|]\s"));
-        for (final p in parts) seeds.add(sanitizeSeed(p));
-
-        // add n-gram prefixes (3-word and 2-word) to broaden search
-        final tokens2 = clean.split(' ').where((t) => t.isNotEmpty).toList();
-        if (tokens2.length >= 3) seeds.add(tokens2.take(3).join(' '));
-        if (tokens2.length >= 2) seeds.add(tokens2.take(2).join(' '));
-      }
-      if (seriesUrl != null && seriesUrl.isNotEmpty) {
-        final fromUrl = extractAnimeName(seriesUrl);
-        if (fromUrl != null && fromUrl.isNotEmpty) seeds.add(sanitizeSeed(fromUrl));
-      }
-      // remove any empty seeds
-      seeds.removeWhere((s) => s.trim().isEmpty);
-
-      // Build additional fallback seeds: token prefixes, reversed order, hyphenated/concatenated forms
-      final fallbackSeeds = <String>{};
-      for (final s in seeds.toList()) {
-        final toks = s.split(RegExp(r"\s+")).where((t) => t.isNotEmpty).toList();
-        if (toks.length > 1) {
-          // prefixes
-          for (int n = 1; n <= (toks.length < 3 ? toks.length : 3); n++) {
-            fallbackSeeds.add(toks.take(n).join(' '));
+        ''';
+        variables = {'id': searchId};
+      } else {
+        // Text Search
+        q = '''
+        query (\$search: String) {
+          Page(page: 1, perPage: 10) {
+            media(search: \$search, type: ANIME) {
+              id
+              siteUrl
+              title { romaji english native }
+              description(asHtml: false)
+              episodes
+              nextAiringEpisode { airingAt episode }
+              coverImage { large medium }
+              bannerImage
+              startDate { year month day }
+            }
           }
-          // reversed
-          fallbackSeeds.add(toks.reversed.join(' '));
-          // hyphenated and concatenated
-          fallbackSeeds.add(toks.join('-'));
-          fallbackSeeds.add(toks.join(''));
-          // last two/three tokens
-          if (toks.length >= 2) fallbackSeeds.add(toks.skip(toks.length - 2).join(' '));
-          if (toks.length >= 3) fallbackSeeds.add(toks.skip(toks.length - 3).join(' '));
         }
-        // also try lowercased and titlecased variants
-        fallbackSeeds.add(s.toLowerCase());
-        fallbackSeeds.add(s.split(' ').map((w) => w.isNotEmpty ? (w[0].toUpperCase() + w.substring(1)) : w).join(' '));
+        ''';
+        variables = {'search': query};
       }
 
-      // If we have a seriesUrl, try the last path segment (romaji-like) as fallback too
-      if (seriesUrl != null && seriesUrl.isNotEmpty) {
-        final ex = extractAnimeName(seriesUrl);
-        if (ex != null && ex.isNotEmpty) fallbackSeeds.add(ex);
-      }
+      final resp = await _postWithOptionalPredictDelay(
+        Uri.parse('https://graphql.anilist.co'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'query': q, 'variables': variables}),
+        timeout: const Duration(seconds: 10),
+      );
 
-      fallbackSeeds.removeWhere((s) => s.trim().isEmpty);
-      seeds.addAll(fallbackSeeds);
-      if (kDebugMode) print('🔎 [ANILIST] search seeds: $seeds');
+      if (resp.statusCode != 200) return [];
 
-      AnimeMetadata? bestMeta;
-      double bestScore = 0.0;
+      final data = json.decode(resp.body);
+      final list = data['data']?['Page']?['media'] as List?;
+      if (list == null) return [];
 
-      for (final seed in seeds) {
-        if (kDebugMode) print('🔎 [ANILIST] fetchSeriesMetadata trying seed="$seed" usePredictDelay=$usePredictDelay');
-        final variables = {'search': seed};
-        final resp = await _postWithOptionalPredictDelay(
-          Uri.parse('https://graphql.anilist.co'),
-          headers: {'Content-Type': 'application/json'},
-          body: json.encode({'query': q, 'variables': variables}),
-          timeout: const Duration(seconds: 10),
-          usePredictDelay: usePredictDelay,
+      return list.map((media) {
+         final cover = media['coverImage']?['large'] ?? media['coverImage']?['medium'];
+         final desc = (media['description'] as String?)?.replaceAll(RegExp(r'<[^>]*>'), '')?.trim();
+         int? episodes = media['episodes'] is int ? media['episodes'] : null;
+         
+         DateTime? start;
+         try {
+            if (media['startDate']?['year'] != null) {
+              start = DateTime(media['startDate']['year'], media['startDate']['month'] ?? 1, media['startDate']['day'] ?? 1);
+            }
+         } catch (_) {}
+
+         String? nEpNum;
+         DateTime? nEpDate;
+         if (media['nextAiringEpisode'] != null) {
+           nEpNum = media['nextAiringEpisode']['episode']?.toString();
+           if (media['nextAiringEpisode']['airingAt'] != null) {
+             nEpDate = DateTime.fromMillisecondsSinceEpoch(media['nextAiringEpisode']['airingAt'] * 1000);
+           }
+         }
+
+         // Extract best title for display
+         String displayTitle = 'Unbekannter Titel';
+         if (media['title'] != null) {
+            displayTitle = media['title']['userPreferred'] ?? 
+                           media['title']['english'] ?? 
+                           media['title']['romaji'] ?? 
+                           media['title']['native'] ?? 
+                           'Titel nicht verfügbar';
+         }
+
+        return AnimeMetadata(
+          id: media['id'],
+          imageUrl: cover,
+          description: desc,
+          totalEpisodes: episodes,
+          siteUrl: displayTitle, // Store TITLE in siteUrl for display in search dialog
+          bannerImage: media['bannerImage'],
+          startDate: start,
+          nextEpisodeNumber: nEpNum,
+          nextEpisodeDate: nEpDate
         );
-        if (kDebugMode) print('🔎 [ANILIST] fetchSeriesMetadata seed="$seed" status=${resp.statusCode}');
-        if (resp.statusCode != 200) {
-          if (kDebugMode) print('Anilist query failed: ${resp.statusCode} ${resp.body}');
-          continue;
+      }).toList();
+    } catch (e) {
+      if (kDebugMode) print('Manual search error: $e');
+      return [];
+    }
+  }
+
+  /// Attempts to find a high-confidence match for auto-linking.
+  /// Returns a metadata object only if:
+  /// 1. An exact case-insensitive match for the title is found.
+  /// 2. OR the search returns exactly one result.
+  /// 3. OR the top result has a very high similarity score compared to the rest.
+  Future<AnimeMetadata?> findBestMatch(String query) async {
+    try {
+      final results = await searchAnime(query);
+      if (results.isEmpty) return null;
+
+      final normalizedQuery = query.trim().toLowerCase();
+
+      // 1. Exact Match
+      for (final r in results) {
+        if (r.siteUrl != null && r.siteUrl!.toLowerCase() == normalizedQuery) {
+           if (kDebugMode) print('✅ Auto-Link: Exact match found for "$query"');
+           return r;
         }
-
-        final Map<String, dynamic> data = json.decode(resp.body);
-        final List<dynamic>? mediaList = data['data']?['Page']?['media'] as List<dynamic>?;
-        if (mediaList == null || mediaList.isEmpty) continue;
-
-        for (final media in mediaList) {
-          try {
-            final titles = <String>[];
-            final titleObj = media['title'] as Map<String, dynamic>?;
-            if (titleObj != null) {
-              if (titleObj['romaji'] != null) titles.add(titleObj['romaji'] as String);
-              if (titleObj['english'] != null) titles.add(titleObj['english'] as String);
-              if (titleObj['native'] != null) titles.add(titleObj['native'] as String);
-            }
-
-            // Log the media object for debugging
-            if (kDebugMode) {
-              print('🔎 [ANILIST] Processing media: ${json.encode(media)}');
-            }
-
-            // compute best similarity against the provided title
-            double localBest = 0.0;
-            for (final t in titles) {
-              final sim = similarity(t, title ?? seed);
-              if (sim > localBest) localBest = sim;
-            }
-
-            // also compare against seed (which may be seriesUrl)
-            final simSeed = similarity(media['siteUrl']?.toString() ?? '', seed);
-            if (simSeed > localBest) localBest = simSeed;
-
-            if (localBest > bestScore) {
-              bestScore = localBest;
-              final cover = media['coverImage']?['large'] ?? media['coverImage']?['medium'];
-              final description = (media['description'] as String?)?.replaceAll(RegExp(r'<[^>]*>'), '')?.trim();
-              int? episodes;
-              try { episodes = media['episodes'] != null ? (media['episodes'] as int) : null; } catch (_) { episodes = null; }
-              String? banner = media['bannerImage'];
-              DateTime? start;
-              try {
-                final sd = media['startDate'];
-                if (sd != null && sd['year'] != null) {
-                  start = DateTime(sd['year'] ?? 0, sd['month'] ?? 1, sd['day'] ?? 1);
-                }
-              } catch (_) { start = null; }
-
-              bestMeta = AnimeMetadata(
-                imageUrl: cover,
-                description: description,
-                totalEpisodes: episodes,
-                siteUrl: media['siteUrl'],
-                bannerImage: banner,
-                startDate: start,
-              );
-            }
-          } catch (e) {
-            // ignore individual media parse errors
-          }
-        }
-
-        // If we already found a very good match, stop early
-        if (bestScore >= 0.75) break;
       }
 
-      // Accept matches above threshold (lowered to be more permissive)
-      if (bestMeta != null && bestScore >= 0.45) {
-        // save in cache under normalized key
-        await cache.save(key, bestMeta);
-        return bestMeta;
+      // 2. Single Result (and it's not totally off)
+      if (results.length == 1) {
+         if (kDebugMode) print('✅ Auto-Link: Single result found for "$query"');
+         return results.first;
       }
 
-      // Fallback: if we found any candidate with moderate score, accept it to increase hit rate
-      if (bestMeta != null && bestScore >= 0.40) {
-        if (kDebugMode) print('🔎 [ANILIST] Accepting lower-confidence match (score=$bestScore) for key=$key');
-        await cache.save(key, bestMeta);
-        return bestMeta;
+      // 3. Heuristic: Top result is "good enough" (contains query)
+      // and query is long enough to be specific (> 5 chars)
+      if (query.length > 5) {
+        final first = results.first;
+        final firstTitle = first.siteUrl?.toLowerCase() ?? '';
+        if (firstTitle.contains(normalizedQuery) || normalizedQuery.contains(firstTitle)) {
+           if (kDebugMode) print('✅ Auto-Link: High confidence match for "$query" -> "${first.siteUrl}"');
+           return first;
+        }
       }
 
       return null;
     } catch (e) {
-      if (kDebugMode) print('❌ Error fetching Anilist metadata: $e');
+      if (kDebugMode) print('Auto-link error: $e');
       return null;
     }
   }

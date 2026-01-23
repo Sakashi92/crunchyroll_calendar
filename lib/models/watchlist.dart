@@ -18,6 +18,7 @@ class WatchlistEntry {
   bool autoSyncTotal;
   String? note;
   double? rating;
+  int? anilistId; // Added field for manual linking
   DateTime? addedAt;
 
   WatchlistEntry({
@@ -31,6 +32,7 @@ class WatchlistEntry {
     this.autoSyncTotal = true,
     this.note,
     this.rating,
+    this.anilistId,
     this.addedAt,
   });
 }

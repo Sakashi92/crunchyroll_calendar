@@ -476,18 +476,27 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     // Listen for externally persisted predictions (AniList forecast page)
     try {
       // Listen for prediction changes: reload service cache then refresh UI
+      // Use a flag to prevent recursive loops
+      bool _isHandlingPredictionUpdate = false;
       predictionsUpdated.addListener(() {
         if (!predictionsUpdated.value) return;
+        if (_isHandlingPredictionUpdate) {
+          if (kDebugMode) print('⚠️ Predictions update already in progress, skipping recursive call');
+          predictionsUpdated.value = false;
+          return;
+        }
         if (kDebugMode) print('🔔 Predictions updated -> reloading cache and calendar');
         if (!mounted) {
           predictionsUpdated.value = false;
           return;
         }
+        _isHandlingPredictionUpdate = true;
         // Ensure the CalendarPage's CrunchyrollService reloads its in-memory cache from prefs
         _crunchyrollService.loadCacheOnStartup().whenComplete(() async {
           if (mounted) await _loadReleases();
           // reset notifier after handling
           predictionsUpdated.value = false;
+          _isHandlingPredictionUpdate = false;
         });
       });
     } catch (e) {
@@ -505,13 +514,23 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         });
       }
       // Wenn Vorhersage aktiv ist, direkt einmal ausführen (nicht blockierend)
-      AppSettings.getPredictionEnabled().then((enabled) {
-        if (enabled) {
-          final predictor = NextEpisodePredictor(_crunchyrollService, AnilistService());
-          // Run predictor and reload releases when done so UI shows predictions immediately
-          predictor.predictForAllKnownSeries().whenComplete(() {
+      // NUR für Watchlist-Einträge, nicht alle bekannten Serien
+      AppSettings.getPredictionEnabled().then((enabled) async {
+        if (enabled && widget.watchlistService != null) {
+          // First, wait for watchlist to load
+          await widget.watchlistService!.loadWatchlist();
+          
+          // If watchlist is empty, CLEAR all predictions (ghost cleanup)
+          if (widget.watchlistService!.watchlist.entries.isEmpty) {
+            if (kDebugMode) print('🧹 Watchlist is empty - clearing all stale predictions');
+            await _crunchyrollService.removeAllPredictedReleases();
             if (mounted) _loadReleases();
-          });
+          } else {
+            // Generate forecasts for non-empty watchlist
+            widget.watchlistService!.generateForecastForAllEntries().whenComplete(() {
+              if (mounted) _loadReleases();
+            });
+          }
         }
       });
     });
@@ -522,14 +541,12 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         await _loadReleases();
       }
       // Nach jedem Auto-Update: optional Predictor ausführen und danach neu laden
+      // NUR für Watchlist-Einträge
       try {
         final enabled = await AppSettings.getPredictionEnabled();
-        if (enabled) {
-          final predictor = NextEpisodePredictor(_crunchyrollService, AnilistService());
-          // Run predictor and then reload releases so predictions appear immediately
-          predictor.predictForAllKnownSeries().whenComplete(() async {
-            if (mounted) await _loadReleases();
-          });
+        if (enabled && widget.watchlistService != null) {
+          await widget.watchlistService!.generateForecastForAllEntries();
+          if (mounted) await _loadReleases();
         }
       } catch (e) {
         if (kDebugMode) print('Error running predictor on auto-update: $e');
@@ -883,72 +900,18 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
       // Übergebe den angezeigten Monat für den Refresh
       final releases = await _crunchyrollService.forceRefresh(forMonth: _focusedDay);
 
-      // Rebuild predictions: first run history-based predictor, then AniList watchlist-based forecasts
+      // Rebuild predictions: use ONLY watchlist entries for predictions (single call, no duplicates)
       try {
-        final predictor = NextEpisodePredictor(_crunchyrollService, AnilistService());
-        await predictor.predictForAllKnownSeries();
-      } catch (e) {
-        if (kDebugMode) print('Error running history-based predictor during manual refresh: $e');
-      }
-
-      try {
-        final anilist = AnilistService();
-        final now2 = DateTime.now();
-        final since = now2.subtract(const Duration(days: 7));
-        final until = now2.add(const Duration(days: 7));
         final ws = widget.watchlistService;
-        if (ws != null) {
-          for (final entry in ws.watchlist.entries) {
-            final added = entry.addedAt;
-            if (added == null) continue;
-            if (added.isBefore(since)) continue;
-
-            final media = await anilist.getNextAiringForTitle(entry.title, usePredictDelay: true);
-            if (media == null) continue;
-            final next = media['nextAiringEpisode'] as Map<String, dynamic>?;
-            if (next == null) continue;
-            final airingAt = next['airingAt'] as int?;
-            if (airingAt == null) continue;
-            final dt = DateTime.fromMillisecondsSinceEpoch(airingAt * 1000);
-            if (dt.isBefore(now2) || dt.isAfter(until)) continue;
-
-            // resolve Crunchyroll title if present in cache
-            String finalTitle = entry.title;
-            String seriesUrl = entry.animeId ?? '';
-            try {
-              List<AnimeRelease> matches = [];
-              if (seriesUrl.isNotEmpty) {
-                matches = await _crunchyrollService.getReleasesForSeriesCached(seriesUrl, finalTitle);
-              }
-              if (matches.isEmpty && media['title']?['userPreferred'] != null) {
-                matches = await _crunchyrollService.getReleasesForSeriesCached(null, media['title']['userPreferred'] as String);
-              }
-              if (matches.isNotEmpty) {
-                finalTitle = matches.first.title;
-                if (seriesUrl.isEmpty && matches.first.seriesUrl != null) seriesUrl = matches.first.seriesUrl!;
-              }
-            } catch (e) {
-              if (kDebugMode) print('Error resolving Crunchyroll title for AniList rebuild: $e');
-            }
-
-            final predicted = AnimeRelease(
-              title: finalTitle,
-              episodeNumber: (next['episode']?.toString() ?? '1'),
-              episodeTitle: '',
-              releaseTime: dt,
-              imageUrl: null,
-              description: null,
-              seriesUrl: seriesUrl,
-              episodeUrl: '',
-              isPremiere: false,
-              isPredicted: true,
-            );
-            await _crunchyrollService.addPredictedRelease(predicted);
-          }
+        if (ws != null && ws.watchlist.entries.isNotEmpty) {
+          if (kDebugMode) print('🔮 Manual refresh: rebuilding predictions for watchlist...');
+          await ws.generateForecastForAllEntries();
+          if (kDebugMode) print('✅ Manual refresh: predictions complete');
+        } else {
+          if (kDebugMode) print('🔮 Manual refresh: watchlist empty, skipping predictions');
         }
-        try { predictionsUpdated.value = true; } catch (_) {}
       } catch (e) {
-        if (kDebugMode) print('Error building AniList-based predictions during manual refresh: $e');
+        if (kDebugMode) print('Error running watchlist-based predictor during manual refresh: $e');
       }
 
       final Map<DateTime, List<AnimeRelease>> releasesByDay = {};
@@ -1314,18 +1277,30 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                       final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
                       final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
 
+                      // Auto-link integration
+                      int? autoId;
+                      try {
+                        final best = await AnilistService().findBestMatch(release.title);
+                        if (best != null) {
+                          autoId = best.id;
+                          if (kDebugMode) print('✅ Auto-linked "${release.title}" to AniList ID: $autoId');
+                        }
+                      } catch (_) {}
+
                       final entry = WatchlistEntry(
                         animeId: release.seriesUrl,
                         title: release.title,
                         imageUrl: release.imageUrl,
                         episodesWatched: 0,
                         totalEpisodes: total,
+                        anilistId: autoId,
+                        addedAt: DateTime.now(),
                       );
                       ws.watchlist.addEntry(entry);
                       await ws.saveWatchlist();
                       cs.scheduleWatchlistEntryUpdate(ws, entry);
                       if (mounted) ScaffoldMessenger.of(ctx).showSnackBar(
-                        SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
+                        SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}')),
                       );
                       Navigator.of(ctx).pop();
                     },
@@ -1576,6 +1551,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
                                     ),
                                   ),
                                 ),
+                                // Prediction badge restored per user request
                                 if (hasPrediction)
                                   Align(
                                     alignment: Alignment.bottomRight,

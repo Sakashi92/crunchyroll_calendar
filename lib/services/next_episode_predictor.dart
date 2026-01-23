@@ -24,6 +24,61 @@ class NextEpisodePredictor {
       print('🔎 [PREDICTOR] Predicting next for seriesUrl=${seriesUrl ?? '-'} title=${title ?? '-'}');
       // load cached releases
       final releases = await crunchy.getReleasesForSeriesCached(seriesUrl, title);
+      
+      // PREDICTOR UPDATE: Check AniList metadata first for an exact scheduled date
+      final effectiveTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : null);
+      if (effectiveTitle != null) {
+          final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
+          
+          // If we have an exact future date from AniList, use it!
+          if (meta?.nextEpisodeDate != null) {
+              final nextDate = meta!.nextEpisodeDate!;
+              final now = DateTime.now();
+              // Only use if it's in the future (or very recent) and within 7 days
+              // Allow episodes from the last 24 hours (so today's episodes are shown even if time passed)
+              // and up to 14 days in the future.
+              final minAllowed = now.subtract(const Duration(hours: 24));
+              final maxAllowed = now.add(const Duration(days: 14));
+              
+              if (nextDate.isAfter(minAllowed) && nextDate.isBefore(maxAllowed)) {
+                  final bestTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : meta?.siteUrl) ?? 'Unknown';
+                  final epParams = meta?.nextEpisodeNumber ?? (
+                      (releases != null && releases.isNotEmpty) 
+                      ? (int.tryParse(releases.last.episodeNumber) != null ? (int.parse(releases.last.episodeNumber) + 1).toString() : '1') 
+                      : '1'
+                  );
+                  
+                  // Fetch high-res image from Kitsu
+                  String? displayImage;
+                  try {
+                    final kImg = await crunchy.fetchImageForTitle(bestTitle);
+                    if (kImg.isNotEmpty) displayImage = kImg;
+                  } catch (_) {}
+                  
+                  // Fallback to AniList or old release image
+                  displayImage ??= meta?.imageUrl ?? (releases != null && releases.isNotEmpty ? releases.last.imageUrl : null);
+
+                  final predicted = AnimeRelease(
+                    title: bestTitle,
+                    episodeNumber: epParams,
+                    episodeTitle: '',
+                    releaseTime: nextDate,
+                    imageUrl: displayImage,
+                    description: meta?.description ?? (releases != null && releases.isNotEmpty ? releases.last.description : null),
+                    seriesUrl: seriesUrl ?? (releases != null && releases.isNotEmpty ? releases.last.seriesUrl : meta?.siteUrl) ?? '',
+                    episodeUrl: meta?.siteUrl ?? (releases != null && releases.isNotEmpty ? releases.last.episodeUrl : null) ?? '',
+                    isPremiere: false,
+                    isPredicted: true,
+                  );
+                  
+                  await crunchy.addPredictedRelease(predicted);
+                  predictionsUpdated.value = true;
+                  print('✅ [PREDICTOR] Predicted using AniList Schedule: $bestTitle -> ep $epParams @ $nextDate');
+                  return predicted;
+              }
+          }
+      }
+
       if (releases == null || releases.length < 2) return null;
 
       // sort by releaseTime
@@ -44,17 +99,23 @@ class NextEpisodePredictor {
       final lastRelease = recent.last;
       final predictedDate = lastRelease.releaseTime.add(median);
 
-      // Only predict up to 7 days ahead from now
+      // Relaxed window: Allow predictions from the last 24 hours (so today's episodes stay visible)
+      // and up to 7 days in the future.
       final now = DateTime.now();
+      final minAllowed = now.subtract(const Duration(hours: 24));
       final maxAllowed = now.add(const Duration(days: 7));
-      if (predictedDate.isBefore(now) || predictedDate.isAfter(maxAllowed)) {
-        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside 7-day window');
+      
+      if (predictedDate.isBefore(minAllowed) || predictedDate.isAfter(maxAllowed)) {
+        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside allowed window ($minAllowed to $maxAllowed)');
         return null;
       }
 
       // fetch AniList metadata to get totalEpisodes (optional)
-      final effectiveTitle = title ?? lastRelease.title;
-      print('🔎 [PREDICTOR] Fetching AniList metadata for "$effectiveTitle" (seriesUrl=${seriesUrl ?? '-'})');
+      // Note: We already fetched metadata above, but if logic flows here, we re-use or re-fetch?
+      // For simplicity in this edit, just fetch again or ensure variable is accessible.
+      // Ideally we would have stored 'meta' from above. 
+      // Let's re-fetch briefly or assume partial data flow.
+      print('🔎 [PREDICTOR] Fetching AniList metadata for validation...');
       final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
       print('🔎 [PREDICTOR] AniList metadata fetched for "$effectiveTitle": totalEpisodes=${meta?.totalEpisodes}');
 
@@ -69,12 +130,23 @@ class NextEpisodePredictor {
         return null;
       }
 
+      final finalTitle = title ?? lastRelease.title;
+      
+      // Fetch high-res image from Kitsu
+      String? displayImage;
+      try {
+        final kImg = await crunchy.fetchImageForTitle(finalTitle);
+        if (kImg.isNotEmpty) displayImage = kImg;
+      } catch (_) {}
+      
+      displayImage ??= meta?.imageUrl ?? lastRelease.imageUrl;
+
       final predicted = AnimeRelease(
-        title: title ?? lastRelease.title,
+        title: finalTitle,
         episodeNumber: predictedEpisode.toString(),
         episodeTitle: '',
         releaseTime: predictedDate,
-        imageUrl: meta?.imageUrl ?? lastRelease.imageUrl,
+        imageUrl: displayImage,
         description: meta?.description ?? lastRelease.description,
         seriesUrl: seriesUrl ?? lastRelease.seriesUrl,
         episodeUrl: meta?.siteUrl ?? lastRelease.episodeUrl,

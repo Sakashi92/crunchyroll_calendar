@@ -8,6 +8,7 @@ import '../repositories/favorites_repository.dart';
 import 'crunchyroll_service.dart';
 import 'next_episode_predictor.dart';
 import 'anilist_service.dart';
+import 'prediction_notifier.dart';
 
 class WatchlistService {
   static const _storageKey = 'watchlist_data';
@@ -105,6 +106,14 @@ class WatchlistService {
       }
     }
 
+    // Trigger UI notification after ALL predictions are done
+    try {
+      predictionsUpdated.value = true;
+      if (kDebugMode) print('🔔 generateForecastForAllEntries: done, $count predictions, triggering UI update');
+    } catch (e) {
+      if (kDebugMode) print('❌ Error triggering predictionsUpdated: $e');
+    }
+
     return count;
   }
 
@@ -132,6 +141,7 @@ class WatchlistService {
         autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
         note: e['note'],
         rating: (e['rating'] as num?)?.toDouble(),
+        anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
         addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
       )).toList();
       watchlist.replaceAll(parsed);
@@ -151,6 +161,7 @@ class WatchlistService {
       'autoSyncTotal': e.autoSyncTotal,
       'note': e.note,
       'rating': e.rating,
+      'anilistId': e.anilistId,
       'addedAt': e.addedAt?.toIso8601String(),
     }).toList();
     await prefs.setString(_storageKey, json.encode(jsonList));
@@ -167,6 +178,7 @@ class WatchlistService {
       'notificationsEnabled': e.notificationsEnabled,
       'note': e.note,
       'rating': e.rating,
+      'anilistId': e.anilistId,
       'addedAt': e.addedAt?.toIso8601String(),
     }).toList();
     return json.encode(jsonList);
@@ -212,6 +224,7 @@ class WatchlistService {
             'notificationsEnabled': _parseBool(m['notificationsEnabled']),
             'note': null,
             'rating': null,
+            'anilistId': m['anilistId'], // Try to forward ID if present in newer exports
             'addedAt': m['addedDate'],
           };
         }).toList();
@@ -239,10 +252,14 @@ class WatchlistService {
       autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
       note: e['note'],
       rating: (e['rating'] as num?)?.toDouble(),
+      anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
       addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
     )).toList();
     watchlist.replaceAll(parsed);
     await saveWatchlist();
+    
+    // Trigger auto-link for newly imported entries
+    _triggerAutoLinkBackground();
   }
 
   Future<File> exportToFile() async {
@@ -305,6 +322,7 @@ class WatchlistService {
             'notificationsEnabled': _parseBool(m['notificationsEnabled']),
             'note': null,
             'rating': null,
+            'anilistId': m['anilistId'],
             'addedAt': m['addedDate'],
           };
         }).toList();
@@ -333,6 +351,7 @@ class WatchlistService {
           notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
           note: e['note'],
           rating: (e['rating'] as num?)?.toDouble(),
+          anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
           addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
         );
 
@@ -346,7 +365,11 @@ class WatchlistService {
       }
     }
 
-    if (importedCount > 0) await saveWatchlist();
+    if (importedCount > 0) {
+      await saveWatchlist();
+      // Trigger auto-link for newly imported entries
+      _triggerAutoLinkBackground();
+    }
     return importedCount;
   }
 
@@ -423,5 +446,56 @@ class WatchlistService {
 
     if (changes > 0) await saveWatchlist();
     return changes;
+  }
+
+  /// Triggers a background process to attempt auto-linking for entries missing an AniList ID.
+  /// Used after imports to resolve IDs without blocking the UI.
+  void _triggerAutoLinkBackground() {
+    // Run unawaited in microtask to not block caller
+    Future.microtask(() async {
+      if (kDebugMode) print('🔄 Auto-Link: Starting background check for unlinked entries...');
+      
+      final candidates = watchlist.entries.where((e) => e.anilistId == null).toList();
+      if (candidates.isEmpty) {
+        if (kDebugMode) print('✅ Auto-Link: No unlinked entries found.');
+        return;
+      }
+
+      int linkedCount = 0;
+      final anilist = AnilistService();
+
+      for (final entry in candidates) {
+        // Double check if it was linked in the meantime
+        if (entry.anilistId != null) continue;
+
+        try {
+          final match = await anilist.findBestMatch(entry.title);
+          
+          if (match != null) {
+            entry.anilistId = match.id;
+            // Update the entry in the central list (reference should be same, but to be safe use updateEntry)
+            watchlist.updateEntry(entry);
+            linkedCount++;
+            
+            // Save periodically every 5 updates to persist progress
+            if (linkedCount % 5 == 0) {
+              await saveWatchlist();
+            }
+            
+            // Artificial delay to be gentle with API even with rate limiter
+            await Future.delayed(const Duration(milliseconds: 500));
+          }
+        } catch (e) {
+          if (kDebugMode) print('❌ Auto-Link failed for "${entry.title}": $e');
+        }
+      }
+
+      if (linkedCount > 0) {
+        await saveWatchlist();
+        if (kDebugMode) print('✅ Auto-Link: Completed. Successfully linked $linkedCount entries.');
+      } else {
+        if (kDebugMode) print('ℹ️ Auto-Link: Completed. No confident matches found.');
+      }
+    });
   }
 }

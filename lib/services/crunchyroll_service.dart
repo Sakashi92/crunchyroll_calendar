@@ -1884,6 +1884,49 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
+  /// Removes predicted releases for a SPECIFIC series from all caches.
+  /// Called when an anime is removed from the watchlist.
+  Future<void> removePredictedReleasesForSeries(String? seriesUrl, String? title) async {
+    if (seriesUrl == null && title == null) return;
+    try {
+      String normalize(String? s) => s == null ? '' : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+      final normUrl = normalize(seriesUrl);
+      final normTitle = normalize(title);
+
+      bool matches(AnimeRelease r) {
+        if (!r.isPredicted) return false;
+        if (seriesUrl != null && r.seriesUrl != null && r.seriesUrl == seriesUrl) return true;
+        final rt = normalize(r.title);
+        if (normTitle.isNotEmpty && (rt == normTitle || rt.contains(normTitle) || normTitle.contains(rt))) return true;
+        return false;
+      }
+
+      // Remove from in-memory cache
+      _cachedReleases.removeWhere(matches);
+
+      // Remove from all month caches
+      final months = await getCachedMonths();
+      for (final tuple in months) {
+        final monthDate = DateTime(tuple.$1, tuple.$2, 1);
+        final existing = await _loadMonthFromCache(monthDate);
+        final filtered = existing.where((r) => !matches(r)).toList();
+        if (filtered.length != existing.length) {
+          await _saveMonthToCache(monthDate, filtered, preservePredictions: false);
+          if (kDebugMode) print('Removed predictions for ${title ?? seriesUrl} from cache ${monthDate.month}/${monthDate.year}');
+        }
+      }
+
+      // Notify UI to reload
+      try {
+        predictionsUpdated.value = true;
+      } catch (_) {}
+
+      if (kDebugMode) print('✓ Removed predicted releases for series: ${title ?? seriesUrl}');
+    } catch (e) {
+      if (kDebugMode) print('Error removing predicted releases for series: $e');
+    }
+  }
+
   /// Returns all known series identifiers (seriesUrl) from cache.
   Future<List<String>> getAllKnownSeriesIds() async {
     try {

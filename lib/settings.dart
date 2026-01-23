@@ -460,7 +460,7 @@ class _SettingsPageState extends State<SettingsPage> {
             final wlObj = Watchlist();
             final ws = WatchlistService(wlObj);
             await ws.loadWatchlist();
-            seeds = ws.watchlist.entries.map((e) => e.animeId?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+            seeds = ws.watchlist.entries.map((e) => e.animeId.toString()).where((s) => s.isNotEmpty).toList();
           }
         } catch (e) {
           if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist seeds: $e');

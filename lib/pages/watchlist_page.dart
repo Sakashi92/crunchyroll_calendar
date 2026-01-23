@@ -138,6 +138,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
         totalEpisodes: entry.totalEpisodes,
         showTimeBadge: false,
         showEpisodeBadge: false,
+        showManualLink: true,
       ),
     );
   }
@@ -632,7 +633,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
             margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
             clipBehavior: Clip.antiAlias,
             child: SizedBox(
-              height: 185,
+              height: 205,
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -747,6 +748,16 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         Text('Folgen: ${entry.episodesWatched}/${entry.totalEpisodes}', maxLines: 1, overflow: TextOverflow.ellipsis),
                         const SizedBox(height: 4),
                         Text('Status: ${_statusLabel(entry.status)}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                        if (entry.anilistId != null) ...[
+                          const SizedBox(height: 4),
+                          const Row(
+                            children: [
+                              Icon(Icons.check_circle, size: 14, color: Colors.green),
+                              SizedBox(width: 4),
+                              Text('Verknüpft', style: TextStyle(fontSize: 12, color: Colors.green)),
+                            ],
+                          ),
+                        ],
                         if (entry.note != null && entry.note!.isNotEmpty) ...[
                           const SizedBox(height: 4),
                           Text('Notiz: ${entry.note}', maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -785,6 +796,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   if (confirmed == true) {
                                     watchlist.removeEntry(entry.animeId);
                                     await widget.service.saveWatchlist();
+                                    // Remove predicted releases for this series
+                                    final crunch = CrunchyrollService();
+                                    await crunch.removePredictedReleasesForSeries(entry.animeId, entry.title);
                                     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Eintrag entfernt'), duration: Duration(seconds: 2)));
                                   }
                                 },
