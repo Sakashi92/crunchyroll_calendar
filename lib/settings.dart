@@ -8,6 +8,8 @@ import 'services/battery_optimization_service.dart';
 import 'services/anilist_service.dart';
 import 'services/next_episode_predictor.dart';
 import 'services/prediction_notifier.dart';
+import 'services/watchlist_service.dart';
+import 'models/watchlist.dart';
 import 'services/permission_service.dart';
 import 'repositories/notification_repository.dart';
 import 'models/notification_log.dart';
@@ -427,11 +429,11 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _savePredictionEnabled(bool enabled) async {
-    await AppSettings.setPredictionEnabled(enabled);
+    // Persist preference in background so UI updates immediately
+    AppSettings.setPredictionEnabled(enabled);
     setState(() {
       _predictionEnabled = enabled;
     });
-    widget.onSettingsChanged?.call();
     if (kDebugMode) print('🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}');
     // If enabling predictions, load cache and run an immediate prediction pass
     if (enabled) {
@@ -444,17 +446,47 @@ class _SettingsPageState extends State<SettingsPage> {
         await cs.removeAllPredictedReleases();
         // Ensure the service has its cache loaded from SharedPreferences
         await cs.loadCacheOnStartup();
-        final predictor = NextEpisodePredictor(cs, AnilistService());
+        final anilist = AnilistService();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhersage läuft... Dies kann einige Minuten dauern.')));
         }
-        if (kDebugMode) print('🔎 [SETTINGS] Running predictor for all known series...');
-        // Await so we know predictions were written before returning
-        await predictor.predictForAllKnownSeries();
-        if (kDebugMode) print('🔎 [SETTINGS] Predictor run completed');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhersage abgeschlossen')));
+        if (kDebugMode) print('🔎 [SETTINGS] Refreshing AniList metadata before running predictor (watchlist-only)...');
+        // Refresh AniList metadata cache but limit prefetch to watchlist entries when available
+        List<String>? seeds;
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('watchlist_data');
+          if (raw != null) {
+            final wlObj = Watchlist();
+            final ws = WatchlistService(wlObj);
+            await ws.loadWatchlist();
+            seeds = ws.watchlist.entries.map((e) => e.animeId?.toString() ?? '').where((s) => s.isNotEmpty).toList();
+          }
+        } catch (e) {
+          if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist seeds: $e');
         }
+        await anilist.refreshMetadataForCrunchyroll(cs, usePredictDelay: true, seriesSeeds: seeds);
+        if (kDebugMode) print('🔎 [SETTINGS] Running predictor for watchlist entries only');
+        // Generate forecasts only for watchlist entries (if present)
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          final raw = prefs.getString('watchlist_data');
+          if (raw != null) {
+            final wlObj = Watchlist();
+            final ws = WatchlistService(wlObj);
+            await ws.loadWatchlist();
+            final created = await ws.generateForecastForAllEntries();
+            if (kDebugMode) print('🔎 [SETTINGS] Created $created predictions for watchlist entries');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Vorhersagen erstellt: $created')));
+            }
+          } else {
+            if (kDebugMode) print('🔎 [SETTINGS] No watchlist data found — skipping watchlist-based predictions');
+          }
+        } catch (e) {
+          if (kDebugMode) print('🔎 [SETTINGS] Error running watchlist-based predictions: $e');
+        }
+        if (kDebugMode) print('🔎 [SETTINGS] Predictor run completed');
         // Signal UI reload (predictor sets notifier per-prediction, but ensure final state)
         try { predictionsUpdated.value = true; } catch (_) {}
         // Notify parent that settings changed so views can refresh if needed
@@ -474,11 +506,10 @@ class _SettingsPageState extends State<SettingsPage> {
         if (kDebugMode) print('Error removing predicted releases from settings: $e');
       }
     }
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(enabled ? 'Vorhersage aktiviert' : 'Vorhersage deaktiviert'), duration: const Duration(seconds: 2)),
-      );
-    }
+    // Do not show enable/disable snackbars for predictions; the long-running
+    // "Vorhersage läuft..." message is shown when starting the predictor.
+    // Ensure parent/UI is notified after completing prediction toggle work
+    widget.onSettingsChanged?.call();
   }
 
   Future<void> _clearImageCache() async {
@@ -802,12 +833,18 @@ class _SettingsPageState extends State<SettingsPage> {
           _buildShowRefreshMessageTile(),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: SwitchListTile(
-              secondary: const Icon(Icons.timeline),
+            child: ListTile(
+              leading: const Icon(Icons.timeline),
               title: const Text('Vorhersage für nächste Episoden'),
               subtitle: const Text('Verwendet lokale Release-Historie und AniList, um nächste Episoden zu prognostizieren'),
-              value: _predictionEnabled,
-              onChanged: (v) => _savePredictionEnabled(v),
+              trailing: Transform.translate(
+                offset: const Offset(7, 0), // nudge switch 7px to the right (added +3px)
+                child: Switch(
+                  value: _predictionEnabled,
+                  onChanged: (v) => _savePredictionEnabled(v),
+                ),
+              ),
+              onTap: () => _savePredictionEnabled(!_predictionEnabled),
             ),
           ),
           

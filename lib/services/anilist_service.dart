@@ -258,6 +258,38 @@ class AnilistService implements EpisodeProvider {
     return;
   }
 
+  /// Clears AniList metadata cache and prefetches metadata for all series
+  /// known to the provided `CrunchyrollService` to refresh local AniList data.
+  Future<void> refreshMetadataForCrunchyroll(dynamic crunchy, {bool usePredictDelay = false, List<String>? seriesSeeds}) async {
+    try {
+      final cache = AnilistCache();
+      await cache.clear();
+      if (kDebugMode) print('🔎 [ANILIST] Cleared AniList metadata cache');
+
+      // Attempt to fetch metadata for all known series from the Crunchyroll cache
+      try {
+        List<String> series;
+        if (seriesSeeds != null) {
+          series = List<String>.from(seriesSeeds);
+        } else {
+          series = await crunchy.getAllKnownSeriesIds();
+        }
+        if (kDebugMode) print('🔎 [ANILIST] Refreshing metadata for ${series.length} series');
+        int i = 0;
+        for (final s in series) {
+          i++;
+          if (kDebugMode) print('🔎 [ANILIST] (${i}/${series.length}) Prefetching metadata for $s');
+          // fetchSeriesMetadata will derive a human-readable title from the URL if needed
+          await fetchSeriesMetadata(s, null, usePredictDelay: usePredictDelay);
+        }
+      } catch (e) {
+        if (kDebugMode) print('🔎 [ANILIST] Error enumerating known series for refresh: $e');
+      }
+    } catch (e) {
+      if (kDebugMode) print('🔎 [ANILIST] Error during refreshMetadataForCrunchyroll: $e');
+    }
+  }
+
   String? extractAnimeName(String? seriesUrl) {
     if (seriesUrl == null || seriesUrl.isEmpty) return null;
     final uri = Uri.tryParse(seriesUrl);

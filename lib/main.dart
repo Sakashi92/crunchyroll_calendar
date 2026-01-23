@@ -1094,8 +1094,16 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
     return _releases[date] ?? [];
   }
 
-  Widget _buildContentForDay(DateTime day) {
-    final releases = _getReleasesForDay(day);
+  Widget _buildContentForDay(DateTime day, {bool previewOnly = false}) {
+    var releases = _getReleasesForDay(day);
+
+    // If previewOnly is requested and a WatchlistService was provided, filter
+    // releases to only those present in the user's watchlist (match by seriesUrl).
+    if (previewOnly && widget.watchlistService != null) {
+      final wl = widget.watchlistService!.watchlist.entries;
+      final ids = wl.map((e) => e.animeId).toSet();
+      releases = releases.where((r) => ids.contains(r.seriesUrl)).toList();
+    }
 
     if (_isLoadingReleases) {
       return ListView(
@@ -1919,7 +1927,7 @@ class _CalendarPageState extends State<CalendarPage> with TickerProviderStateMix
         final baseDay = _selectedDay ?? _focusedDay;
         final showingNext = _dragOffset < 0; // dragging left shows next day
         final adjacentDay = DateTime(baseDay.year, baseDay.month, baseDay.day).add(Duration(days: showingNext ? 1 : -1));
-        final adjacentReleasesWidget = _buildContentForDay(adjacentDay);
+        final adjacentReleasesWidget = _buildContentForDay(adjacentDay, previewOnly: true);
 
         return Stack(children: [
           // Adjacent (incoming) -- positioned relative to drag

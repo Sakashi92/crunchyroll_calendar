@@ -85,6 +85,29 @@ class WatchlistService {
     return count;
   }
 
+  /// Erstelle Vorhersagen für alle Einträge in der Watchlist.
+  /// Gibt die Anzahl erfolgreicher Vorhersagen zurück.
+  Future<int> generateForecastForAllEntries() async {
+    final crunch = CrunchyrollService();
+    final anilist = AnilistService();
+    final predictor = NextEpisodePredictor(crunch, anilist);
+
+    // ensure cache loaded
+    await crunch.loadCacheOnStartup();
+
+    int count = 0;
+    for (final e in watchlist.entries) {
+      try {
+        final pred = await predictor.predictNextForSeries(e.animeId, e.title);
+        if (pred != null) count++;
+      } catch (_) {
+        // ignore individual failures
+      }
+    }
+
+    return count;
+  }
+
   bool _parseBool(dynamic v) {
     if (v == null) return false;
     if (v is bool) return v;
