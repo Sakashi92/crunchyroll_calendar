@@ -349,7 +349,60 @@ class CrunchyrollService implements EpisodeProvider {
   Future<void> loadCacheOnStartup() async {
     if (kDebugMode) print('🚀 Loading cache on startup...');
     await _loadFromCache();
+    
+    // Purge any existing predictions that fall outside the 7-day window
+    await _purgeDistantPredictions();
+    
     if (kDebugMode) print('✓ Cache loaded - processed titles: ${_processedAnimeTitles.length}, image URLs: ${_imageCache.length}');
+  }
+
+  /// Removes any predicted releases from the cache that are more than 7 days in the future.
+  /// Ensures strict adherence to the new 7-day limit even for previously cached data.
+  Future<void> _purgeDistantPredictions() async {
+    try {
+      final now = DateTime.now();
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final horizonMidnight = todayMidnight.add(const Duration(days: 7));
+      bool changedInMemory = false;
+      
+      // 1. Clean in-memory entries
+      if (_cachedReleases.isNotEmpty) {
+        final beforeCount = _cachedReleases.length;
+        _cachedReleases.removeWhere((r) {
+           if (!r.isPredicted) return false;
+           final releaseDay = DateTime(r.releaseTime.year, r.releaseTime.month, r.releaseTime.day);
+           return releaseDay.isAfter(horizonMidnight);
+        });
+        if (_cachedReleases.length < beforeCount) {
+          changedInMemory = true;
+          if (kDebugMode) print('🧹 Purged ${beforeCount - _cachedReleases.length} distant predictions from memory');
+        }
+      }
+
+      // 2. Clean persistent month caches
+      final months = await getCachedMonths();
+      for (final tuple in months) {
+        final monthDate = DateTime(tuple.$1, tuple.$2, 1);
+        final existing = await _loadMonthFromCache(monthDate);
+        
+        final filtered = existing.where((r) {
+          if (!r.isPredicted) return true;
+          final releaseDay = DateTime(r.releaseTime.year, r.releaseTime.month, r.releaseTime.day);
+          return !releaseDay.isAfter(horizonMidnight);
+        }).toList();
+
+        if (filtered.length != existing.length) {
+          await _saveMonthToCache(monthDate, filtered, preservePredictions: true);
+          if (kDebugMode) print('🧹 Purged ${existing.length - filtered.length} distant predictions from month cache ${monthDate.month}/${monthDate.year}');
+        }
+      }
+      
+      if (changedInMemory) {
+        await _saveToCache(_cachedReleases);
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error during distant prediction purge: $e');
+    }
   }
 
   Future<void> _loadFromCache() async {

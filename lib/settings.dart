@@ -452,29 +452,23 @@ class _SettingsPageState extends State<SettingsPage> {
         }
         if (kDebugMode) print('🔎 [SETTINGS] Refreshing AniList metadata before running predictor (watchlist-only)...');
         // Refresh AniList metadata cache but limit prefetch to watchlist entries when available
-        List<String>? seeds;
+        WatchlistService? ws;
         try {
           final prefs = await SharedPreferences.getInstance();
           final raw = prefs.getString('watchlist_data');
           if (raw != null) {
             final wlObj = Watchlist();
-            final ws = WatchlistService(wlObj);
+            ws = WatchlistService(wlObj);
             await ws.loadWatchlist();
-            seeds = ws.watchlist.entries.map((e) => e.animeId.toString()).where((s) => s.isNotEmpty).toList();
           }
         } catch (e) {
-          if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist seeds: $e');
+          if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist entries: $e');
         }
-        await anilist.refreshMetadataForCrunchyroll(cs, usePredictDelay: true, seriesSeeds: seeds);
+        await anilist.refreshMetadataForCrunchyroll(cs, usePredictDelay: true, entries: ws?.watchlist.entries);
         if (kDebugMode) print('🔎 [SETTINGS] Running predictor for watchlist entries only');
         // Generate forecasts only for watchlist entries (if present)
         try {
-          final prefs = await SharedPreferences.getInstance();
-          final raw = prefs.getString('watchlist_data');
-          if (raw != null) {
-            final wlObj = Watchlist();
-            final ws = WatchlistService(wlObj);
-            await ws.loadWatchlist();
+          if (ws != null) {
             final created = await ws.generateForecastForAllEntries();
             if (kDebugMode) print('🔎 [SETTINGS] Created $created predictions for watchlist entries');
             if (mounted) {

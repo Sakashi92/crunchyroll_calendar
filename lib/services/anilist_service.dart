@@ -261,25 +261,44 @@ class AnilistService implements EpisodeProvider {
 
   /// Clears AniList metadata cache and prefetches metadata for all series
   /// known to the provided `CrunchyrollService` to refresh local AniList data.
-  Future<void> refreshMetadataForCrunchyroll(dynamic crunchy, {bool usePredictDelay = false, List<String>? seriesSeeds}) async {
+  Future<void> refreshMetadataForCrunchyroll(dynamic crunchy, {bool usePredictDelay = false, List<String>? seriesSeeds, List<WatchlistEntry>? entries}) async {
     try {
       final cache = AnilistCache();
-      await cache.clear();
-      if (kDebugMode) print('🔎 [ANILIST] Cleared AniList metadata cache');
+      // Remove cache clear to preserve manual linking - we want to refresh, not delete
+      // await cache.clear(); 
 
       // Attempt to fetch metadata for all known series from the Crunchyroll cache
       try {
         List<String> series;
-        if (seriesSeeds != null) {
+        Map<String, int?> urlToId = {};
+
+        if (entries != null) {
+           series = entries.map((e) => e.animeId ?? '').where((s) => s.isNotEmpty).toList();
+           for (final e in entries) {
+             if (e.animeId != null && e.anilistId != null) urlToId[e.animeId!] = e.anilistId;
+           }
+        } else if (seriesSeeds != null) {
           series = List<String>.from(seriesSeeds);
         } else {
           series = await crunchy.getAllKnownSeriesIds();
         }
+
         if (kDebugMode) print('🔎 [ANILIST] Refreshing metadata for ${series.length} series');
         int i = 0;
         for (final s in series) {
           i++;
           if (kDebugMode) print('🔎 [ANILIST] (${i}/${series.length}) Prefetching metadata for $s');
+          
+          final existingId = urlToId[s];
+          if (existingId != null) {
+            // Pre-populate cache so fetchSeriesMetadata finds the ID even after a manual wipe
+            final cacheKey = normalizeTitle(s);
+            final existing = await cache.get(cacheKey);
+            if (existing == null || existing.id != existingId) {
+              await cache.save(cacheKey, AnimeMetadata(id: existingId));
+            }
+          }
+
           // fetchSeriesMetadata will derive a human-readable title from the URL if needed
           await fetchSeriesMetadata(s, null, usePredictDelay: usePredictDelay);
         }
@@ -522,6 +541,12 @@ class AnilistService implements EpisodeProvider {
       if (results.isEmpty) return null;
 
       final normalizedQuery = query.trim().toLowerCase();
+
+      // User requested: If more than 2 candidates exist, we stay safe and require manual choice.
+      if (results.length > 2) {
+         if (kDebugMode) print('🔍 Auto-Link: Ambiguous search for "$query" (${results.length} hits). Manual link required.');
+         return null;
+      }
 
       // 1. Exact Match
       for (final r in results) {

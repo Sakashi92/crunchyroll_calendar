@@ -8,6 +8,10 @@ import '../models/watchlist.dart';
 import '../repositories/seen_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/watchlist_service.dart';
+import '../services/anilist_service.dart';
+import '../services/anilist_cache.dart';
+import '../services/next_episode_predictor.dart';
+import '../utils/title_utils.dart';
 import '../settings.dart';
 import '../widgets/anime_details_dialog.dart';
 
@@ -114,20 +118,44 @@ class _SearchPageState extends State<SearchPage> {
     final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
     final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
 
+    // Auto-link integration
+    int? autoId;
+    try {
+      final best = await AnilistService().findBestMatch(release.title);
+      if (best != null) {
+        autoId = best.id;
+        if (kDebugMode) print('✅ Auto-linked "${release.title}" to AniList ID: $autoId');
+        
+        final cache = AnilistCache();
+        final key = normalizeTitle(release.seriesUrl ?? release.title);
+        await cache.save(key, best);
+      }
+    } catch (_) {}
+
     final entry = WatchlistEntry(
       animeId: release.seriesUrl,
       title: release.title,
       imageUrl: release.imageUrl,
       episodesWatched: 0,
       totalEpisodes: total,
+      anilistId: autoId,
+      addedAt: DateTime.now(),
     );
     widget.watchlistService!.watchlist.addEntry(entry);
     await widget.watchlistService!.saveWatchlist();
     // schedule background update (may perform network)
     cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}')),
+      SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}')),
     );
+
+    // Trigger prediction refresh if auto-linked
+    if (autoId != null) {
+       try {
+          final predictor = NextEpisodePredictor(cs, AnilistService());
+          await predictor.predictNextForSeries(entry.animeId, entry.title);
+       } catch (_) {}
+    }
   }
 
   Future<void> _onResultTap(AnimeRelease r, DateTime date) async {

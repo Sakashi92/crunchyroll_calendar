@@ -340,40 +340,51 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                                           knownMax = await widget.crunchyrollService.getMaxEpisodeFromCache(id, widget.release.title);
                                         }
                                         final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+
+                                        // Auto-link integration
+                                        int? autoId;
+                                        try {
+                                          final best = await AnilistService().findBestMatch(widget.release.title);
+                                          if (best != null) {
+                                            autoId = best.id;
+                                            if (kDebugMode) print('✅ Auto-linked "${widget.release.title}" to AniList ID: $autoId');
+                                            
+                                            final cache = AnilistCache();
+                                            final key = normalizeTitle(widget.release.seriesUrl ?? widget.release.title);
+                                            await cache.save(key, best);
+                                          }
+                                        } catch (_) {}
+
                                         final entry = WatchlistEntry(
                                           animeId: id,
                                           title: widget.release.title,
                                           imageUrl: widget.release.imageUrl,
                                           episodesWatched: 0,
                                           totalEpisodes: total,
+                                          anilistId: autoId,
                                           addedAt: DateTime.now(),
                                         );
                                         ws.watchlist.addEntry(entry);
                                         await ws.saveWatchlist();
                                         widget.crunchyrollService.scheduleWatchlistEntryUpdate(ws, entry);
                                         if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt')),
+                                          SnackBar(content: Text('${widget.release.title} zur Watchlist hinzugefügt${autoId != null ? " (Verknüpft)" : ""}')),
                                         );
 
-                                        // OPTIMIZED: Only fetch prediction for THIS anime (fast, ~1-2 seconds)
-                                        try {
-                                          final predictionsEnabled = await AppSettings.getPredictionEnabled();
-                                          if (predictionsEnabled) {
-                                            // Run in background to not block UI - only predict for this single item
-                                            Future.microtask(() async {
-                                              try {
-                                                if (kDebugMode) print('🔔 Fetching prediction for single item: ${widget.release.title}');
-                                                final anilist = AnilistService();
-                                                final predictor = NextEpisodePredictor(widget.crunchyrollService, anilist);
-                                                await predictor.predictNextForSeries(id, widget.release.title);
-                                                if (kDebugMode) print('✅ Single item prediction complete for ${widget.release.title}');
-                                              } catch (e) {
-                                                if (kDebugMode) print('❌ Error predicting single item: $e');
-                                              }
-                                            });
-                                          }
-                                        } catch (e) {
-                                           if (kDebugMode) print('❌ Error checking settings for prediction: $e');
+                                        // Trigger prediction refresh if auto-linked
+                                        if (autoId != null) {
+                                          try {
+                                            final predictionsEnabled = await AppSettings.getPredictionEnabled();
+                                            if (predictionsEnabled) {
+                                              // Run in background
+                                              Future.microtask(() async {
+                                                try {
+                                                  final predictor = NextEpisodePredictor(widget.crunchyrollService, AnilistService());
+                                                  await predictor.predictNextForSeries(id, widget.release.title);
+                                                } catch (_) {}
+                                              });
+                                            }
+                                          } catch (_) {}
                                         }
                                       }
                                       if (mounted) setState(() {

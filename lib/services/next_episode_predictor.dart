@@ -5,6 +5,8 @@ import 'anilist_service.dart';
 import 'crunchyroll_service.dart';
 import 'prediction_notifier.dart';
 import '../models/anime_metadata.dart';
+import 'anilist_cache.dart';
+import '../utils/title_utils.dart';
 
 /// Simple next-episode predictor.
 /// - Reads recent releases for a series from the CrunchyrollService cache
@@ -19,8 +21,9 @@ class NextEpisodePredictor {
 
   /// Predict next episode for a given series (identified by seriesUrl or title)
   /// Returns the predicted release or null if prediction not possible.
-  Future<AnimeRelease?> predictNextForSeries(String? seriesUrl, String? title) async {
+  Future<AnimeRelease?> predictNextForSeries(String? seriesUrl, String? title, {int? anilistId}) async {
     try {
+      final now = DateTime.now();
       print('🔎 [PREDICTOR] Predicting next for seriesUrl=${seriesUrl ?? '-'} title=${title ?? '-'}');
       // load cached releases
       final releases = await crunchy.getReleasesForSeriesCached(seriesUrl, title);
@@ -28,19 +31,28 @@ class NextEpisodePredictor {
       // PREDICTOR UPDATE: Check AniList metadata first for an exact scheduled date
       final effectiveTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : null);
       if (effectiveTitle != null) {
+          // If we have a direct anilistId from the watchlist, prepopulate the cache key
+          if (anilistId != null) {
+            final cache = AnilistCache();
+            final cacheKey = normalizeTitle(seriesUrl ?? title ?? effectiveTitle);
+            final existing = await cache.get(cacheKey);
+            if (existing == null || existing.id != anilistId) {
+               await cache.save(cacheKey, AnimeMetadata(id: anilistId));
+            }
+          }
+
           final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
           
           // If we have an exact future date from AniList, use it!
           if (meta?.nextEpisodeDate != null) {
               final nextDate = meta!.nextEpisodeDate!;
-              final now = DateTime.now();
-              // Only use if it's in the future (or very recent) and within 7 days
-              // Allow episodes from the last 24 hours (so today's episodes are shown even if time passed)
-              // and up to 14 days in the future.
-              final minAllowed = now.subtract(const Duration(hours: 24));
-              final maxAllowed = now.add(const Duration(days: 14));
+              final todayMidnight = DateTime(now.year, now.month, now.day);
+              final minAllowed = todayMidnight.subtract(const Duration(hours: 24));
+              final maxAllowedMidnight = todayMidnight.add(const Duration(days: 7));
               
-              if (nextDate.isAfter(minAllowed) && nextDate.isBefore(maxAllowed)) {
+              final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+              
+              if (nextDate.isAfter(minAllowed) && !nextDay.isAfter(maxAllowedMidnight)) {
                   final bestTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : meta?.siteUrl) ?? 'Unknown';
                   final epParams = meta?.nextEpisodeNumber ?? (
                       (releases != null && releases.isNotEmpty) 
@@ -101,12 +113,14 @@ class NextEpisodePredictor {
 
       // Relaxed window: Allow predictions from the last 24 hours (so today's episodes stay visible)
       // and up to 7 days in the future.
-      final now = DateTime.now();
-      final minAllowed = now.subtract(const Duration(hours: 24));
-      final maxAllowed = now.add(const Duration(days: 7));
+      final todayMidnight = DateTime(now.year, now.month, now.day);
+      final minAllowed = todayMidnight.subtract(const Duration(hours: 24));
+      final maxAllowedMidnight = todayMidnight.add(const Duration(days: 7));
       
-      if (predictedDate.isBefore(minAllowed) || predictedDate.isAfter(maxAllowed)) {
-        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside allowed window ($minAllowed to $maxAllowed)');
+      final predictedDay = DateTime(predictedDate.year, predictedDate.month, predictedDate.day);
+
+      if (predictedDate.isBefore(minAllowed) || predictedDay.isAfter(maxAllowedMidnight)) {
+        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside allowed window ($minAllowed to $maxAllowedMidnight)');
         return null;
       }
 

@@ -9,6 +9,8 @@ import 'crunchyroll_service.dart';
 import 'next_episode_predictor.dart';
 import 'anilist_service.dart';
 import 'prediction_notifier.dart';
+import 'anilist_cache.dart';
+import '../utils/title_utils.dart';
 
 class WatchlistService {
   static const _storageKey = 'watchlist_data';
@@ -76,7 +78,7 @@ class WatchlistService {
       try {
         if (e.addedAt == null) continue;
         if (e.addedAt!.isBefore(since)) continue;
-        final pred = await predictor.predictNextForSeries(e.animeId, e.title);
+        final pred = await predictor.predictNextForSeries(e.animeId, e.title, anilistId: e.anilistId);
         if (pred != null) count++;
       } catch (_) {
         // ignore
@@ -99,7 +101,7 @@ class WatchlistService {
     int count = 0;
     for (final e in watchlist.entries) {
       try {
-        final pred = await predictor.predictNextForSeries(e.animeId, e.title);
+        final pred = await predictor.predictNextForSeries(e.animeId, e.title, anilistId: e.anilistId);
         if (pred != null) count++;
       } catch (_) {
         // ignore individual failures
@@ -473,6 +475,15 @@ class WatchlistService {
           
           if (match != null) {
             entry.anilistId = match.id;
+            
+            // Save to cache so predictor can find it
+            // Use animeId if available as primary key, or title as fallback
+            final cacheKey = normalizeTitle(entry.animeId ?? entry.title);
+            try {
+              final cache = AnilistCache();
+              await cache.save(cacheKey, match);
+            } catch (_) {}
+
             // Update the entry in the central list (reference should be same, but to be safe use updateEntry)
             watchlist.updateEntry(entry);
             linkedCount++;

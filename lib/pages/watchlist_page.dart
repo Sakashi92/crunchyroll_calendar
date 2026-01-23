@@ -11,6 +11,10 @@ import '../repositories/notification_repository.dart';
 import '../widgets/anime_details_dialog.dart';
 import '../models/watchlist.dart';
 import '../services/watchlist_service.dart';
+import '../services/next_episode_predictor.dart';
+import '../services/anilist_service.dart';
+import '../services/anilist_cache.dart';
+import '../utils/title_utils.dart';
 import '../settings.dart';
 
 // Sorting modes for the watchlist
@@ -250,18 +254,50 @@ class _WatchlistPageState extends State<WatchlistPage> {
           actions: [
             TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Abbrechen')),
             ElevatedButton(
-              onPressed: () {
+
+              onPressed: () async {
+                final crunch = CrunchyrollService(); // Needed for predictor
+                
+                // Try auto-link
+                int? autoId;
+                try {
+                  final best = await AnilistService().findBestMatch(titleController.text);
+                  if (best != null) {
+                    autoId = best.id;
+                    if (kDebugMode) print('✅ Auto-linked "${titleController.text}" to AniList ID: $autoId');
+                    
+                    // Save to cache so predictor can find it
+                    final cache = AnilistCache();
+                    final key = normalizeTitle(titleController.text);
+                    await cache.save(key, best);
+                  }
+                } catch (_) {}
+
                 final entry = WatchlistEntry(
-                  animeId: DateTime.now().millisecondsSinceEpoch.toString(),
+                  animeId: titleController.text, // Use title as ID for manual adds
                   title: titleController.text,
                   episodesWatched: episodes,
                   totalEpisodes: total,
+                  status: WatchStatus.watching,
                   notificationsEnabled: false,
+                  anilistId: autoId,
                   addedAt: DateTime.now(),
                 );
                 watchlist.addEntry(entry);
                 widget.service.saveWatchlist();
                 Navigator.pop(ctx);
+                
+                if (autoId != null && mounted) {
+                   ScaffoldMessenger.of(context).showSnackBar(
+                     SnackBar(content: Text('Automatisch mit AniList verknüpft (ID: $autoId)')),
+                   );
+                   
+                   // Trigger prediction refresh immediately
+                   try {
+                      final predictor = NextEpisodePredictor(crunch, AnilistService());
+                      await predictor.predictNextForSeries(entry.animeId, entry.title);
+                   } catch (_) {}
+                }
               },
               child: Text('Hinzufügen'),
             ),
