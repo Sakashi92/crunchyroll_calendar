@@ -8,19 +8,21 @@ import 'services/app_settings_service.dart';
 import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'pages/calendar_page.dart';
+import 'utils/ui_utils.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('de_DE', null);
   Intl.defaultLocale = 'de_DE';
-  
+
   // Notification Service initialisieren
   await NotificationService().initialize();
-  
+  await AppSettingsService.init();
+
   // Background Service initialisieren und Task starten (alle 20 Minuten)
   await BackgroundService.initialize();
   await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
-  
+
   runApp(const MainApp());
 }
 
@@ -34,12 +36,15 @@ class MainApp extends StatefulWidget {
 class _MainAppState extends State<MainApp> {
   Color _accentColor = Colors.orange;
   final Watchlist watchlist = Watchlist();
-  late final WatchlistService watchlistService;
+  WatchlistService? _watchlistService;
+  WatchlistService get watchlistService {
+    _watchlistService ??= WatchlistService(watchlist);
+    return _watchlistService!;
+  }
 
   @override
   void initState() {
     super.initState();
-    watchlistService = WatchlistService(watchlist);
     // Load stored watchlist asynchronously so widgets reflect initial state
     watchlistService.loadWatchlist().catchError((e) {
       if (kDebugMode) print('❌ Failed to load watchlist on startup: $e');
@@ -51,13 +56,22 @@ class _MainAppState extends State<MainApp> {
 
   void _runWatchlistMigration() async {
     try {
-      final migrated = await watchlistService.migrateNotificationSettingsFromFavorites();
+      final migrated = await watchlistService
+          .migrateNotificationSettingsFromFavorites();
       if (migrated > 0) {
-        if (kDebugMode) print('🔁 Migrated $migrated notification settings from favorites to watchlist');
+        if (kDebugMode)
+          print(
+            '🔁 Migrated $migrated notification settings from favorites to watchlist',
+          );
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('🔁 $migrated Favoriten-Benachrichtigungen in Watchlist übernommen')),
+          UIUtils.showSnackBar(
+            context,
+            SnackBar(
+              content: Text(
+                '🔁 $migrated Favoriten-Benachrichtigungen in Watchlist übernommen',
+              ),
+            ),
           );
         });
       }
@@ -92,8 +106,8 @@ class _MainAppState extends State<MainApp> {
         useMaterial3: true,
       ),
       home: CalendarPage(
-        onAccentColorChanged: _loadAccentColor, 
-        watchlistService: watchlistService
+        onAccentColorChanged: _loadAccentColor,
+        watchlistService: watchlistService,
       ),
     );
   }

@@ -1,0 +1,1522 @@
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
+import '../models/anime_release.dart';
+import '../services/crunchyroll_service.dart';
+import '../repositories/notification_repository.dart';
+import '../widgets/anime_details_dialog.dart';
+import '../models/watchlist.dart';
+import '../services/watchlist_service.dart';
+import '../services/app_settings_service.dart';
+import '../utils/title_utils.dart';
+import '../services/episode_provider_factory.dart';
+import '../models/anime_metadata.dart';
+import '../services/anilist_cache.dart';
+import '../services/jikan_service.dart';
+import '../services/anilist_service.dart';
+import '../services/next_episode_predictor.dart';
+
+// Sorting modes for the watchlist
+enum SortMode { addedAtDesc, alphabet, status }
+
+class WatchlistPage extends StatefulWidget {
+  final WatchlistService service;
+  const WatchlistPage({super.key, required this.service});
+
+  @override
+  State<WatchlistPage> createState() => _WatchlistPageState();
+}
+
+class _WatchlistPageState extends State<WatchlistPage> {
+  late Watchlist watchlist;
+  late List<WatchlistEntry> _displayEntries;
+  SortMode _sortMode = SortMode.addedAtDesc;
+  bool _fabVisible = true;
+  late ScrollController _scrollController;
+
+  final TextEditingController _searchController = TextEditingController();
+  bool _isLocalSearching = false;
+
+  Future<int?> _promptForEpisodeNumber(
+    BuildContext ctx,
+    String title,
+    int initial,
+  ) async {
+    final controller = TextEditingController(text: initial.toString());
+    return await showDialog<int?>(
+      context: ctx,
+      builder: (dCtx) => AlertDialog(
+        title: Text(title),
+        content: TextField(
+          controller: controller,
+          keyboardType: TextInputType.number,
+          autofocus: true,
+          decoration: InputDecoration(labelText: 'Folgenanzahl'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, null),
+            child: Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = int.tryParse(controller.text.trim());
+              Navigator.pop(dCtx, v ?? initial);
+            },
+            child: Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    watchlist = widget.service.watchlist;
+    watchlist.addListener(_onWatchlistChanged);
+    _displayEntries = List.from(watchlist.entries);
+
+    _searchController.addListener(() {
+      setState(() {
+        _applySort();
+      });
+    });
+
+    // Load watchlist and refresh totals asynchronously
+    _initAsync();
+    // Load saved sort mode then apply
+    AppSettingsService.getWatchlistSortModeIndex()
+        .then((idx) {
+          if (!mounted) return;
+          setState(() {
+            _sortMode = SortMode.values.elementAt(
+              idx.clamp(0, SortMode.values.length - 1),
+            );
+            _applySort();
+          });
+        })
+        .catchError((e) {
+          if (kDebugMode) print('Failed to load saved watchlist sort mode: $e');
+          _applySort();
+        });
+    _scrollController = ScrollController();
+    _scrollController.addListener(() {
+      try {
+        final dirStr = _scrollController.position.userScrollDirection
+            .toString();
+        if (dirStr.contains('reverse') && _fabVisible) {
+          setState(() => _fabVisible = false);
+        } else if (dirStr.contains('forward') && !_fabVisible) {
+          setState(() => _fabVisible = true);
+        }
+      } catch (e) {
+        if (kDebugMode) print('ScrollController listener error: $e');
+      }
+    });
+  }
+
+  Future<void> _initAsync() async {
+    try {
+      await widget.service.loadWatchlist();
+      if (!mounted) return;
+      setState(() {
+        _displayEntries = List.from(watchlist.entries);
+        _applySort();
+      });
+
+      // Try to sync totals from cached releases and update watchlist
+      final crunch = CrunchyrollService();
+      final notifRepo = NotificationRepository();
+      // Ensure cache loaded then sync
+      await crunch.loadCacheOnStartup();
+      await crunch.syncWatchlistWithReleases(widget.service, notifRepo);
+
+      if (!mounted) return;
+      setState(() {
+        _displayEntries = List.from(watchlist.entries);
+        _applySort();
+      });
+    } catch (e) {
+      if (kDebugMode) print('Error updating watchlist totals: $e');
+    }
+  }
+
+  void _openDetailsDialog(WatchlistEntry entry) {
+    final release = AnimeRelease(
+      title: entry.title,
+      episodeNumber: entry.episodesWatched.toString(),
+      episodeTitle: '',
+      releaseTime: DateTime.now(),
+      imageUrl: entry.imageUrl,
+      description: null,
+      seriesUrl: entry.animeId,
+      episodeUrl: '',
+      isPremiere: false,
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AnimeDetailsDialog(
+        release: release,
+        crunchyrollService: CrunchyrollService(),
+        watchlistService: widget.service,
+        totalEpisodes: entry.totalEpisodes,
+        showTimeBadge: false,
+        showEpisodeBadge: false,
+        showManualLink: _isCrunchyrollItem(entry),
+        isCrunchyroll: _isCrunchyrollItem(entry),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    watchlist.removeListener(_onWatchlistChanged);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onWatchlistChanged() {
+    _displayEntries = List.from(watchlist.entries);
+    _applySort();
+    setState(() {});
+  }
+
+  String _statusLabel(WatchStatus s) {
+    switch (s) {
+      case WatchStatus.watching:
+        return 'Am Schauen';
+      case WatchStatus.completed:
+        return 'Abgeschlossen';
+      case WatchStatus.paused:
+        return 'Pausiert';
+      case WatchStatus.dropped:
+        return 'Abgebrochen';
+    }
+  }
+
+  void _applySort() {
+    List<WatchlistEntry> temp = List.from(watchlist.entries);
+
+    // Filter by search text
+    if (_searchController.text.isNotEmpty) {
+      final q = _searchController.text.toLowerCase();
+      temp = temp.where((e) => e.title.toLowerCase().contains(q)).toList();
+    }
+
+    if (_sortMode == SortMode.addedAtDesc) {
+      temp.sort((a, b) {
+        final da = a.addedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        final db = b.addedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+        return db.compareTo(da); // newest first
+      });
+    } else if (_sortMode == SortMode.alphabet) {
+      temp.sort(
+        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+      );
+    } else if (_sortMode == SortMode.status) {
+      temp.sort((a, b) => a.status.index.compareTo(b.status.index));
+    }
+    _displayEntries = temp;
+  }
+
+  String _formatAddedAt(DateTime? dt) {
+    if (dt == null) return '';
+    final now = DateTime.now();
+    final date = DateTime(dt.year, dt.month, dt.day);
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    if (date == today) return 'Hinzugefügt: heute';
+    if (date == yesterday) return 'Hinzugefügt: gestern';
+    return 'Hinzugefügt: ${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
+  }
+
+  bool _isCrunchyrollItem(WatchlistEntry entry) {
+    if (entry.isCrunchyroll == true) return true;
+    // Debug: print ID to help diagnose why banner isn't showing
+    // print('Checking _isCrunchyrollItem for "${entry.title}" ID: "${entry.animeId}"');
+
+    if (entry.animeId.contains('/')) return true;
+    if (entry.animeId.toLowerCase().contains('crunchyroll')) return true;
+    return false;
+  }
+
+  void _addAnime() async {
+    // Search Dialog
+    final searchController = TextEditingController();
+    List<AnimeMetadata> searchResults = [];
+    bool isSearching = false;
+    bool hasSearched = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          Future<void> performSearch() async {
+            if (searchController.text.trim().isEmpty) return;
+
+            setState(() {
+              isSearching = true;
+              hasSearched = true;
+              searchResults = [];
+            });
+
+            try {
+              final provider = await EpisodeProviderFactory.getProvider();
+              final results = await provider.searchSeries(
+                searchController.text,
+              );
+              if (context.mounted) {
+                setState(() {
+                  searchResults = results;
+                  isSearching = false;
+                });
+              }
+            } catch (e) {
+              if (kDebugMode) print('Search error: $e');
+              if (context.mounted) {
+                setState(() {
+                  isSearching = false;
+                });
+              }
+            }
+          }
+
+          return AlertDialog(
+            title: const Text('Anime suchen'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Titel suchen',
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: performSearch,
+                      ),
+                    ),
+                    onSubmitted: (_) => performSearch(),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 16),
+                  if (isSearching)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    )
+                  else if (hasSearched && searchResults.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: Text('Keine Ergebnisse gefunden.'),
+                    )
+                  else if (searchResults.isNotEmpty)
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: searchResults.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final meta = searchResults[index];
+                          return ListTile(
+                            leading: meta.imageUrl != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: CachedNetworkImage(
+                                      imageUrl: meta.imageUrl!,
+                                      width: 40,
+                                      height: 60,
+                                      fit: BoxFit.cover,
+                                      placeholder: (_, __) =>
+                                          Container(color: Colors.grey[300]),
+                                      errorWidget: (_, __, ___) =>
+                                          const Icon(Icons.broken_image),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 40,
+                                    height: 60,
+                                    color: Colors.grey[300],
+                                    child: const Icon(Icons.movie),
+                                  ),
+                            title: Text(
+                              meta.siteUrl ?? 'Unbekannter Titel',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              meta.totalEpisodes != null
+                                  ? '${meta.totalEpisodes} Folgen'
+                                  : 'Folgen unbekannt',
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.add_circle_outline),
+                              color: Theme.of(context).primaryColor,
+                              onPressed: () async {
+                                AnimeMetadata itemToAdd = meta;
+                                // For Jikan, fetch full metadata to get streaming info (Banner)
+                                try {
+                                  final provider =
+                                      await EpisodeProviderFactory.getProvider();
+                                  if (provider is JikanService &&
+                                      meta.id != null) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Prüfe Verfügbarkeit...'),
+                                        duration: Duration(milliseconds: 1000),
+                                      ),
+                                    );
+                                    final hasCR = await provider
+                                        .getCrunchyrollAvailability(meta.id!);
+                                    itemToAdd = meta.copyWith(
+                                      hasCrunchyroll: hasCR,
+                                    );
+                                  }
+                                } catch (_) {}
+
+                                if (context.mounted) {
+                                  _addEntryFromSearch(itemToAdd);
+                                  // Close dialog (check if still mounted and loop)
+                                  // Navigator.pop might pop the wrong thing if snackbar is showing?
+                                  // No, SnackBar doesn't block nav usually.
+                                  Navigator.pop(context);
+                                }
+                              },
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Schließen'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  void _addEntryFromSearch(AnimeMetadata meta) async {
+    // Determine ID. If it's a number (Anilist/Kitsu ID), convert to string.
+    // Ensure we don't accidentally treat it as a URL/path if it's just an ID,
+    // BUT we need a unique ID.
+    // For non-Crunchyroll items, the ID format matters less, but we want to avoid the "Crunchyroll" banner.
+    // Kitsu IDs are numbers, Anilist IDs are numbers.
+
+    final id =
+        meta.id?.toString() ??
+        meta.siteUrl ??
+        DateTime.now().millisecondsSinceEpoch.toString();
+    final title =
+        meta.siteUrl ??
+        'Unbekannter Titel'; // We stored display title in siteUrl for search results
+
+    // Check availability in list
+    if (watchlist.entries.any((e) => e.animeId == id || e.title == title)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"$title" ist bereits in der Liste!')),
+        );
+      }
+      return;
+    }
+
+    final entry = WatchlistEntry(
+      animeId: id,
+      title: title,
+      imageUrl: meta.imageUrl,
+      episodesWatched: 0,
+      totalEpisodes: meta.totalEpisodes ?? 0,
+      status: WatchStatus.watching,
+      notificationsEnabled: false,
+      anilistId: meta.id, // Save external ID if available
+      addedAt: DateTime.now(),
+      isCrunchyroll: meta.hasCrunchyroll,
+    );
+
+    watchlist.addEntry(entry);
+    await widget.service.saveWatchlist();
+
+    // Save to AnilistCache so predictor knows about it
+    if (meta.id != null) {
+      try {
+        final cache = AnilistCache();
+        // Use ID as key if possible, or title
+        await cache.save(normalizeTitle(title), meta);
+      } catch (_) {}
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('"$title" zur Watchlist hinzugefügt')),
+      );
+    }
+  }
+
+  Future<void> _toggleNotifications(WatchlistEntry entry, bool enabled) async {
+    // Optimistic update
+    final old = entry.notificationsEnabled;
+    entry.notificationsEnabled = enabled;
+    try {
+      await widget.service.saveWatchlist();
+      if (mounted) setState(() {});
+    } catch (e) {
+      if (kDebugMode) print('❌ Error toggling watchlist notifications: $e');
+      entry.notificationsEnabled = old;
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _showEditDialog(WatchlistEntry entry) async {
+    int episodes = entry.episodesWatched;
+    int total = entry.totalEpisodes;
+    bool autoSync = entry.autoSyncTotal;
+    final noteController = TextEditingController(text: entry.note ?? '');
+    WatchStatus status = entry.status;
+    await showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: Text('Bearbeiten: ${entry.title}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('Gesehene Folgen')),
+                  IconButton(
+                    onPressed: () {
+                      if (episodes > 0) setState(() => episodes--);
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
+                  InkWell(
+                    onTap: () async {
+                      final v = await _promptForEpisodeNumber(
+                        ctx,
+                        'Gesehene Folgen eingeben',
+                        episodes,
+                      );
+                      if (v != null) setState(() => episodes = v);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
+                      child: Text('$episodes', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => setState(() => episodes++),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
+                ],
+              ),
+              Row(
+                children: [
+                  Expanded(child: Text('Gesamtfolgen')),
+                  IconButton(
+                    onPressed: () {
+                      if (total > 0) {
+                        setState(() {
+                          total--;
+                          autoSync = false;
+                        });
+                      }
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
+                  InkWell(
+                    onTap: () async {
+                      final v = await _promptForEpisodeNumber(
+                        ctx,
+                        'Gesamtfolgen eingeben',
+                        total,
+                      );
+                      if (v != null)
+                        setState(() {
+                          total = v;
+                          autoSync = false;
+                        });
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
+                      child: Text('$total', style: TextStyle(fontSize: 16)),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => setState(() {
+                      total++;
+                      autoSync = false;
+                    }),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Expanded(child: Text('Automatisch Gesamtfolgen abgleichen')),
+                  StatefulBuilder(
+                    builder: (ctx2, setState2) => Switch(
+                      value: autoSync,
+                      onChanged: (v) async {
+                        // Update local toggle immediately
+                        setState(() {
+                          autoSync = v;
+                        });
+
+                        if (v) {
+                          try {
+                            final crunch = CrunchyrollService();
+                            final known = await crunch.getMaxEpisodeForSeries(
+                              entry.animeId,
+                              entry.title,
+                            );
+                            if (known != null && known > total) {
+                              if (mounted) setState(() => total = known);
+                            }
+                          } catch (e) {
+                            if (kDebugMode)
+                              print('Error fetching max episode on toggle: $e');
+                          }
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              DropdownButton<WatchStatus>(
+                value: status,
+                items: WatchStatus.values
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(_statusLabel(s)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (s) {
+                  if (s != null) {
+                    setState(() => status = s);
+                  }
+                },
+              ),
+              TextField(
+                controller: noteController,
+                decoration: InputDecoration(labelText: 'Notiz'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Abbrechen'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                final newEntry = WatchlistEntry(
+                  animeId: entry.animeId,
+                  title: entry.title,
+                  imageUrl: entry.imageUrl,
+                  episodesWatched: episodes,
+                  totalEpisodes: total,
+                  status: status,
+                  notificationsEnabled: entry.notificationsEnabled,
+                  autoSyncTotal: autoSync,
+                  note: noteController.text,
+                  rating: entry.rating,
+                  anilistId: entry.anilistId,
+                  addedAt: entry.addedAt,
+                );
+                watchlist.updateEntry(newEntry);
+                widget.service.saveWatchlist();
+                Navigator.pop(ctx);
+              },
+              child: Text('Speichern'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _exportJson() async {
+    if (watchlist.entries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('⚠️ Keine Einträge zum Exportieren'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    try {
+      final jsonString = await widget.service.exportToJson();
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
+      final suggestedFileName = 'crunchyroll_watchlist_$timestamp.json';
+      final bytes = utf8.encode(jsonString);
+
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Watchlist exportieren',
+        fileName: suggestedFileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: bytes,
+      );
+
+      if (outputPath == null) return; // user cancelled
+
+      if (mounted) {
+        final result = await showDialog<String>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green),
+                SizedBox(width: 8),
+                Text('Export erfolgreich'),
+              ],
+            ),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('${watchlist.entries.length} Einträge exportiert'),
+                const SizedBox(height: 8),
+                const Text(
+                  'Gespeichert unter:',
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  outputPath,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'close'),
+                child: const Text('Schließen'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context, 'share'),
+                icon: const Icon(Icons.share),
+                label: const Text('Teilen'),
+              ),
+            ],
+          ),
+        );
+
+        if (result == 'share') {
+          try {
+            await Share.shareXFiles(
+              [XFile(outputPath)],
+              subject: 'Meine Crunchyroll Watchlist',
+              text:
+                  'Crunchyroll Watchlist (${watchlist.entries.length} Einträge)',
+            );
+          } catch (e) {
+            if (kDebugMode) print('Share error: $e');
+            if (mounted)
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('❌ Fehler beim Teilen: $e')),
+              );
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('Export error: $e');
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Exportieren: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+    }
+  }
+
+  void _importJson() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        dialogTitle: 'Watchlist-Datei auswählen',
+      );
+
+      if (result == null || result.files.isEmpty) return; // cancelled
+
+      final filePath = result.files.single.path;
+      if (filePath == null) throw Exception('Kein Dateipfad erhalten');
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => const Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text('Importiere Watchlist...'),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      final importedCount = await widget.service.importFromJsonFilePath(
+        filePath,
+      );
+
+      if (mounted) Navigator.pop(context); // close loading
+
+      if (importedCount > 0) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text('Import erfolgreich'),
+                ],
+              ),
+              content: Text(
+                importedCount == 1
+                    ? '1 neuer Eintrag wurde importiert'
+                    : '$importedCount neue Einträge wurden importiert',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.info, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Keine neuen Einträge'),
+                ],
+              ),
+              content: const Text(
+                'Die Datei wurde eingelesen, jedoch wurden keine neuen Einträge hinzugefügt.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // close loading dialog if open
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      if (kDebugMode) {
+        print('Import error: $e');
+      }
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Import fehlgeschlagen'),
+              ],
+            ),
+            content: Text(
+              'Fehler beim Importieren:\n\n$e',
+              style: const TextStyle(fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: _isLocalSearching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  hintText: 'Suchen...',
+                  border: InputBorder.none,
+                ),
+                style: const TextStyle(fontSize: 18),
+              )
+            : const Text('Watchlist'),
+        backgroundColor: Theme.of(context).colorScheme.surface,
+        toolbarHeight: 48,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+        actions: [
+          if (_isLocalSearching)
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () {
+                setState(() {
+                  _isLocalSearching = false;
+                  _searchController.clear();
+                  // Listener will trigger _applySort
+                });
+              },
+            )
+          else
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                setState(() {
+                  _isLocalSearching = true;
+                });
+              },
+            ),
+          if (!_isLocalSearching)
+            IconButton(
+              icon: const Icon(Icons.add),
+              tooltip: 'Händisch hinzufügen',
+              onPressed: _addAnime,
+            ),
+          // AniList forecast removed — calendar icon intentionally omitted
+          // Sort button
+          PopupMenuButton<SortMode>(
+            icon: const Icon(Icons.sort),
+            tooltip: 'Sortieren',
+            onSelected: (m) {
+              setState(() {
+                _sortMode = m;
+                _displayEntries = List.from(watchlist.entries);
+                _applySort();
+              });
+              // persist selection
+              AppSettingsService.setWatchlistSortModeIndex(m.index).catchError((
+                e,
+              ) {
+                if (kDebugMode) print('Failed to save watchlist sort mode: $e');
+              });
+            },
+            itemBuilder: (ctx) => [
+              CheckedPopupMenuItem(
+                value: SortMode.addedAtDesc,
+                checked: _sortMode == SortMode.addedAtDesc,
+                child: Text('Datum: zuletzt hinzugefügt'),
+              ),
+              CheckedPopupMenuItem(
+                value: SortMode.alphabet,
+                checked: _sortMode == SortMode.alphabet,
+                child: Text('Alphabet'),
+              ),
+              CheckedPopupMenuItem(
+                value: SortMode.status,
+                checked: _sortMode == SortMode.status,
+                child: Text('Status'),
+              ),
+            ],
+          ),
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.more_vert),
+            tooltip: 'Optionen',
+            onSelected: (value) {
+              if (value == 'export') {
+                _exportJson();
+              } else if (value == 'import') {
+                _importJson();
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'export',
+                child: Row(
+                  children: [
+                    Icon(Icons.upload_file),
+                    SizedBox(width: 12),
+                    Text('Exportieren'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
+                value: 'import',
+                child: Row(
+                  children: [
+                    Icon(Icons.download),
+                    SizedBox(width: 12),
+                    Text('Importieren'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      body: ListView.builder(
+        controller: _scrollController,
+        itemCount: _displayEntries.length,
+        itemBuilder: (ctx, i) {
+          final entry = _displayEntries[i];
+          return Card(
+            margin: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 12.0),
+            clipBehavior: Clip.antiAlias,
+            child: SizedBox(
+              height: 225,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Cover image (tappable to open details)
+                  if (entry.imageUrl != null && entry.imageUrl!.isNotEmpty)
+                    InkWell(
+                      onTap: () => _openDetailsDialog(entry),
+                      child: Container(
+                        width: 120,
+                        padding: const EdgeInsets.only(top: 0.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildCoverImage(entry),
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              width: 120,
+                              child: Transform.translate(
+                                offset: const Offset(0, -2),
+                                child: Wrap(
+                                  alignment: WrapAlignment.spaceEvenly,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(
+                                        entry.notificationsEnabled
+                                            ? Icons.notifications_active
+                                            : Icons.notifications_off,
+                                        color: entry.notificationsEnabled
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Colors.grey,
+                                        size: 20,
+                                      ),
+                                      tooltip: entry.notificationsEnabled
+                                          ? 'Push deaktivieren'
+                                          : 'Push aktivieren',
+                                      onPressed: () => _toggleNotifications(
+                                        entry,
+                                        !entry.notificationsEnabled,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 40,
+                                            height: 40,
+                                          ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 20),
+                                      tooltip: 'Bearbeiten',
+                                      onPressed: () => _showEditDialog(entry),
+                                      padding: EdgeInsets.zero,
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 40,
+                                            height: 40,
+                                          ),
+                                    ),
+                                    if (CrunchyrollService().isTitleInCalendar(
+                                      entry.title,
+                                    )) ...[
+                                      IconButton(
+                                        icon: Icon(
+                                          entry.predictionsEnabled
+                                              ? Icons.auto_awesome
+                                              : Icons.auto_awesome_outlined,
+                                          color: entry.predictionsEnabled
+                                              ? Theme.of(
+                                                  context,
+                                                ).colorScheme.primary
+                                              : Colors.grey,
+                                          size: 20,
+                                        ),
+                                        tooltip: entry.predictionsEnabled
+                                            ? 'Vorhersage deaktivieren'
+                                            : 'Vorhersage aktivieren',
+                                        onPressed: () async {
+                                          setState(() {
+                                            entry.predictionsEnabled =
+                                                !entry.predictionsEnabled;
+                                          });
+                                          widget.service.watchlist.updateEntry(
+                                            entry,
+                                          );
+                                          await widget.service.saveWatchlist();
+
+                                          final cs = CrunchyrollService();
+                                          if (!entry.predictionsEnabled) {
+                                            await cs
+                                                .removePredictedReleasesForSeries(
+                                                  entry.animeId,
+                                                  entry.title,
+                                                );
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Vorhersage deaktiviert',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                          } else {
+                                            if (mounted) {
+                                              ScaffoldMessenger.of(
+                                                context,
+                                              ).showSnackBar(
+                                                const SnackBar(
+                                                  content: Text(
+                                                    'Vorhersage wird berechnet...',
+                                                  ),
+                                                ),
+                                              );
+                                            }
+                                            try {
+                                              final predictor =
+                                                  NextEpisodePredictor(
+                                                    cs,
+                                                    AnilistService(),
+                                                  );
+                                              await predictor
+                                                  .predictNextForSeries(
+                                                    entry.animeId,
+                                                    entry.title,
+                                                    anilistId: entry.anilistId,
+                                                  );
+                                            } catch (_) {}
+                                          }
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints:
+                                            const BoxConstraints.tightFor(
+                                              width: 40,
+                                              height: 40,
+                                            ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  else
+                    InkWell(
+                      onTap: () => _openDetailsDialog(entry),
+                      child: Container(
+                        width: 120,
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Container(
+                                width: 120,
+                                height: 160,
+                                color: Colors.grey.shade200,
+                                child: Icon(
+                                  Icons.image_not_supported,
+                                  color: Colors.grey.shade400,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            SizedBox(
+                              width: 120,
+                              child: Transform.translate(
+                                offset: const Offset(0, -2),
+                                child: Wrap(
+                                  alignment: WrapAlignment.start,
+                                  children: [
+                                    IconButton(
+                                      icon: Icon(
+                                        entry.notificationsEnabled
+                                            ? Icons.notifications_active
+                                            : Icons.notifications_off,
+                                        color: entry.notificationsEnabled
+                                            ? Theme.of(
+                                                context,
+                                              ).colorScheme.primary
+                                            : Colors.grey,
+                                        size: 20,
+                                      ),
+                                      tooltip: entry.notificationsEnabled
+                                          ? 'Push deaktivieren'
+                                          : 'Push aktivieren',
+                                      onPressed: () => _toggleNotifications(
+                                        entry,
+                                        !entry.notificationsEnabled,
+                                      ),
+                                      padding: EdgeInsets.zero,
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 40,
+                                            height: 40,
+                                          ),
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit, size: 20),
+                                      tooltip: 'Bearbeiten',
+                                      onPressed: () => _showEditDialog(entry),
+                                      padding: EdgeInsets.zero,
+                                      constraints:
+                                          const BoxConstraints.tightFor(
+                                            width: 40,
+                                            height: 40,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  Expanded(
+                    child: InkWell(
+                      onTap: () => _showEditDialog(entry),
+                      borderRadius: BorderRadius.circular(8),
+                      child: Padding(
+                        padding: const EdgeInsets.only(
+                          top: 6.0,
+                          bottom: 2.0,
+                          left: 12.0,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.title,
+                              style: Theme.of(context).textTheme.titleMedium,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Folgen: ${entry.episodesWatched}/${entry.totalEpisodes}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Status: ${_statusLabel(entry.status)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (entry.anilistId != null &&
+                                _isCrunchyrollItem(entry)) ...[
+                              const SizedBox(height: 4),
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.check_circle,
+                                    size: 14,
+                                    color: Colors.green,
+                                  ),
+                                  SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      'Verknüpft',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.green,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            if (CrunchyrollService().isTitleInCalendar(
+                              entry.title,
+                            )) ...[
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 14,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.primary,
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Flexible(
+                                    child: Text(
+                                      'Im Kalender',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            if (entry.note != null &&
+                                entry.note!.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                'Notiz: ${entry.note}',
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
+                            const SizedBox(height: 6),
+                            if ((entry.addedAt) != null) ...[
+                              Text(
+                                _formatAddedAt(entry.addedAt),
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                            ],
+                            Align(
+                              alignment: Alignment.bottomRight,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      Icons.delete,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.error,
+                                      size: 20,
+                                    ),
+                                    tooltip: 'Entfernen',
+                                    onPressed: () async {
+                                      final confirmed = await showDialog<bool>(
+                                        context: context,
+                                        builder: (ctx) => AlertDialog(
+                                          title: const Text(
+                                            'Eintrag entfernen',
+                                          ),
+                                          content: Text(
+                                            'Möchtest du "${entry.title}" wirklich aus der Watchlist entfernen?',
+                                          ),
+                                          actions: [
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, false),
+                                              child: const Text('Abbrechen'),
+                                            ),
+                                            TextButton(
+                                              onPressed: () =>
+                                                  Navigator.pop(ctx, true),
+                                              child: Text(
+                                                'Entfernen',
+                                                style: TextStyle(
+                                                  color: Theme.of(
+                                                    context,
+                                                  ).colorScheme.error,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      );
+                                      if (confirmed == true) {
+                                        watchlist.removeEntry(entry.animeId);
+                                        await widget.service.saveWatchlist();
+                                        // Remove predicted releases for this series
+                                        final crunch = CrunchyrollService();
+                                        await crunch
+                                            .removePredictedReleasesForSeries(
+                                              entry.animeId,
+                                              entry.title,
+                                            );
+                                        if (mounted) {
+                                          ScaffoldMessenger.of(
+                                            context,
+                                          ).showSnackBar(
+                                            const SnackBar(
+                                              content: Text('Eintrag entfernt'),
+                                              duration: Duration(seconds: 2),
+                                            ),
+                                          );
+                                        }
+                                      }
+                                    },
+                                    padding: const EdgeInsets.all(6),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildCoverImage(WatchlistEntry entry) {
+    const double coverHeight = 160.0;
+    const double coverWidth = 120.0;
+
+    if (entry.imageUrl == null || entry.imageUrl!.isEmpty) {
+      // Placeholder for missing image
+      final placeholder = Container(
+        width: coverWidth,
+        height: coverHeight,
+        color: Colors.grey.shade200,
+        child: Icon(Icons.image_not_supported, color: Colors.grey.shade400),
+      );
+
+      if (_isCrunchyrollItem(entry)) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Stack(
+            children: [
+              placeholder,
+              Positioned(top: 0, right: 0, child: _buildCrunchyrollBadge()),
+            ],
+          ),
+        );
+      }
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: placeholder,
+      );
+    }
+
+    Widget imageWidget = CachedNetworkImage(
+      imageUrl: entry.imageUrl!,
+      width: coverWidth,
+      height: coverHeight,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => Container(
+        width: coverWidth,
+        height: coverHeight,
+        color: Colors.grey.shade200,
+        child: Icon(Icons.image, color: Colors.grey.shade400),
+      ),
+      errorWidget: (context, url, error) => Container(
+        width: coverWidth,
+        height: coverHeight,
+        color: Colors.grey.shade200,
+        child: Icon(Icons.broken_image, color: Colors.grey.shade400),
+      ),
+    );
+
+    if (_isCrunchyrollItem(entry)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Stack(
+          children: [
+            imageWidget,
+            Positioned(top: 0, right: 0, child: _buildCrunchyrollBadge()),
+          ],
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: imageWidget,
+    );
+  }
+
+  Widget _buildCrunchyrollBadge() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: Theme.of(context).brightness == Brightness.light
+            ? Theme.of(context).colorScheme.primary
+            : Theme.of(context).colorScheme.inversePrimary,
+        borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(8)),
+      ),
+      child: const Text(
+        'Crunchyroll',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 8,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
+    );
+  }
+}

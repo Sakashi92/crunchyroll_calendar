@@ -14,13 +14,18 @@ import '../services/permission_service.dart';
 import '../repositories/notification_repository.dart';
 import '../models/notification_log.dart';
 import '../services/app_settings_service.dart';
+import '../utils/ui_utils.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
   final CrunchyrollService? crunchyrollService;
-  
-  const SettingsPage({super.key, this.onSettingsChanged, this.crunchyrollService});
+
+  const SettingsPage({
+    super.key,
+    this.onSettingsChanged,
+    this.crunchyrollService,
+  });
 
   @override
   State<SettingsPage> createState() => _SettingsPageState();
@@ -38,7 +43,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _hideDuplicateReleases = true;
   String _episodeProvider = 'anilist';
   bool _predictionEnabled = false;
-  
+
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -53,15 +58,20 @@ class _SettingsPageState extends State<SettingsPage> {
     final updateInterval = await AppSettingsService.getUpdateIntervalMinutes();
     final autoTranslate = await AppSettingsService.getAutoTranslate();
     final accentColor = await AppSettingsService.getAccentColor();
-    final notificationDelay = await AppSettingsService.getNotificationDelaySeconds();
+    final notificationDelay =
+        await AppSettingsService.getNotificationDelaySeconds();
     final showRefreshMessage = await AppSettingsService.getShowRefreshMessage();
-    final autoMinimizeCalendar = await AppSettingsService.getAutoMinimizeCalendar();
-    final autoMinimizeScrollThreshold = await AppSettingsService.getAutoMinimizeScrollThreshold();
-    final hideDuplicateReleases = await AppSettingsService.getHideDuplicateReleases();
+    final autoMinimizeCalendar =
+        await AppSettingsService.getAutoMinimizeCalendar();
+    final autoMinimizeScrollThreshold =
+        await AppSettingsService.getAutoMinimizeScrollThreshold();
+    final hideDuplicateReleases =
+        await AppSettingsService.getHideDuplicateReleases();
     final episodeProvider = await AppSettingsService.getEpisodeProviderName();
     final predictionEnabled = await AppSettingsService.getPredictionEnabled();
+
     final permissions = await PermissionService().checkAllPermissions();
-    
+
     setState(() {
       _imageQuality = imageQuality;
       _updateIntervalMinutes = updateInterval;
@@ -74,6 +84,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _hideDuplicateReleases = hideDuplicateReleases;
       _episodeProvider = episodeProvider;
       _predictionEnabled = predictionEnabled;
+
       _permissions = permissions;
       _isLoading = false;
     });
@@ -85,7 +96,14 @@ class _SettingsPageState extends State<SettingsPage> {
       _episodeProvider = name;
     });
     widget.onSettingsChanged?.call();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Datenanbieter gesetzt: $name'), duration: const Duration(seconds: 2)));
+    if (mounted)
+      UIUtils.showSnackBar(
+        context,
+        SnackBar(
+          content: Text('Datenanbieter gesetzt: $name'),
+          duration: const Duration(seconds: 2),
+        ),
+      );
   }
 
   Future<void> _saveImageQuality(String quality) async {
@@ -94,11 +112,14 @@ class _SettingsPageState extends State<SettingsPage> {
       _imageQuality = quality;
     });
     widget.onSettingsChanged?.call();
-    
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         const SnackBar(
-          content: Text('Bildqualität geändert. Neue Bilder werden in dieser Qualität geladen.'),
+          content: Text(
+            'Bildqualität geändert. Neue Bilder werden in dieser Qualität geladen.',
+          ),
           duration: Duration(seconds: 2),
         ),
       );
@@ -117,7 +138,9 @@ class _SettingsPageState extends State<SettingsPage> {
       final newEffective = minutes < 15 ? 15 : minutes;
       if (newEffective != prevEffective) {
         await BackgroundService().stopPeriodicScraperTask();
-        await BackgroundService().startPeriodicScraperTask(intervalMinutes: newEffective);
+        await BackgroundService().startPeriodicScraperTask(
+          intervalMinutes: newEffective,
+        );
         if (widget.crunchyrollService != null) {
           widget.crunchyrollService!.restartAutoUpdate(() {
             if (mounted) _loadSettings();
@@ -125,13 +148,17 @@ class _SettingsPageState extends State<SettingsPage> {
         }
       }
     } catch (e) {
-      if (kDebugMode) print('❌ Error restarting background service or auto-update: $e');
+      if (kDebugMode)
+        print('❌ Error restarting background service or auto-update: $e');
     }
-    
+
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
-          content: Text('Update-Intervall auf ${AppSettingsService.updateIntervals[minutes]} geändert.'),
+          content: Text(
+            'Update-Intervall auf ${AppSettingsService.updateIntervals[minutes]} geändert.',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -145,9 +172,14 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     widget.onSettingsChanged?.call();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
-          content: Text(enabled ? 'Automatisches Minimieren aktiviert' : 'Automatisches Minimieren deaktiviert'),
+          content: Text(
+            enabled
+                ? 'Automatisches Minimieren aktiviert'
+                : 'Automatisches Minimieren deaktiviert',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -161,9 +193,12 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     widget.onSettingsChanged?.call();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
-          content: Text('Scroll-Schwelle gesetzt: ${pixels.toStringAsFixed(0)} px'),
+          content: Text(
+            'Scroll-Schwelle gesetzt: ${pixels.toStringAsFixed(0)} px',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -177,9 +212,14 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     widget.onSettingsChanged?.call();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
-          content: Text(enabled ? 'Doppelte Releases werden ausgeblendet' : 'Doppelte Releases werden angezeigt'),
+          content: Text(
+            enabled
+                ? 'Doppelte Releases werden ausgeblendet'
+                : 'Doppelte Releases werden angezeigt',
+          ),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -191,16 +231,27 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _predictionEnabled = enabled;
     });
-    if (kDebugMode) print('🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}');
+    if (kDebugMode)
+      print(
+        '🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}',
+      );
     if (enabled) {
       try {
-        if (kDebugMode) print('🔎 [SETTINGS] Preparing CrunchyrollService and predictor...');
+        if (kDebugMode)
+          print('🔎 [SETTINGS] Preparing CrunchyrollService and predictor...');
         final cs = widget.crunchyrollService ?? CrunchyrollService();
         await cs.removeAllPredictedReleases();
         await cs.loadCacheOnStartup();
         final anilist = AnilistService();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Vorhersage läuft... Dies kann einige Minuten dauern.')));
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text(
+                'Vorhersage läuft... Dies kann einige Minuten dauern.',
+              ),
+            ),
+          );
         }
         WatchlistService? ws;
         try {
@@ -212,33 +263,56 @@ class _SettingsPageState extends State<SettingsPage> {
             await ws.loadWatchlist();
           }
         } catch (e) {
-          if (kDebugMode) print('🔎 [SETTINGS] Could not load watchlist entries: $e');
+          if (kDebugMode)
+            print('🔎 [SETTINGS] Could not load watchlist entries: $e');
         }
-        await anilist.refreshMetadataForCrunchyroll(cs, usePredictDelay: true, entries: ws?.watchlist.entries);
+        await anilist.refreshMetadataForCrunchyroll(
+          cs,
+          usePredictDelay: true,
+          entries: ws?.watchlist.entries,
+        );
         try {
           if (ws != null) {
             final created = await ws.generateForecastForAllEntries();
-            if (kDebugMode) print('🔎 [SETTINGS] Created $created predictions for watchlist entries');
+            if (kDebugMode)
+              print(
+                '🔎 [SETTINGS] Created $created predictions for watchlist entries',
+              );
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Vorhersagen erstellt: $created')));
+              UIUtils.showSnackBar(
+                context,
+                SnackBar(content: Text('Vorhersagen erstellt: $created')),
+              );
             }
           }
         } catch (e) {
-          if (kDebugMode) print('🔎 [SETTINGS] Error running watchlist-based predictions: $e');
+          if (kDebugMode)
+            print(
+              '🔎 [SETTINGS] Error running watchlist-based predictions: $e',
+            );
         }
-        try { predictionsUpdated.value = true; } catch (_) {}
+        try {
+          predictionsUpdated.value = true;
+        } catch (_) {}
         widget.onSettingsChanged?.call();
       } catch (e) {
         if (kDebugMode) print('Error triggering predictor from settings: $e');
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Fehler beim Ausführen der Vorhersage: $e')));
+        if (mounted)
+          UIUtils.showSnackBar(
+            context,
+            SnackBar(content: Text('Fehler beim Ausführen der Vorhersage: $e')),
+          );
       }
     } else {
       try {
         final cs = widget.crunchyrollService ?? CrunchyrollService();
         await cs.removeAllPredictedReleases();
-        try { predictionsUpdated.value = true; } catch (_) {}
+        try {
+          predictionsUpdated.value = true;
+        } catch (_) {}
       } catch (e) {
-        if (kDebugMode) print('Error removing predicted releases from settings: $e');
+        if (kDebugMode)
+          print('Error removing predicted releases from settings: $e');
       }
     }
     widget.onSettingsChanged?.call();
@@ -271,16 +345,22 @@ class _SettingsPageState extends State<SettingsPage> {
         } catch (_) {}
         final predictor = NextEpisodePredictor(cs, AnilistService());
         await predictor.predictForAllKnownSeries();
-        try { predictionsUpdated.value = true; } catch (_) {}
+        try {
+          predictionsUpdated.value = true;
+        } catch (_) {}
       }
     } catch (e) {
-      if (kDebugMode) print('Error re-running predictions after clearing image cache: $e');
+      if (kDebugMode)
+        print('Error re-running predictions after clearing image cache: $e');
     }
     widget.onSettingsChanged?.call();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         const SnackBar(
-          content: Text('Bild-Cache gelöscht. Kalender und Vorhersage werden neu geladen.'),
+          content: Text(
+            'Bild-Cache gelöscht. Kalender und Vorhersage werden neu geladen.',
+          ),
           duration: Duration(seconds: 3),
         ),
       );
@@ -305,17 +385,31 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               ListTile(
                 leading: const Icon(Icons.delete_forever, color: Colors.red),
-                title: const Text('Datenbank leeren', style: TextStyle(color: Colors.red)),
+                title: const Text(
+                  'Datenbank leeren',
+                  style: TextStyle(color: Colors.red),
+                ),
                 onTap: () async {
                   Navigator.pop(context);
                   final confirmed = await showDialog<bool>(
                     context: context,
                     builder: (context) => AlertDialog(
                       title: const Text('Datenbank leeren?'),
-                      content: const Text('Alle gespeicherten Benachrichtigungen werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.'),
+                      content: const Text(
+                        'Alle gespeicherten Benachrichtigungen werden gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.',
+                      ),
                       actions: [
-                        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Abbrechen')),
-                        TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Löschen', style: TextStyle(color: Colors.red))),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Abbrechen'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text(
+                            'Löschen',
+                            style: TextStyle(color: Colors.red),
+                          ),
+                        ),
                       ],
                     ),
                   );
@@ -323,8 +417,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (confirmed == true) {
                     await NotificationRepository().deleteAllNotifications();
                     if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Benachrichtigungs‑DB geleert')),
+                      UIUtils.showSnackBar(
+                        context,
+                        const SnackBar(
+                          content: Text('Benachrichtigungs‑DB geleert'),
+                        ),
                       );
                     }
                   }
@@ -355,7 +452,11 @@ class _SettingsPageState extends State<SettingsPage> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(Icons.info_outline, size: 48, color: Colors.grey.shade400),
+                      Icon(
+                        Icons.info_outline,
+                        size: 48,
+                        color: Colors.grey.shade400,
+                      ),
                       const SizedBox(height: 16),
                       Text(
                         'Keine Einträge in der Benachrichtigungs‑DB',
@@ -372,15 +473,22 @@ class _SettingsPageState extends State<SettingsPage> {
                   itemBuilder: (context, index) {
                     final entry = history[index];
                     return ListTile(
-                      title: Text('${entry.favoriteTitle} — ${entry.releaseTitle}'),
-                      subtitle: Text('Ep: ${entry.episodeNumber ?? '-'} • ${entry.notifyTime.toLocal().toString().split('.')[0]}'),
+                      title: Text(
+                        '${entry.favoriteTitle} — ${entry.releaseTitle}',
+                      ),
+                      subtitle: Text(
+                        'Ep: ${entry.episodeNumber ?? '-'} • ${entry.notifyTime.toLocal().toString().split('.')[0]}',
+                      ),
                       isThreeLine: false,
                     );
                   },
                 ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Schließen')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Schließen'),
+          ),
         ],
       ),
     );
@@ -403,9 +511,12 @@ class _SettingsPageState extends State<SettingsPage> {
       await repo.logNotification(withHash);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        UIUtils.showSnackBar(
+          context,
           SnackBar(
-            content: const Text('✅ Test-Benachrichtigung geloggt (prüfe Logs: flutter logs)'),
+            content: const Text(
+              '✅ Test-Benachrichtigung geloggt (prüfe Logs: flutter logs)',
+            ),
             duration: const Duration(seconds: 2),
             backgroundColor: Colors.green,
           ),
@@ -413,7 +524,8 @@ class _SettingsPageState extends State<SettingsPage> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        UIUtils.showSnackBar(
+          context,
           SnackBar(
             content: Text('❌ Fehler beim Loggen: $e'),
             duration: const Duration(seconds: 3),
@@ -427,7 +539,7 @@ class _SettingsPageState extends State<SettingsPage> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(
@@ -438,9 +550,7 @@ class _SettingsPageState extends State<SettingsPage> {
           scrolledUnderElevation: 0,
           surfaceTintColor: Colors.transparent,
         ),
-        body: const Center(
-          child: CircularProgressIndicator(),
-        ),
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
@@ -464,7 +574,9 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: SwitchListTile(
               title: const Text('Kalender beim Scroll minimieren'),
-              subtitle: const Text('Minimiert den Kalender-Header automatisch, wenn du in der Liste nach unten scrollst'),
+              subtitle: const Text(
+                'Minimiert den Kalender-Header automatisch, wenn du in der Liste nach unten scrollst',
+              ),
               value: _autoMinimizeCalendar,
               onChanged: (v) => _saveAutoMinimizeCalendar(v),
             ),
@@ -473,7 +585,9 @@ class _SettingsPageState extends State<SettingsPage> {
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: SwitchListTile(
               title: const Text('Doppelte Releases ausblenden'),
-              subtitle: const Text('Versteckt doppelte Einträge (gleiche Folge/URL) im Kalender'),
+              subtitle: const Text(
+                'Versteckt doppelte Einträge (gleiche Folge/URL) im Kalender',
+              ),
               value: _hideDuplicateReleases,
               onChanged: (v) => _saveHideDuplicateReleases(v),
             ),
@@ -487,8 +601,18 @@ class _SettingsPageState extends State<SettingsPage> {
               trailing: DropdownButton<String>(
                 value: _episodeProvider,
                 items: const [
-                  DropdownMenuItem(value: 'crunchyroll', child: Text('Kitsu.app')),
-                  DropdownMenuItem(value: 'anilist', child: Text('Anilist.co (GraphQL)')),
+                  DropdownMenuItem(
+                    value: 'crunchyroll',
+                    child: Text('Kitsu.app'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'anilist',
+                    child: Text('Anilist.co (GraphQL)'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'jikan',
+                    child: Text('MyAnimeList (via Jikan)'),
+                  ),
                 ],
                 onChanged: (v) {
                   if (v != null) _saveEpisodeProvider(v);
@@ -501,7 +625,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListTile(
               leading: const Icon(Icons.tune),
               title: const Text('Scroll-Schwelle zum Minimieren'),
-              subtitle: Text('Aktuell: ${_autoMinimizeScrollThreshold.toStringAsFixed(0)} px'),
+              subtitle: Text(
+                'Aktuell: ${_autoMinimizeScrollThreshold.toStringAsFixed(0)} px',
+              ),
               trailing: const Icon(Icons.chevron_right),
               onTap: () => _showScrollThresholdDialog(),
             ),
@@ -517,7 +643,9 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListTile(
               leading: const Icon(Icons.timeline),
               title: const Text('Vorhersage für nächste Episoden'),
-              subtitle: const Text('Verwendet lokale Release-Historie und AniList, um nächste Episoden zu prognostizieren'),
+              subtitle: const Text(
+                'Verwendet lokale Release-Historie und AniList, um nächste Episoden zu prognostizieren',
+              ),
               trailing: Transform.translate(
                 offset: const Offset(7, 0),
                 child: Switch(
@@ -529,6 +657,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ),
           ),
           const Divider(),
+
           _buildSectionHeader('Übersetzung'),
           _buildAutoTranslateTile(),
           const Divider(),
@@ -551,7 +680,9 @@ class _SettingsPageState extends State<SettingsPage> {
               child: ListTile(
                 leading: const Icon(Icons.bug_report),
                 title: const Text('🧪 Test: Benachrichtigung loggen'),
-                subtitle: const Text('Fügt eine Test-Benachrichtigung zur DB hinzu'),
+                subtitle: const Text(
+                  'Fügt eine Test-Benachrichtigung zur DB hinzu',
+                ),
                 onTap: () => _testLogNotification(),
               ),
             ),
@@ -586,10 +717,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildPermissionsOverviewTile() {
-    final grantedCount = _permissions.values.where((p) => p == PermissionStatus.granted).length;
+    final grantedCount = _permissions.values
+        .where((p) => p == PermissionStatus.granted)
+        .length;
     final totalCount = _permissions.length;
     final allGranted = grantedCount == totalCount;
-    
+
     return ListTile(
       leading: Icon(
         allGranted ? Icons.verified : Icons.warning,
@@ -601,7 +734,7 @@ class _SettingsPageState extends State<SettingsPage> {
       onTap: () => _showPermissionsDetailsDialog(),
     );
   }
-  
+
   void _showPermissionsDetailsDialog() {
     showDialog(
       context: context,
@@ -614,8 +747,9 @@ class _SettingsPageState extends State<SettingsPage> {
             children: _permissions.entries.map((entry) {
               final name = entry.key;
               final status = entry.value;
-              final description = PermissionService.getPermissionDescriptions()[name] ?? '';
-              
+              final description =
+                  PermissionService.getPermissionDescriptions()[name] ?? '';
+
               return Padding(
                 padding: const EdgeInsets.only(bottom: 12),
                 child: Column(
@@ -638,7 +772,9 @@ class _SettingsPageState extends State<SettingsPage> {
                             children: [
                               Text(
                                 name,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                               Text(
                                 status.label,
@@ -671,7 +807,8 @@ class _SettingsPageState extends State<SettingsPage> {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              final permissions = await PermissionService().checkAllPermissions();
+              final permissions = await PermissionService()
+                  .checkAllPermissions();
               setState(() {
                 _permissions = permissions;
               });
@@ -691,7 +828,9 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.high_quality),
       title: const Text('Cover-Bildqualität'),
-      subtitle: Text(AppSettingsService.imageQualities[_imageQuality] ?? 'Unbekannt'),
+      subtitle: Text(
+        AppSettingsService.imageQualities[_imageQuality] ?? 'Unbekannt',
+      ),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showImageQualityDialog(),
     );
@@ -713,7 +852,9 @@ class _SettingsPageState extends State<SettingsPage> {
     return SwitchListTile(
       secondary: const Icon(Icons.translate),
       title: const Text('Automatische Übersetzung'),
-      subtitle: const Text('Beschreibungen automatisch ins Deutsche übersetzen'),
+      subtitle: const Text(
+        'Beschreibungen automatisch ins Deutsche übersetzen',
+      ),
       value: _autoTranslate,
       onChanged: (value) async {
         await AppSettingsService.setAutoTranslate(value);
@@ -721,12 +862,13 @@ class _SettingsPageState extends State<SettingsPage> {
           _autoTranslate = value;
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          UIUtils.showSnackBar(
+            context,
             SnackBar(
               content: Text(
-                value 
-                  ? 'Beschreibungen werden automatisch übersetzt'
-                  : 'Beschreibungen bleiben im Original',
+                value
+                    ? 'Beschreibungen werden automatisch übersetzt'
+                    : 'Beschreibungen bleiben im Original',
               ),
               duration: const Duration(seconds: 2),
             ),
@@ -763,8 +905,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _buildShowRefreshMessageTile() {
     return SwitchListTile(
       secondary: const Icon(Icons.notifications_none),
-      title: const Text('Aktualisierungsmeldung'),
-      subtitle: const Text('Meldung nach dem Aktualisieren anzeigen'),
+      title: const Text('In-App Meldungen'),
+      subtitle: const Text('Alle Snackbars und Status-Meldungen (unten)'),
       value: _showRefreshMessage,
       onChanged: (value) async {
         await AppSettingsService.setShowRefreshMessage(value);
@@ -772,12 +914,13 @@ class _SettingsPageState extends State<SettingsPage> {
           _showRefreshMessage = value;
         });
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          UIUtils.showSnackBar(
+            context,
             SnackBar(
               content: Text(
-                value 
-                  ? 'Meldung wird nach Aktualisierung angezeigt'
-                  : 'Meldung wird nicht mehr angezeigt',
+                value
+                    ? 'Meldung wird nach Aktualisierung angezeigt'
+                    : 'Meldung wird nicht mehr angezeigt',
               ),
               duration: const Duration(seconds: 2),
             ),
@@ -801,13 +944,42 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Test Benachrichtigung'),
-        content: const Text('Wähle die Verzögerung bevor die Benachrichtigung erscheint:'),
+        content: const Text(
+          'Wähle die Verzögerung bevor die Benachrichtigung erscheint:',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
-          TextButton(onPressed: () { Navigator.pop(context); _sendDelayedNotification(5); }, child: const Text('5 Sekunden')),
-          TextButton(onPressed: () { Navigator.pop(context); _sendDelayedNotification(10); }, child: const Text('10 Sekunden')),
-          TextButton(onPressed: () { Navigator.pop(context); _sendDelayedNotification(30); }, child: const Text('30 Sekunden')),
-          TextButton(onPressed: () { Navigator.pop(context); _sendDelayedNotification(60); }, child: const Text('1 Minute')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _sendDelayedNotification(5);
+            },
+            child: const Text('5 Sekunden'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _sendDelayedNotification(10);
+            },
+            child: const Text('10 Sekunden'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _sendDelayedNotification(30);
+            },
+            child: const Text('30 Sekunden'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _sendDelayedNotification(60);
+            },
+            child: const Text('1 Minute'),
+          ),
         ],
       ),
     );
@@ -815,9 +987,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   void _sendDelayedNotification(int seconds) async {
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
-          content: Text('⏱️ Background-Test geplant für $seconds Sekunden\n✅ Funktioniert auch wenn App geschlossen ist!'),
+          content: Text(
+            '⏱️ Background-Test geplant für $seconds Sekunden\n✅ Funktioniert auch wenn App geschlossen ist!',
+          ),
           duration: const Duration(seconds: 3),
           backgroundColor: Colors.green,
         ),
@@ -836,9 +1011,14 @@ class _SettingsPageState extends State<SettingsPage> {
         final backgroundService = BackgroundService();
         final isRunning = await backgroundService.isTaskRunning();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          UIUtils.showSnackBar(
+            context,
             SnackBar(
-              content: Text(isRunning ? '✓ Background Task läuft (30 Min Intervall)' : '✗ Background Task nicht aktiv'),
+              content: Text(
+                isRunning
+                    ? '✓ Background Task läuft (30 Min Intervall)'
+                    : '✗ Background Task nicht aktiv',
+              ),
               duration: const Duration(seconds: 3),
               backgroundColor: isRunning ? Colors.green : Colors.orange,
             ),
@@ -849,24 +1029,48 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildTestFavoritesNotificationsTile() {
-    final delayText = AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort';
+    final delayText =
+        AppSettingsService.notificationDelays[_notificationDelaySeconds] ??
+        'Sofort';
     return ListTile(
       leading: const Icon(Icons.notifications_active),
       title: const Text('🔔 Test: Favoriten-Benachrichtigungen'),
       subtitle: Text('Verzögerung: $delayText'),
       onTap: () async {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('⏳ Benachrichtigung in $delayText...'), duration: const Duration(seconds: 1)));
+          UIUtils.showSnackBar(
+            context,
+            SnackBar(
+              content: Text('⏳ Benachrichtigung in $delayText...'),
+              duration: const Duration(seconds: 1),
+            ),
+          );
         }
         try {
           final backgroundService = BackgroundService();
-          await backgroundService.sendTestNotificationsForTodaysFavorites(delaySeconds: _notificationDelaySeconds);
+          await backgroundService.sendTestNotificationsForTodaysFavorites(
+            delaySeconds: _notificationDelaySeconds,
+          );
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Benachrichtigung geplant (in $delayText)'), duration: const Duration(seconds: 2), backgroundColor: Colors.green));
+            UIUtils.showSnackBar(
+              context,
+              SnackBar(
+                content: Text('✓ Benachrichtigung geplant (in $delayText)'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.green,
+              ),
+            );
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Fehler: $e'), duration: const Duration(seconds: 2), backgroundColor: Colors.red));
+            UIUtils.showSnackBar(
+              context,
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         }
       },
@@ -877,20 +1081,44 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.schedule_send),
       title: const Text('🧪 Test: Workmanager (Sofort)'),
-      subtitle: const Text('Testet ob Workmanager im Hintergrund funktioniert (1-2 Sekunden)'),
+      subtitle: const Text(
+        'Testet ob Workmanager im Hintergrund funktioniert (1-2 Sekunden)',
+      ),
       onTap: () async {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⏳ Starte Workmanager Test...'), duration: Duration(seconds: 1)));
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text('⏳ Starte Workmanager Test...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
         }
         try {
           final backgroundService = BackgroundService();
           await backgroundService.testWorkmanagerNow();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Workmanager Test gestartet - prüfe Logs in 2-3 Sekunden'), duration: Duration(seconds: 3), backgroundColor: Colors.green));
+            UIUtils.showSnackBar(
+              context,
+              const SnackBar(
+                content: Text(
+                  '✅ Workmanager Test gestartet - prüfe Logs in 2-3 Sekunden',
+                ),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.green,
+              ),
+            );
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Fehler: $e'), duration: const Duration(seconds: 2), backgroundColor: Colors.red));
+            UIUtils.showSnackBar(
+              context,
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         }
       },
@@ -901,20 +1129,44 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.sync),
       title: const Text('🔄 Test: Background Scraper'),
-      subtitle: const Text('Testet ob der periodische Crunchyroll-Scraper funktioniert'),
+      subtitle: const Text(
+        'Testet ob der periodische Crunchyroll-Scraper funktioniert',
+      ),
       onTap: () async {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⏳ Starte Background Scraper Test...'), duration: Duration(seconds: 1)));
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text('⏳ Starte Background Scraper Test...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
         }
         try {
           final backgroundService = BackgroundService();
           await backgroundService.testBackgroundScraperNow();
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('✅ Background Scraper gestartet - schließe App und prüfe Logs'), duration: Duration(seconds: 3), backgroundColor: Colors.green));
+            UIUtils.showSnackBar(
+              context,
+              const SnackBar(
+                content: Text(
+                  '✅ Background Scraper gestartet - schließe App und prüfe Logs',
+                ),
+                duration: Duration(seconds: 3),
+                backgroundColor: Colors.green,
+              ),
+            );
           }
         } catch (e) {
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Fehler: $e'), duration: const Duration(seconds: 2), backgroundColor: Colors.red));
+            UIUtils.showSnackBar(
+              context,
+              SnackBar(
+                content: Text('❌ Fehler: $e'),
+                duration: const Duration(seconds: 2),
+                backgroundColor: Colors.red,
+              ),
+            );
           }
         }
       },
@@ -925,12 +1177,17 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.schedule),
       title: const Text('Benachrichtigungs-Verzögerung'),
-      subtitle: Text('${AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}'),
+      subtitle: Text(
+        '${AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}',
+      ),
       trailing: DropdownButton<int>(
         value: _notificationDelaySeconds,
         underline: Container(),
         items: AppSettingsService.notificationDelays.entries.map((entry) {
-          return DropdownMenuItem<int>(value: entry.key, child: Text(entry.value));
+          return DropdownMenuItem<int>(
+            value: entry.key,
+            child: Text(entry.value),
+          );
         }).toList(),
         onChanged: (int? newValue) async {
           if (newValue != null) {
@@ -939,7 +1196,15 @@ class _SettingsPageState extends State<SettingsPage> {
               _notificationDelaySeconds = newValue;
             });
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Verzögerung auf ${AppSettingsService.notificationDelays[newValue]} eingestellt'), duration: const Duration(seconds: 2)));
+              UIUtils.showSnackBar(
+                context,
+                SnackBar(
+                  content: Text(
+                    '✓ Verzögerung auf ${AppSettingsService.notificationDelays[newValue]} eingestellt',
+                  ),
+                  duration: const Duration(seconds: 2),
+                ),
+              );
             }
           }
         },
@@ -969,12 +1234,20 @@ class _SettingsPageState extends State<SettingsPage> {
               value: entry.key,
               groupValue: _imageQuality,
               onChanged: (value) {
-                if (value != null) { Navigator.pop(context); _saveImageQuality(value); }
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveImageQuality(value);
+                }
               },
             );
           }).toList(),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
       ),
     );
   }
@@ -987,13 +1260,58 @@ class _SettingsPageState extends State<SettingsPage> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            RadioListTile<double>(title: const Text('Niedrig (100 px)'), value: 100.0, groupValue: _autoMinimizeScrollThreshold, onChanged: (v) { if (v != null) { Navigator.pop(context); _saveAutoMinimizeScrollThreshold(v); } }),
-            RadioListTile<double>(title: const Text('Standard (200 px)'), value: 200.0, groupValue: _autoMinimizeScrollThreshold, onChanged: (v) { if (v != null) { Navigator.pop(context); _saveAutoMinimizeScrollThreshold(v); } }),
-            RadioListTile<double>(title: const Text('Hoch (300 px)'), value: 300.0, groupValue: _autoMinimizeScrollThreshold, onChanged: (v) { if (v != null) { Navigator.pop(context); _saveAutoMinimizeScrollThreshold(v); } }),
-            RadioListTile<double>(title: const Text('Sehr hoch (500 px)'), value: 500.0, groupValue: _autoMinimizeScrollThreshold, onChanged: (v) { if (v != null) { Navigator.pop(context); _saveAutoMinimizeScrollThreshold(v); } }),
+            RadioListTile<double>(
+              title: const Text('Niedrig (100 px)'),
+              value: 100.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (v) {
+                if (v != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(v);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Standard (200 px)'),
+              value: 200.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (v) {
+                if (v != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(v);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Hoch (300 px)'),
+              value: 300.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (v) {
+                if (v != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(v);
+                }
+              },
+            ),
+            RadioListTile<double>(
+              title: const Text('Sehr hoch (500 px)'),
+              value: 500.0,
+              groupValue: _autoMinimizeScrollThreshold,
+              onChanged: (v) {
+                if (v != null) {
+                  Navigator.pop(context);
+                  _saveAutoMinimizeScrollThreshold(v);
+                }
+              },
+            ),
           ],
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
       ),
     );
   }
@@ -1011,12 +1329,20 @@ class _SettingsPageState extends State<SettingsPage> {
               value: entry.key,
               groupValue: _updateIntervalMinutes,
               onChanged: (value) {
-                if (value != null) { Navigator.pop(context); _saveUpdateInterval(value); }
+                if (value != null) {
+                  Navigator.pop(context);
+                  _saveUpdateInterval(value);
+                }
               },
             );
           }).toList(),
         ),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen'))],
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
       ),
     );
   }
@@ -1026,10 +1352,21 @@ class _SettingsPageState extends State<SettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Bild-Cache löschen?'),
-        content: const Text('Alle gecachten Cover-Bilder werden gelöscht und beim nächsten Laden in der aktuell eingestellten Qualität neu heruntergeladen.\n\nDies kann je nach Anzahl der Anime einige Zeit dauern.'),
+        content: const Text(
+          'Alle gecachten Cover-Bilder werden gelöscht und beim nächsten Laden in der aktuell eingestellten Qualität neu heruntergeladen.\n\nDies kann je nach Anzahl der Anime einige Zeit dauern.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Abbrechen')),
-          TextButton(onPressed: () { Navigator.pop(context); _clearImageCache(); }, child: const Text('Löschen')),
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _clearImageCache();
+            },
+            child: const Text('Löschen'),
+          ),
         ],
       ),
     );
@@ -1041,7 +1378,10 @@ class _SettingsPageState extends State<SettingsPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('Accent-Farbe', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          const Text(
+            'Accent-Farbe',
+            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 12,
@@ -1053,9 +1393,38 @@ class _SettingsPageState extends State<SettingsPage> {
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Container(width: 56, height: 56, decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300, width: 2))),
-                    if (isSelected) Container(width: 56, height: 56, decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade800, width: 3))),
-                    if (isSelected) Icon(Icons.check, color: color.computeLuminance() > 0.5 ? Colors.black : Colors.white, size: 28),
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: color,
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: Colors.grey.shade300,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    if (isSelected)
+                      Container(
+                        width: 56,
+                        height: 56,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.grey.shade800,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                    if (isSelected)
+                      Icon(
+                        Icons.check,
+                        color: color.computeLuminance() > 0.5
+                            ? Colors.black
+                            : Colors.white,
+                        size: 28,
+                      ),
                   ],
                 ),
               );
@@ -1068,10 +1437,19 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _selectAccentColor(Color color) async {
     await AppSettingsService.setAccentColor(color);
-    setState(() { _accentColor = color; });
+    setState(() {
+      _accentColor = color;
+    });
     widget.onSettingsChanged?.call();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Accent-Farbe geändert'), duration: const Duration(seconds: 1), backgroundColor: color));
+      UIUtils.showSnackBar(
+        context,
+        SnackBar(
+          content: const Text('Accent-Farbe geändert'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: color,
+        ),
+      );
     }
   }
 }

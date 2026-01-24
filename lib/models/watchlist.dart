@@ -1,14 +1,9 @@
 import 'package:flutter/foundation.dart';
 
-enum WatchStatus {
-  watching,
-  completed,
-  paused,
-  dropped,
-}
+enum WatchStatus { watching, completed, paused, dropped }
 
 class WatchlistEntry {
-  final String animeId;
+  String animeId; // Not final anymore to allow URL updates
   final String title;
   final String? imageUrl;
   int episodesWatched;
@@ -20,6 +15,9 @@ class WatchlistEntry {
   double? rating;
   int? anilistId; // Added field for manual linking
   DateTime? addedAt;
+  bool? isCrunchyroll;
+  bool predictionsEnabled;
+  String? airingStatus; // Added field for airing status (e.g. FINISHED)
 
   WatchlistEntry({
     required this.animeId,
@@ -34,7 +32,46 @@ class WatchlistEntry {
     this.rating,
     this.anilistId,
     this.addedAt,
+    this.isCrunchyroll,
+    this.predictionsEnabled = true,
+    this.airingStatus,
   });
+
+  WatchlistEntry copyWith({
+    String? animeId,
+    String? title,
+    String? imageUrl,
+    int? episodesWatched,
+    int? totalEpisodes,
+    WatchStatus? status,
+    bool? notificationsEnabled,
+    bool? autoSyncTotal,
+    String? note,
+    double? rating,
+    int? anilistId,
+    DateTime? addedAt,
+    bool? isCrunchyroll,
+    bool? predictionsEnabled,
+    String? airingStatus,
+  }) {
+    return WatchlistEntry(
+      animeId: animeId ?? this.animeId,
+      title: title ?? this.title,
+      imageUrl: imageUrl ?? this.imageUrl,
+      episodesWatched: episodesWatched ?? this.episodesWatched,
+      totalEpisodes: totalEpisodes ?? this.totalEpisodes,
+      status: status ?? this.status,
+      notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      autoSyncTotal: autoSyncTotal ?? this.autoSyncTotal,
+      note: note ?? this.note,
+      rating: rating ?? this.rating,
+      anilistId: anilistId ?? this.anilistId,
+      addedAt: addedAt ?? this.addedAt,
+      isCrunchyroll: isCrunchyroll ?? this.isCrunchyroll,
+      predictionsEnabled: predictionsEnabled ?? this.predictionsEnabled,
+      airingStatus: airingStatus ?? this.airingStatus,
+    );
+  }
 }
 
 class Watchlist extends ChangeNotifier {
@@ -56,6 +93,15 @@ class Watchlist extends ChangeNotifier {
     final index = _entries.indexWhere((e) => e.animeId == entry.animeId);
     if (index != -1) {
       _entries[index] = entry;
+      notifyListeners();
+    }
+  }
+
+  /// Updates the ID of an entry and notifies listeners.
+  void renameEntry(String oldId, String newId) {
+    final index = _entries.indexWhere((e) => e.animeId == oldId);
+    if (index != -1) {
+      _entries[index].animeId = newId;
       notifyListeners();
     }
   }

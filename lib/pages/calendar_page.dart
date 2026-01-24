@@ -14,6 +14,7 @@ import '../services/permission_service.dart';
 import '../services/battery_optimization_service.dart';
 import '../repositories/seen_repository.dart';
 import '../services/app_settings_service.dart';
+import '../utils/ui_utils.dart';
 import '../widgets/calendar_app_bar.dart';
 import '../widgets/calendar_display.dart';
 import '../widgets/calendar_release_list.dart';
@@ -72,10 +73,19 @@ class _CalendarPageState extends State<CalendarPage>
   final double _horizontalVelocityCommit = 900.0;
   // Wenn true: Kalender ist minimiert und zeigt nur den Header (Monat + chevrons)
   bool _isCalendarMinimized = false;
+  // Show calendar only after first frame to avoid package lifecycle race
+  bool _showCalendar = false;
 
   @override
   void initState() {
     super.initState();
+
+    // ✅ FIX: Controller direkt am Anfang initialisieren
+    _dragAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 260),
+    );
+
     _selectedDay = _focusedDay;
     _loadCalendarFormat();
     _loadAutoMinimizeSetting();
@@ -83,6 +93,8 @@ class _CalendarPageState extends State<CalendarPage>
     // Berechtigungen nach dem ersten Frame anfragen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestPermissions();
+      // Show the TableCalendar after first frame to avoid PageController race
+      if (mounted) setState(() => _showCalendar = true);
     });
 
     // Registriere Callback für Bilder-Ladestatus
@@ -212,11 +224,6 @@ class _CalendarPageState extends State<CalendarPage>
       }
     });
 
-    // Controller for finishing/settling drag animations
-    _dragAnimationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 260),
-    );
   }
 
   Future<void> _loadAutoMinimizeSetting() async {
@@ -756,9 +763,9 @@ class _CalendarPageState extends State<CalendarPage>
 
   /// Zeigt eine Meldung an, dass die Einträge aktualisiert wurden
   Future<void> _showRefreshSuccessMessage() async {
-    final showMessage = await AppSettingsService.getShowRefreshMessage();
-    if (showMessage && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+    if (mounted) {
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
           content: const Text('✓ Einträge aktualisiert'),
           duration: const Duration(seconds: 2),
@@ -829,7 +836,8 @@ class _CalendarPageState extends State<CalendarPage>
 
   /// Zeigt eine Nachricht an, dass der Monat eingeforen ist
   void _showFrozenMonthMessage() {
-    ScaffoldMessenger.of(context).showSnackBar(
+    UIUtils.showSnackBar(
+      context,
       SnackBar(
         content: const Text(
           '🧊 Dieser Monat ist älter als 2 Monate und kann nicht aktualisiert werden. '
@@ -1011,7 +1019,8 @@ class _CalendarPageState extends State<CalendarPage>
               duration: const Duration(milliseconds: 450),
               curve: Curves.easeInOut,
               alignment: Alignment.topCenter,
-              child: CalendarDisplay(
+              child: _showCalendar
+                  ? CalendarDisplay(
                 focusedDay: _focusedDay,
                 selectedDay: _selectedDay,
                 calendarFormat: _calendarFormat,
@@ -1053,7 +1062,8 @@ class _CalendarPageState extends State<CalendarPage>
                 },
                 onCycleFormat: ({required bool up}) =>
                     _cycleCalendarFormat(up: up),
-              ),
+                  )
+                  : const SizedBox.shrink(),
             ),
             const Divider(height: 1),
             Expanded(

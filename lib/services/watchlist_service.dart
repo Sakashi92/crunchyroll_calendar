@@ -89,6 +89,7 @@ class WatchlistService {
         if (e.addedAt!.isBefore(since)) {
           continue;
         }
+        if (!e.predictionsEnabled) continue;
         final pred = await predictor.predictNextForSeries(
           e.animeId,
           e.title,
@@ -117,6 +118,7 @@ class WatchlistService {
 
     int count = 0;
     for (final e in watchlist.entries) {
+      if (!e.predictionsEnabled) continue;
       try {
         final pred = await predictor.predictNextForSeries(
           e.animeId,
@@ -191,6 +193,9 @@ class WatchlistService {
               addedAt: e['addedAt'] != null
                   ? DateTime.tryParse(e['addedAt'])
                   : DateTime.now(),
+              isCrunchyroll: e['isCrunchyroll'] as bool?,
+              predictionsEnabled: (e['predictionsEnabled'] as bool?) ?? true,
+              airingStatus: e['airingStatus'] as String?,
             ),
           )
           .toList();
@@ -215,6 +220,9 @@ class WatchlistService {
             'rating': e.rating,
             'anilistId': e.anilistId,
             'addedAt': e.addedAt?.toIso8601String(),
+            'isCrunchyroll': e.isCrunchyroll,
+            'predictionsEnabled': e.predictionsEnabled,
+            'airingStatus': e.airingStatus,
           },
         )
         .toList();
@@ -232,10 +240,14 @@ class WatchlistService {
             'totalEpisodes': e.totalEpisodes,
             'status': e.status.index,
             'notificationsEnabled': e.notificationsEnabled,
+            'autoSyncTotal': e.autoSyncTotal,
             'note': e.note,
             'rating': e.rating,
             'anilistId': e.anilistId,
             'addedAt': e.addedAt?.toIso8601String(),
+            'isCrunchyroll': e.isCrunchyroll,
+            'predictionsEnabled': e.predictionsEnabled,
+            'airingStatus': e.airingStatus,
           },
         )
         .toList();
@@ -327,6 +339,9 @@ class WatchlistService {
             addedAt: e['addedAt'] != null
                 ? DateTime.tryParse(e['addedAt'])
                 : DateTime.now(),
+            isCrunchyroll: e['isCrunchyroll'] as bool?,
+            predictionsEnabled: (e['predictionsEnabled'] as bool?) ?? true,
+            airingStatus: e['airingStatus'] as String?,
           ),
         )
         .toList();
@@ -432,6 +447,7 @@ class WatchlistService {
           totalEpisodes: e['totalEpisodes'] ?? 0,
           status: WatchStatus.values[(e['status'] as int?) ?? 0],
           notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
+          autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
           note: e['note'],
           rating: (e['rating'] as num?)?.toDouble(),
           anilistId: e['anilistId'] is int
@@ -442,6 +458,9 @@ class WatchlistService {
           addedAt: e['addedAt'] != null
               ? DateTime.tryParse(e['addedAt'])
               : DateTime.now(),
+          isCrunchyroll: e['isCrunchyroll'] as bool?,
+          predictionsEnabled: (e['predictionsEnabled'] as bool?) ?? true,
+          airingStatus: e['airingStatus'] as String?,
         );
 
         final exists = watchlist.entries.any((x) => x.animeId == entry.animeId);
@@ -582,17 +601,30 @@ class WatchlistService {
           final match = await anilist.findBestMatch(entry.title);
 
           if (match != null) {
+            final oldId = entry.animeId;
             entry.anilistId = match.id;
+            entry.airingStatus =
+                match.status; // Save status from auto-link match
+
+            // Sync Crunchyroll URL if available from AniList
+            if (match.hasCrunchyroll == true &&
+                match.bannerImage != null &&
+                match.bannerImage!.contains('crunchyroll.com')) {
+              final newUrl = match.bannerImage!;
+              if (newUrl != oldId) {
+                watchlist.renameEntry(oldId, newUrl);
+              }
+            }
 
             // Save to cache so predictor can find it
-            // Use animeId if available as primary key, or title as fallback
+            // Use current animeId (might be updated)
             final cacheKey = normalizeTitle(entry.animeId);
             try {
               final cache = AnilistCache();
               await cache.save(cacheKey, match);
             } catch (_) {}
 
-            // Update the entry in the central list (reference should be same, but to be safe use updateEntry)
+            // Update the entry in the central list
             watchlist.updateEntry(entry);
             linkedCount++;
 

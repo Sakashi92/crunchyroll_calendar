@@ -12,6 +12,7 @@ import '../services/next_episode_predictor.dart';
 import '../repositories/seen_repository.dart';
 import '../utils/title_utils.dart';
 import 'anime_details_dialog.dart';
+import '../utils/ui_utils.dart';
 import 'anime_pattern_painter.dart';
 
 /// Widget für eine Release-Karte im Kalender
@@ -292,9 +293,8 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                       ws.watchlist.removeEntry(id);
                                       await ws.saveWatchlist();
                                       if (mounted) {
-                                        ScaffoldMessenger.of(
+                                        UIUtils.showSnackBar(
                                           context,
-                                        ).showSnackBar(
                                           SnackBar(
                                             content: Text(
                                               '${widget.release.title} aus Watchlist entfernt',
@@ -355,9 +355,8 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                     await ws.saveWatchlist();
                                     cs.scheduleWatchlistEntryUpdate(ws, entry);
                                     if (mounted) {
-                                      ScaffoldMessenger.of(
+                                      UIUtils.showSnackBar(
                                         context,
-                                      ).showSnackBar(
                                         SnackBar(
                                           content: Text(
                                             '${widget.release.title} zur Watchlist hinzugefügt${autoId != null ? " (Verknüpft)" : ""}',
@@ -478,23 +477,29 @@ class _ReleaseCardState extends State<ReleaseCard> {
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primaryContainer,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          widget.release.episodeInfo,
-                          style: TextStyle(
+                      Flexible(
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
                             color: Theme.of(
                               context,
-                            ).colorScheme.onPrimaryContainer,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 12,
+                            ).colorScheme.primaryContainer,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            widget.release.episodeInfo,
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onPrimaryContainer,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 12,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                       ),

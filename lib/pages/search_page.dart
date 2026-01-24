@@ -11,6 +11,7 @@ import '../services/watchlist_service.dart';
 import '../services/anilist_service.dart';
 import '../services/anilist_cache.dart';
 import '../services/next_episode_predictor.dart';
+import '../utils/ui_utils.dart';
 import '../utils/title_utils.dart';
 import '../services/app_settings_service.dart';
 import '../widgets/anime_details_dialog.dart';
@@ -163,7 +164,8 @@ class _SearchPageState extends State<SearchPage> {
     // schedule background update (may perform network)
     cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             'Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}',

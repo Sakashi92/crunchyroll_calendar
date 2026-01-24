@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import '../models/anime_release.dart';
 import 'anilist_service.dart';
 import 'crunchyroll_service.dart';
+import 'jikan_service.dart';
+import 'kitsu_service.dart';
 import 'prediction_notifier.dart';
 import '../models/anime_metadata.dart';
 import 'anilist_cache.dart';
@@ -52,11 +54,56 @@ class NextEpisodePredictor {
           }
         }
 
-        final meta = await anilist.fetchSeriesMetadata(
-          seriesUrl,
-          effectiveTitle,
-          usePredictDelay: true,
-        );
+        // PREDICTOR UPDATE: Multi-Provider Fallback
+        // Order: Anilist -> Kitsu -> Jikan (MAL)
+        AnimeMetadata? meta;
+
+        // 1. Anilist
+        try {
+          meta = await anilist.fetchSeriesMetadata(
+            seriesUrl,
+            effectiveTitle,
+            usePredictDelay: true,
+          );
+        } catch (_) {}
+
+        // 2. Kitsu - if no status/date found
+        if (meta == null ||
+            (meta.status == null && meta.nextEpisodeDate == null)) {
+          try {
+            if (kDebugMode)
+              print('🔎 [PREDICTOR] Anilist incomplete, trying Kitsu...');
+            final kitsu = KitsuService();
+            final kitsuMeta = await kitsu.fetchSeriesMetadata(
+              seriesUrl,
+              effectiveTitle,
+            );
+            if (kitsuMeta != null) {
+              // If we had some meta (e.g. image from Anilist) but no status, merge carefully?
+              // For now, if Kitsu finds it, it's likely better than "null status" anilist.
+              // But Anilist images are usually better.
+              // Let's prefer the new meta if existing was largely empty.
+              meta = kitsuMeta;
+            }
+          } catch (_) {}
+        }
+
+        // 3. Jikan (MAL) - last resort
+        if (meta == null ||
+            (meta.status == null && meta.nextEpisodeDate == null)) {
+          try {
+            if (kDebugMode)
+              print('🔎 [PREDICTOR] Kitsu incomplete, trying Jikan (MAL)...');
+            final jikan = JikanService();
+            final malMeta = await jikan.fetchSeriesMetadata(
+              seriesUrl,
+              effectiveTitle,
+            );
+            if (malMeta != null) {
+              meta = malMeta;
+            }
+          } catch (_) {}
+        }
 
         // If we have an exact future date from AniList, use it!
         if (meta?.nextEpisodeDate != null) {

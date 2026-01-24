@@ -10,6 +10,7 @@ import '../models/watchlist.dart';
 import '../models/anime_metadata.dart';
 import '../utils/title_utils.dart';
 import 'anilist_cache.dart';
+import 'external_search_service.dart';
 
 // Helper to query AniList GraphQL API for nextAiringEpisode and metadata.
 const _anilistEndpoint = 'https://graphql.anilist.co';
@@ -497,6 +498,7 @@ class AnilistService implements EpisodeProvider {
                 coverImage { large medium }
                 bannerImage
                 startDate { year month day }
+                status
               }
             }
           ''';
@@ -556,6 +558,7 @@ class AnilistService implements EpisodeProvider {
               startDate: start,
               nextEpisodeNumber: nEpNum,
               nextEpisodeDate: nEpDate,
+              status: media['status'] as String?,
             );
 
             // Update cache with fresh data
@@ -607,6 +610,7 @@ class AnilistService implements EpisodeProvider {
               coverImage { large medium }
               bannerImage
               startDate { year month day }
+              status
             }
           }
         }
@@ -626,7 +630,9 @@ class AnilistService implements EpisodeProvider {
               nextAiringEpisode { airingAt episode }
               coverImage { large medium }
               bannerImage
+              externalLinks { url site }
               startDate { year month day }
+              status
             }
           }
         }
@@ -692,17 +698,32 @@ class AnilistService implements EpisodeProvider {
               'Titel nicht verfügbar';
         }
 
+        final links = media['externalLinks'] as List?;
+        String? crUrl;
+        if (links != null) {
+          final link = links.firstWhere(
+            (l) => (l['site'] as String?)?.toLowerCase() == 'crunchyroll',
+            orElse: () => null,
+          );
+          if (link != null) {
+            crUrl = link['url'] as String?;
+          }
+        }
+
         return AnimeMetadata(
           id: media['id'],
           imageUrl: cover,
           description: desc,
           totalEpisodes: episodes,
-          siteUrl:
-              displayTitle, // Store TITLE in siteUrl for display in search dialog
-          bannerImage: media['bannerImage'],
+          siteUrl: displayTitle,
+          bannerImage:
+              crUrl ??
+              media['bannerImage'], // Prioritize CR link for carrier if found
           startDate: start,
           nextEpisodeNumber: nEpNum,
           nextEpisodeDate: nEpDate,
+          hasCrunchyroll: crUrl != null,
+          status: media['status'] as String?,
         );
       }).toList();
     } catch (e) {
@@ -778,5 +799,56 @@ class AnilistService implements EpisodeProvider {
       }
       return null;
     }
+  }
+
+  @override
+  Future<List<AnimeMetadata>> searchSeries(String query) async {
+    return await searchAnime(query);
+  }
+
+  Future<String?> getCrunchyrollUrl(int mediaId) async {
+    try {
+      // 1. Try AniList API first
+      const query = r'''
+      query ($id: Int) {
+        Media(id: $id, type: ANIME) {
+          title { userPreferred romaji english }
+          externalLinks { url site }
+        }
+      }
+      ''';
+      final resp = await _postWithOptionalPredictDelay(
+        Uri.parse('https://graphql.anilist.co'),
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'query': query,
+          'variables': {'id': mediaId},
+        }),
+      );
+      if (resp.statusCode == 200) {
+        final data = json.decode(resp.body);
+        final media = data['data']?['Media'];
+        final links = media?['externalLinks'] as List?;
+        if (links != null) {
+          final cr = links.firstWhere(
+            (l) => l['site']?.toString().toLowerCase() == 'crunchyroll',
+            orElse: () => null,
+          );
+          if (cr != null) return cr['url'] as String?;
+        }
+
+        // 2. If not found, try ExternalSearchService with the title
+        final title =
+            media?['title']?['userPreferred'] ??
+            media?['title']?['english'] ??
+            media?['title']?['romaji'];
+        if (title != null) {
+          final externalSearch = ExternalSearchService();
+          final url = await externalSearch.findCrunchyrollUrl(title);
+          if (url != null) return url;
+        }
+      }
+    } catch (_) {}
+    return null;
   }
 }

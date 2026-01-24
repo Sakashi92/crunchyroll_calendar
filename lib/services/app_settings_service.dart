@@ -11,13 +11,14 @@ class AppSettingsService {
   static const String _notificationDelayKey = 'notification_delay_seconds';
   static const String _showRefreshMessageKey = 'show_refresh_message';
   static const String _autoMinimizeCalendarKey = 'auto_minimize_calendar';
-  static const String _autoMinimizeScrollThresholdKey = 'auto_minimize_scroll_threshold';
+  static const String _autoMinimizeScrollThresholdKey =
+      'auto_minimize_scroll_threshold';
   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
   static const String _searchHistoryKey = 'search_history';
   static const String _watchlistSortModeKey = 'watchlist_sort_mode';
   static const String _episodeProviderKey = 'episode_provider';
   static const String _predictionEnabledKey = 'enable_next_episode_prediction';
-  
+
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
     'original': 'Original (Höchste Qualität, ~2000x3000)',
@@ -25,7 +26,7 @@ class AppSettingsService {
     'medium': 'Mittel (~390x554)',
     'small': 'Klein (~284x402)',
   };
-  
+
   /// Verfügbare Update-Intervalle in Minuten
   static const Map<int, String> updateIntervals = {
     1: '1 Minute',
@@ -47,7 +48,7 @@ class AppSettingsService {
     300: '5 Minuten',
     600: '10 Minuten',
   };
-  
+
   /// Vordefinierte Accent-Farben
   static const List<Color> accentColors = [
     Colors.orange,
@@ -62,48 +63,48 @@ class AppSettingsService {
     Colors.green,
     Colors.amber,
   ];
-  
+
   static Future<String> getImageQuality() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_imageQualityKey) ?? 'original';
   }
-  
+
   static Future<void> setImageQuality(String quality) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_imageQualityKey, quality);
   }
-  
+
   static Future<int> getUpdateIntervalMinutes() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_updateIntervalKey) ?? 20;
   }
-  
+
   static Future<void> setUpdateIntervalMinutes(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_updateIntervalKey, minutes);
   }
-  
+
   static Future<Duration> getUpdateInterval() async {
     final minutes = await getUpdateIntervalMinutes();
     return Duration(minutes: minutes);
   }
-  
+
   static Future<bool> getAutoTranslate() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_autoTranslateKey) ?? true;
   }
-  
+
   static Future<void> setAutoTranslate(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoTranslateKey, enabled);
   }
-  
+
   static Future<Color> getAccentColor() async {
     final prefs = await SharedPreferences.getInstance();
     final colorValue = prefs.getInt(_accentColorKey) ?? Colors.orange.value;
     return Color(colorValue);
   }
-  
+
   static Future<void> setAccentColor(Color color) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_accentColorKey, color.value);
@@ -119,14 +120,28 @@ class AppSettingsService {
     await prefs.setInt(_notificationDelayKey, seconds);
   }
 
+  static bool _showRefreshMessageCached = true;
+
+  /// Globaler Status für In-App Benachrichtigungen (Snackbars)
+  static bool get inAppNotificationsEnabled => _showRefreshMessageCached;
+
+  /// Initialisiert die Einstellungen beim App-Start
+  static Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _showRefreshMessageCached = prefs.getBool(_showRefreshMessageKey) ?? true;
+  }
+
   static Future<bool> getShowRefreshMessage() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_showRefreshMessageKey) ?? true;
+    final value = prefs.getBool(_showRefreshMessageKey) ?? true;
+    _showRefreshMessageCached = value;
+    return value;
   }
 
   static Future<void> setShowRefreshMessage(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showRefreshMessageKey, enabled);
+    _showRefreshMessageCached = enabled;
   }
 
   static Future<bool> getAutoMinimizeCalendar() async {

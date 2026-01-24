@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:translator/translator.dart';
@@ -9,6 +10,7 @@ import '../models/anime_metadata.dart';
 import '../services/app_settings_service.dart';
 
 import '../services/watchlist_service.dart';
+import '../utils/ui_utils.dart';
 import '../models/watchlist.dart';
 import '../services/next_episode_predictor.dart';
 import '../services/anilist_service.dart';
@@ -19,6 +21,7 @@ import 'details_description_section.dart';
 import 'details_metadata_section.dart';
 import 'details_watchlist_button.dart';
 import 'details_header_image.dart';
+import '../services/external_search_service.dart';
 
 /// Dialog Widget für Anime-Details mit asynchronem Laden der Beschreibung
 class AnimeDetailsDialog extends StatefulWidget {
@@ -30,6 +33,7 @@ class AnimeDetailsDialog extends StatefulWidget {
   final void Function(AnimeRelease release)? onAddToWatchlist;
   final WatchlistService? watchlistService;
   final bool showManualLink;
+  final bool isCrunchyroll;
 
   const AnimeDetailsDialog({
     super.key,
@@ -41,6 +45,7 @@ class AnimeDetailsDialog extends StatefulWidget {
     this.onAddToWatchlist,
     this.watchlistService,
     this.showManualLink = false,
+    this.isCrunchyroll = true,
   });
 
   @override
@@ -223,62 +228,101 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
 
   Future<void> _openCrunchyrollEpisode() async {
     try {
-      // Prefer episode URL, fall back to series URL when episode URL is empty
+      // 1. Check if we already have a direct URL
       String? urlString = widget.release.episodeUrl.isNotEmpty
           ? widget.release.episodeUrl
-          : (widget.release.seriesUrl.isNotEmpty
+          : (widget.release.seriesUrl.isNotEmpty &&
+                    widget.release.seriesUrl.startsWith('http')
                 ? widget.release.seriesUrl
                 : null);
 
-      if (urlString == null || urlString.isEmpty) {
+      // 2. If missing, try ExternalSearchService (programmatic search)
+      if (urlString == null) {
         if (mounted) {
-          ScaffoldMessenger.of(
+          UIUtils.showSnackBar(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Keine URL verfügbar')));
+            const SnackBar(
+              content: Text('Suche Crunchyroll URL...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
         }
-        return;
+        final externalSearch = ExternalSearchService();
+        urlString = await externalSearch.findCrunchyrollUrl(
+          widget.release.title,
+        );
+      }
+
+      // 3. Fallback: If still missing, offer manual search or use dummy link
+      if (urlString == null) {
+        final manualUrl = ExternalSearchService().getManualSearchUrl(
+          widget.release.title,
+        );
+
+        if (mounted) {
+          final result = await showDialog<bool>(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Streaming-Link nicht gefunden'),
+              content: const Text(
+                'Wir konnten keinen direkten Link zu Crunchyroll finden. Möchtest du danach suchen?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx, false),
+                  child: const Text('Abbrechen'),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(ctx, true),
+                  child: const Text('Suchen'),
+                ),
+              ],
+            ),
+          );
+
+          if (result == true) {
+            final uri = Uri.parse(manualUrl);
+            if (await canLaunchUrl(uri)) {
+              await launchUrl(uri, mode: LaunchMode.externalApplication);
+              return;
+            }
+          }
+        }
+
+        // Final fallback: Dummy link to trigger App
+        final slug = Uri.encodeComponent(
+          widget.release.title.replaceAll(' ', '-').toLowerCase(),
+        );
+        urlString = 'https://www.crunchyroll.com/de/series/G-FORCE-APP/$slug';
       }
 
       final Uri? url = Uri.tryParse(urlString);
       if (url == null) {
-        if (kDebugMode) {
-          print('Invalid URL: $urlString');
-        }
         if (mounted) {
-          ScaffoldMessenger.of(
+          UIUtils.showSnackBar(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Ungültige URL')));
+            const SnackBar(content: Text('Ungültige URL')),
+          );
         }
         return;
       }
 
       if (await canLaunchUrl(url)) {
-        final launched = await launchUrl(
-          url,
-          mode: LaunchMode.externalApplication,
-        );
-        if (!launched && kDebugMode) {
-          print('launchUrl returned false for $url');
-        }
-        if (mounted) {
-          Navigator.of(context).pop();
-        }
+        await launchUrl(url, mode: LaunchMode.externalApplication);
+        if (mounted) Navigator.of(context).pop();
       } else {
-        if (kDebugMode) {
-          print('Cannot launch $url');
-        }
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          UIUtils.showSnackBar(
+            context,
             const SnackBar(content: Text('URL kann nicht geöffnet werden')),
           );
         }
       }
     } catch (e) {
-      if (kDebugMode) {
-        print('Error opening URL: $e');
-      }
+      if (kDebugMode) print('Error opening URL: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        UIUtils.showSnackBar(
+          context,
           const SnackBar(content: Text('Fehler beim Öffnen der URL')),
         );
       }
@@ -343,7 +387,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                       const SizedBox(height: 8),
                       if (widget.showManualLink) _buildManualLinkButton(),
                       const SizedBox(height: 20),
-                      if (!release.isPredicted) _buildCrunchyrollPlayButton(),
+                      if (!release.isPredicted && widget.isCrunchyroll)
+                        _buildCrunchyrollPlayButton(),
                     ],
                   ),
                 ),
@@ -430,7 +475,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
             widget.release.title,
           );
           if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
+            UIUtils.showSnackBar(
+              context,
               SnackBar(
                 content: Text('${widget.release.title} aus Watchlist entfernt'),
               ),
@@ -483,7 +529,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
         await ws.saveWatchlist();
         widget.crunchyrollService.scheduleWatchlistEntryUpdate(ws, entry);
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
+          UIUtils.showSnackBar(
+            context,
             SnackBar(
               content: Text(
                 '${widget.release.title} zur Watchlist hinzugefügt${autoId != null ? " (Verknüpft)" : ""}',
@@ -553,9 +600,39 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           );
           if (entryIndex != -1) {
             final entry = ws.watchlist.entries[entryIndex];
+            final oldId = entry.animeId;
             entry.anilistId = result.id;
+
+            // NEW: Automatically update Crunchyroll URL if AniList provides one
+            String? updatedUrl;
+            if (result.hasCrunchyroll == true &&
+                result.bannerImage != null &&
+                result.bannerImage!.contains('crunchyroll.com')) {
+              updatedUrl = result.bannerImage;
+              if (updatedUrl != oldId) {
+                ws.watchlist.renameEntry(oldId, updatedUrl!);
+                if (kDebugMode)
+                  print(
+                    '🔗 Sync: Updated Crunchyroll URL from AniList: $updatedUrl',
+                  );
+              }
+            }
+
             ws.watchlist.updateEntry(entry);
             await ws.saveWatchlist();
+
+            if (mounted && updatedUrl != null && updatedUrl != oldId) {
+              UIUtils.showSnackBar(
+                context,
+                SnackBar(
+                  content: Text(
+                    'Crunchyroll-Link wurde automatisch aktualisiert! ✅',
+                  ),
+                  backgroundColor: Colors.green,
+                  duration: const Duration(seconds: 3),
+                ),
+              );
+            }
           }
         } catch (e) {
           if (kDebugMode) print('❌ Link: Failed to update watchlist entry: $e');
@@ -563,7 +640,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        UIUtils.showSnackBar(
+          context,
           SnackBar(
             content: Text(
               'Verknüpft mit: ${result.siteUrl ?? "ID ${result.id}"}',

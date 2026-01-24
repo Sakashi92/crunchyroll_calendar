@@ -15,8 +15,20 @@ import '../models/watchlist.dart';
 import 'episode_provider.dart';
 import '../models/anime_metadata.dart';
 import 'prediction_notifier.dart';
+import 'jikan_service.dart';
+import 'anilist_service.dart';
+import 'episode_provider_factory.dart';
+import '../utils/title_utils.dart';
 
 class CrunchyrollService implements EpisodeProvider {
+  static final CrunchyrollService _instance = CrunchyrollService._internal();
+
+  factory CrunchyrollService() {
+    return _instance;
+  }
+
+  CrunchyrollService._internal();
+
   static const String calendarUrl =
       'https://www.crunchyroll.com/de/simulcastcalendar?filter=premium';
   static const String _cacheKey = 'cached_anime_releases_v4'; // Kitsu images
@@ -2243,7 +2255,7 @@ class CrunchyrollService implements EpisodeProvider {
     return '';
   }
 
-  /// Lädt die Beschreibung eines Anime von Kitsu API
+  /// Lädt die Beschreibung eines Anime von Kitsu API oder dem gewählten Provider
   Future<String> fetchDescription(AnimeRelease release) async {
     // Prüfe ob bereits geladen
     if (release.description != null &&
@@ -2258,7 +2270,37 @@ class CrunchyrollService implements EpisodeProvider {
     }
 
     try {
-      // Verwende Kitsu API - gleiche Logik wie für Bilder
+      final providerName = await AppSettingsService.getEpisodeProviderName();
+
+      // Delegate to Anilist
+      if (providerName == EpisodeProviderFactory.PROVIDER_ANILIST) {
+        if (kDebugMode) print('Using Anilist for description...');
+        final meta = await AnilistService().fetchSeriesMetadata(
+          null,
+          animeName,
+        );
+        if (meta?.description != null) {
+          release.description = meta!.description;
+          return release.description!;
+        }
+      }
+      // Delegate to Jikan
+      else if (providerName == EpisodeProviderFactory.PROVIDER_JIKAN) {
+        if (kDebugMode) print('Using Jikan for description...');
+        final meta = await JikanService().fetchSeriesMetadata(null, animeName);
+        if (meta?.description != null) {
+          release.description = meta!.description;
+          return release.description!;
+        }
+      }
+
+      // Fallback: Use built-in Kitsu logic (default)
+      if (kDebugMode &&
+          providerName != EpisodeProviderFactory.PROVIDER_CRUNCHYROLL) {
+        print('Fallback to Kitsu for description...');
+      }
+
+      // Kitsu API - gleiche Logik wie für Bilder
       final searchName = _cleanAnimeName(animeName);
 
       // Kitsu API - Text Suche
@@ -2308,7 +2350,7 @@ class CrunchyrollService implements EpisodeProvider {
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error fetching description from Kitsu: $e');
+        print('Error fetching description: $e');
       }
     }
 
@@ -2647,4 +2689,96 @@ class CrunchyrollService implements EpisodeProvider {
       return [];
     }
   }
+
+  @override
+  Future<List<AnimeMetadata>> searchSeries(String query) async {
+    try {
+      final searchName = _cleanAnimeName(query);
+      final encodedSearch = Uri.encodeComponent(searchName);
+      final url =
+          'https://kitsu.io/api/edge/anime?filter[text]=$encodedSearch&page[limit]=10';
+
+      if (kDebugMode) {
+        print('Searching Kitsu for: $query (cleaned: $searchName)');
+      }
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Accept': 'application/vnd.api+json',
+          'Content-Type': 'application/vnd.api+json',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        final data = body['data'] as List?;
+        if (data == null) return [];
+
+        return data.map((item) {
+          final attrs = item['attributes'];
+          final titles = attrs['titles'] as Map<String, dynamic>?;
+
+          String title = 'Unbekannt';
+          // Kitsu uses en_jp, en, ja_jp. Prefer en_jp (romaji) or en, then whatever is available.
+          if (titles != null) {
+            title =
+                titles['en_jp'] ??
+                titles['en'] ??
+                titles.values.first ??
+                'Unbekannt';
+          }
+          if (title == 'Unbekannt' && attrs['canonicalTitle'] != null) {
+            title = attrs['canonicalTitle'];
+          }
+
+          String? cover =
+              attrs['posterImage']?['original'] ??
+              attrs['posterImage']?['large'] ??
+              attrs['posterImage']?['medium'];
+
+          String? desc = attrs['synopsis'];
+          int? epCount = attrs['episodeCount'];
+
+          return AnimeMetadata(
+            id: int.tryParse(item['id'] ?? '0'), // Kitsu ID
+            imageUrl: cover,
+            description: desc,
+            totalEpisodes: epCount,
+            siteUrl:
+                title, // Storing TITLE in siteUrl as we do for AniList text search results for display
+            startDate: null, // Could parse startDate if needed
+          );
+        }).toList();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error searching Kitsu: $e');
+      }
+    }
+    return [];
+  }
+
+  /// Checks if a title exists in the current cached calendar releases.
+  bool isTitleInCalendar(String title) {
+    if (title.isEmpty) return false;
+    final normalized = normalizeTitle(title);
+
+    // Check known releases in cache
+    final cutoff = DateTime.now().subtract(const Duration(days: 30));
+
+    for (final r in _cachedReleases) {
+      if (r.releaseTime.isBefore(cutoff)) continue;
+
+      final rNorm = normalizeTitle(r.title);
+      if (rNorm == normalized) return true;
+      // Partial match fallback strategies
+      if (rNorm.contains(normalized) && normalized.length > 5) return true;
+      if (normalized.contains(rNorm) && rNorm.length > 5) return true;
+    }
+    return false;
+  }
+
+  @override
+  Future<String?> getCrunchyrollUrl(int id) async => null;
 }

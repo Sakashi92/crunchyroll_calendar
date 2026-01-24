@@ -9,6 +9,7 @@ import '../services/next_episode_predictor.dart';
 import '../models/watchlist.dart';
 import '../utils/title_utils.dart';
 import '../pages/search_page.dart';
+import '../utils/ui_utils.dart';
 import '../pages/watchlist_page.dart';
 import 'anime_details_dialog.dart';
 
@@ -167,7 +168,8 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
     cs.scheduleWatchlistEntryUpdate(ws, entry);
 
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      UIUtils.showSnackBar(
+        context,
         SnackBar(
           content: Text(
             'Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}',
