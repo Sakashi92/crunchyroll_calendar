@@ -1036,6 +1036,7 @@ class CrunchyrollService implements EpisodeProvider {
             notificationsEnabled: entry.notificationsEnabled,
             autoSyncTotal: entry.autoSyncTotal,
             note: entry.note,
+            anilistId: entry.anilistId,
             rating: entry.rating,
           );
           // Replace the entry in the watchlist
@@ -1319,6 +1320,7 @@ class CrunchyrollService implements EpisodeProvider {
             notificationsEnabled: entry.notificationsEnabled,
             autoSyncTotal: entry.autoSyncTotal,
             note: entry.note,
+            anilistId: entry.anilistId,
             rating: entry.rating,
           );
           watchlistService.watchlist.updateEntry(newEntry);

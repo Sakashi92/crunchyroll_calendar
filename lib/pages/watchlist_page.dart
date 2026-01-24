@@ -551,6 +551,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   autoSyncTotal: autoSync,
                   note: noteController.text,
                   rating: entry.rating,
+                  anilistId: entry.anilistId,
                   addedAt: entry.addedAt,
                 );
                 watchlist.updateEntry(newEntry);
