@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'dart:math';
 import '../models/anime_release.dart';
 import 'anilist_service.dart';
 import 'crunchyroll_service.dart';
@@ -21,77 +20,120 @@ class NextEpisodePredictor {
 
   /// Predict next episode for a given series (identified by seriesUrl or title)
   /// Returns the predicted release or null if prediction not possible.
-  Future<AnimeRelease?> predictNextForSeries(String? seriesUrl, String? title, {int? anilistId}) async {
+  Future<AnimeRelease?> predictNextForSeries(
+    String? seriesUrl,
+    String? title, {
+    int? anilistId,
+  }) async {
     try {
       final now = DateTime.now();
-      print('🔎 [PREDICTOR] Predicting next for seriesUrl=${seriesUrl ?? '-'} title=${title ?? '-'}');
+      if (kDebugMode) {
+        print(
+          '🔎 [PREDICTOR] Predicting next for seriesUrl=${seriesUrl ?? '-'} title=${title ?? '-'}',
+        );
+      }
       // load cached releases
-      final releases = await crunchy.getReleasesForSeriesCached(seriesUrl, title);
-      
+      final releases = await crunchy.getReleasesForSeriesCached(
+        seriesUrl,
+        title,
+      );
+
       // PREDICTOR UPDATE: Check AniList metadata first for an exact scheduled date
-      final effectiveTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : null);
+      final effectiveTitle =
+          title ?? (releases.isNotEmpty ? releases.last.title : null);
       if (effectiveTitle != null) {
-          // If we have a direct anilistId from the watchlist, prepopulate the cache key
-          if (anilistId != null) {
-            final cache = AnilistCache();
-            final cacheKey = normalizeTitle(seriesUrl ?? title ?? effectiveTitle);
-            final existing = await cache.get(cacheKey);
-            if (existing == null || existing.id != anilistId) {
-               await cache.save(cacheKey, AnimeMetadata(id: anilistId));
-            }
+        // If we have a direct anilistId from the watchlist, prepopulate the cache key
+        if (anilistId != null) {
+          final cache = AnilistCache();
+          final cacheKey = normalizeTitle(seriesUrl ?? title ?? effectiveTitle);
+          final existing = await cache.get(cacheKey);
+          if (existing == null || existing.id != anilistId) {
+            await cache.save(cacheKey, AnimeMetadata(id: anilistId));
           }
+        }
 
-          final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
-          
-          // If we have an exact future date from AniList, use it!
-          if (meta?.nextEpisodeDate != null) {
-              final nextDate = meta!.nextEpisodeDate!;
-              final todayMidnight = DateTime(now.year, now.month, now.day);
-              final minAllowed = todayMidnight.subtract(const Duration(hours: 24));
-              final maxAllowedMidnight = todayMidnight.add(const Duration(days: 7));
-              
-              final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
-              
-              if (nextDate.isAfter(minAllowed) && !nextDay.isAfter(maxAllowedMidnight)) {
-                  final bestTitle = title ?? (releases != null && releases.isNotEmpty ? releases.last.title : meta?.siteUrl) ?? 'Unknown';
-                  final epParams = meta?.nextEpisodeNumber ?? (
-                      (releases != null && releases.isNotEmpty) 
-                      ? (int.tryParse(releases.last.episodeNumber) != null ? (int.parse(releases.last.episodeNumber) + 1).toString() : '1') 
-                      : '1'
-                  );
-                  
-                  // Fetch high-res image from Kitsu
-                  String? displayImage;
-                  try {
-                    final kImg = await crunchy.fetchImageForTitle(bestTitle);
-                    if (kImg.isNotEmpty) displayImage = kImg;
-                  } catch (_) {}
-                  
-                  // Fallback to AniList or old release image
-                  displayImage ??= meta?.imageUrl ?? (releases != null && releases.isNotEmpty ? releases.last.imageUrl : null);
+        final meta = await anilist.fetchSeriesMetadata(
+          seriesUrl,
+          effectiveTitle,
+          usePredictDelay: true,
+        );
 
-                  final predicted = AnimeRelease(
-                    title: bestTitle,
-                    episodeNumber: epParams,
-                    episodeTitle: '',
-                    releaseTime: nextDate,
-                    imageUrl: displayImage,
-                    description: meta?.description ?? (releases != null && releases.isNotEmpty ? releases.last.description : null),
-                    seriesUrl: seriesUrl ?? (releases != null && releases.isNotEmpty ? releases.last.seriesUrl : meta?.siteUrl) ?? '',
-                    episodeUrl: meta?.siteUrl ?? (releases != null && releases.isNotEmpty ? releases.last.episodeUrl : null) ?? '',
-                    isPremiere: false,
-                    isPredicted: true,
-                  );
-                  
-                  await crunchy.addPredictedRelease(predicted);
-                  predictionsUpdated.value = true;
-                  print('✅ [PREDICTOR] Predicted using AniList Schedule: $bestTitle -> ep $epParams @ $nextDate');
-                  return predicted;
+        // If we have an exact future date from AniList, use it!
+        if (meta?.nextEpisodeDate != null) {
+          final nextDate = meta!.nextEpisodeDate!;
+          final todayMidnight = DateTime(now.year, now.month, now.day);
+          final minAllowed = todayMidnight.subtract(const Duration(hours: 24));
+          final maxAllowedMidnight = todayMidnight.add(const Duration(days: 7));
+
+          final nextDay = DateTime(nextDate.year, nextDate.month, nextDate.day);
+
+          if (nextDate.isAfter(minAllowed) &&
+              !nextDay.isAfter(maxAllowedMidnight)) {
+            final bestTitle =
+                title ??
+                (releases.isNotEmpty ? releases.last.title : meta?.siteUrl) ??
+                'Unknown';
+            final epParams =
+                meta?.nextEpisodeNumber ??
+                ((releases.isNotEmpty)
+                    ? (int.tryParse(releases.last.episodeNumber) != null
+                          ? (int.parse(releases.last.episodeNumber) + 1)
+                                .toString()
+                          : '1')
+                    : '1');
+
+            // Fetch high-res image from Kitsu
+            String? displayImage;
+            try {
+              final kImg = await crunchy.fetchImageForTitle(bestTitle);
+              if (kImg.isNotEmpty) {
+                displayImage = kImg;
               }
+            } catch (_) {}
+
+            // Fallback to AniList or old release image
+            displayImage ??=
+                meta?.imageUrl ??
+                (releases.isNotEmpty ? releases.last.imageUrl : null);
+
+            final predicted = AnimeRelease(
+              title: bestTitle,
+              episodeNumber: epParams,
+              episodeTitle: '',
+              releaseTime: nextDate,
+              imageUrl: displayImage,
+              description:
+                  meta?.description ??
+                  (releases.isNotEmpty ? releases.last.description : null),
+              seriesUrl:
+                  seriesUrl ??
+                  (releases.isNotEmpty
+                      ? releases.last.seriesUrl
+                      : meta?.siteUrl) ??
+                  '',
+              episodeUrl:
+                  meta?.siteUrl ??
+                  (releases.isNotEmpty ? releases.last.episodeUrl : null) ??
+                  '',
+              isPremiere: false,
+              isPredicted: true,
+            );
+
+            await crunchy.addPredictedRelease(predicted);
+            predictionsUpdated.value = true;
+            if (kDebugMode) {
+              print(
+                '✅ [PREDICTOR] Predicted using AniList Schedule: $bestTitle -> ep $epParams @ $nextDate',
+              );
+            }
+            return predicted;
           }
+        }
       }
 
-      if (releases == null || releases.length < 2) return null;
+      if (releases.length < 2) {
+        return null;
+      }
 
       // sort by releaseTime
       releases.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
@@ -100,9 +142,13 @@ class NextEpisodePredictor {
       final recent = releases.reversed.take(6).toList().reversed.toList();
       final List<Duration> intervals = [];
       for (var i = 1; i < recent.length; i++) {
-        intervals.add(recent[i].releaseTime.difference(recent[i - 1].releaseTime).abs());
+        intervals.add(
+          recent[i].releaseTime.difference(recent[i - 1].releaseTime).abs(),
+        );
       }
-      if (intervals.isEmpty) return null;
+      if (intervals.isEmpty) {
+        return null;
+      }
 
       // compute median interval (robust to outliers)
       intervals.sort((a, b) => a.inSeconds.compareTo(b.inSeconds));
@@ -116,26 +162,43 @@ class NextEpisodePredictor {
       final todayMidnight = DateTime(now.year, now.month, now.day);
       final minAllowed = todayMidnight.subtract(const Duration(hours: 24));
       final maxAllowedMidnight = todayMidnight.add(const Duration(days: 7));
-      
-      final predictedDay = DateTime(predictedDate.year, predictedDate.month, predictedDate.day);
 
-      if (predictedDate.isBefore(minAllowed) || predictedDay.isAfter(maxAllowedMidnight)) {
-        if (kDebugMode) print('Skipping prediction for $title: predicted date $predictedDate is outside allowed window ($minAllowed to $maxAllowedMidnight)');
+      final predictedDay = DateTime(
+        predictedDate.year,
+        predictedDate.month,
+        predictedDate.day,
+      );
+
+      if (predictedDate.isBefore(minAllowed) ||
+          predictedDay.isAfter(maxAllowedMidnight)) {
+        if (kDebugMode) {
+          print(
+            'Skipping prediction for $title: predicted date $predictedDate is outside allowed window ($minAllowed to $maxAllowedMidnight)',
+          );
+        }
         return null;
       }
 
       // fetch AniList metadata to get totalEpisodes (optional)
-      // Note: We already fetched metadata above, but if logic flows here, we re-use or re-fetch?
-      // For simplicity in this edit, just fetch again or ensure variable is accessible.
-      // Ideally we would have stored 'meta' from above. 
-      // Let's re-fetch briefly or assume partial data flow.
-      print('🔎 [PREDICTOR] Fetching AniList metadata for validation...');
-      final meta = await anilist.fetchSeriesMetadata(seriesUrl, effectiveTitle, usePredictDelay: true);
-      print('🔎 [PREDICTOR] AniList metadata fetched for "$effectiveTitle": totalEpisodes=${meta?.totalEpisodes}');
+      if (kDebugMode) {
+        print('🔎 [PREDICTOR] Fetching AniList metadata for validation...');
+      }
+      final meta = await anilist.fetchSeriesMetadata(
+        seriesUrl,
+        effectiveTitle,
+        usePredictDelay: true,
+      );
+      if (kDebugMode) {
+        print(
+          '🔎 [PREDICTOR] AniList metadata fetched for "$effectiveTitle": totalEpisodes=${meta?.totalEpisodes}',
+        );
+      }
 
       // compute predicted episode number: try parse last episode number
       int lastEp = int.tryParse(lastRelease.episodeNumber) ?? 0;
-      final predictedEpisode = (lastEp > 0) ? lastEp + 1 : (meta?.totalEpisodes != null ? (meta!.totalEpisodes! - 0) : lastEp + 1);
+      final predictedEpisode = (lastEp > 0)
+          ? lastEp + 1
+          : (meta?.totalEpisodes != null ? (meta!.totalEpisodes!) : lastEp + 1);
 
       // cap predictedEpisode by totalEpisodes if known
       int? totalEpisodes = meta?.totalEpisodes;
@@ -145,14 +208,16 @@ class NextEpisodePredictor {
       }
 
       final finalTitle = title ?? lastRelease.title;
-      
+
       // Fetch high-res image from Kitsu
       String? displayImage;
       try {
         final kImg = await crunchy.fetchImageForTitle(finalTitle);
-        if (kImg.isNotEmpty) displayImage = kImg;
+        if (kImg.isNotEmpty) {
+          displayImage = kImg;
+        }
       } catch (_) {}
-      
+
       displayImage ??= meta?.imageUrl ?? lastRelease.imageUrl;
 
       final predicted = AnimeRelease(
@@ -172,10 +237,16 @@ class NextEpisodePredictor {
       await crunchy.addPredictedRelease(predicted);
       // Signal UI to reload cached predictions
       predictionsUpdated.value = true;
-      print('✅ [PREDICTOR] Predicted next for $title -> ep ${predictedEpisode} @ $predictedDate');
+      if (kDebugMode) {
+        print(
+          '✅ [PREDICTOR] Predicted next for $title -> ep $predictedEpisode @ $predictedDate',
+        );
+      }
       return predicted;
     } catch (e) {
-      print('❌ [PREDICTOR] Error predicting next episode for $title: $e');
+      if (kDebugMode) {
+        print('❌ [PREDICTOR] Error predicting next episode for $title: $e');
+      }
       return null;
     }
   }
@@ -191,30 +262,48 @@ class NextEpisodePredictor {
         final dayReleases = await crunchy.getReleasesForDay(day);
         releases.addAll(dayReleases);
       } catch (e) {
-        if (kDebugMode) print('Error fetching releases for $day: $e');
+        if (kDebugMode) {
+          print('Error fetching releases for $day: $e');
+        }
       }
     }
 
     // Deduplicate by seriesUrl first, fallback to title if missing
     final Map<String, String?> uniqueSeries = {};
     for (final r in releases) {
-      final key = (r.seriesUrl != null && r.seriesUrl!.isNotEmpty) ? r.seriesUrl! : (r.title ?? '');
-      if (!uniqueSeries.containsKey(key)) uniqueSeries[key] = r.title;
+      final key = r.seriesUrl.isNotEmpty ? r.seriesUrl : r.title;
+      if (!uniqueSeries.containsKey(key)) {
+        uniqueSeries[key] = r.title;
+      }
     }
 
     final seriesList = uniqueSeries.entries.toList();
-    print('🔎 [PREDICTOR] Running predictions for ${seriesList.length} series discovered in last 7 days');
+    if (kDebugMode) {
+      print(
+        '🔎 [PREDICTOR] Running predictions for ${seriesList.length} series discovered in last 7 days',
+      );
+    }
 
     int i = 0;
     for (final entry in seriesList) {
       i++;
       final seriesId = entry.key;
       final title = entry.value;
-      print('🔎 [PREDICTOR] (${i}/${seriesList.length}) Starting prediction for seriesId=$seriesId title=$title');
+      if (kDebugMode) {
+        print(
+          '🔎 [PREDICTOR] ($i/${seriesList.length}) Starting prediction for seriesId=$seriesId title=$title',
+        );
+      }
       await predictNextForSeries(seriesId, title);
-      print('🔎 [PREDICTOR] (${i}/${seriesList.length}) Finished prediction for seriesId=$seriesId');
+      if (kDebugMode) {
+        print(
+          '🔎 [PREDICTOR] ($i/${seriesList.length}) Finished prediction for seriesId=$seriesId',
+        );
+      }
     }
 
-    print('🔎 [PREDICTOR] All predictions complete');
+    if (kDebugMode) {
+      print('🔎 [PREDICTOR] All predictions complete');
+    }
   }
 }

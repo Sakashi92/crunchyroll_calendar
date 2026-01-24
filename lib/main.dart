@@ -4,7 +4,7 @@ import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
-import 'settings.dart';
+import 'services/app_settings_service.dart';
 import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'pages/calendar_page.dart';
@@ -67,7 +67,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   Future<void> _loadAccentColor() async {
-    final color = await AppSettings.getAccentColor();
+    final color = await AppSettingsService.getAccentColor();
     setState(() {
       _accentColor = color;
     });

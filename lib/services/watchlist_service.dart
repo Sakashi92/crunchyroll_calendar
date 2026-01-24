@@ -22,7 +22,9 @@ class WatchlistService {
   // Behandelt verschachtelte Arrays und ignoriert Zeichen innerhalb von Strings.
   String? _extractJsonArray(String input) {
     final start = input.indexOf('[');
-    if (start == -1) return null;
+    if (start == -1) {
+      return null;
+    }
 
     int depth = 0;
     bool inString = false;
@@ -33,22 +35,27 @@ class WatchlistService {
       if (inString) {
         if (escape) {
           escape = false;
-        } else if (ch == 92) { // backslash
+        } else if (ch == 92) {
+          // backslash
           escape = true;
-        } else if (ch == 34) { // '"'
+        } else if (ch == 34) {
+          // '"'
           inString = false;
         }
         continue;
       }
 
-      if (ch == 34) { // '"'
+      if (ch == 34) {
+        // '"'
         inString = true;
         continue;
       }
 
-      if (ch == 91) { // '['
+      if (ch == 91) {
+        // '['
         depth++;
-      } else if (ch == 93) { // ']'
+      } else if (ch == 93) {
+        // ']'
         depth--;
         if (depth == 0) {
           return input.substring(start, i + 1);
@@ -76,10 +83,20 @@ class WatchlistService {
     int count = 0;
     for (final e in watchlist.entries) {
       try {
-        if (e.addedAt == null) continue;
-        if (e.addedAt!.isBefore(since)) continue;
-        final pred = await predictor.predictNextForSeries(e.animeId, e.title, anilistId: e.anilistId);
-        if (pred != null) count++;
+        if (e.addedAt == null) {
+          continue;
+        }
+        if (e.addedAt!.isBefore(since)) {
+          continue;
+        }
+        final pred = await predictor.predictNextForSeries(
+          e.animeId,
+          e.title,
+          anilistId: e.anilistId,
+        );
+        if (pred != null) {
+          count++;
+        }
       } catch (_) {
         // ignore
       }
@@ -101,8 +118,14 @@ class WatchlistService {
     int count = 0;
     for (final e in watchlist.entries) {
       try {
-        final pred = await predictor.predictNextForSeries(e.animeId, e.title, anilistId: e.anilistId);
-        if (pred != null) count++;
+        final pred = await predictor.predictNextForSeries(
+          e.animeId,
+          e.title,
+          anilistId: e.anilistId,
+        );
+        if (pred != null) {
+          count++;
+        }
       } catch (_) {
         // ignore individual failures
       }
@@ -111,19 +134,33 @@ class WatchlistService {
     // Trigger UI notification after ALL predictions are done
     try {
       predictionsUpdated.value = true;
-      if (kDebugMode) print('🔔 generateForecastForAllEntries: done, $count predictions, triggering UI update');
+      if (kDebugMode) {
+        print(
+          '🔔 generateForecastForAllEntries: done, $count predictions, triggering UI update',
+        );
+      }
     } catch (e) {
-      if (kDebugMode) print('❌ Error triggering predictionsUpdated: $e');
+      if (kDebugMode) {
+        print('❌ Error triggering predictionsUpdated: $e');
+      }
     }
 
     return count;
   }
 
   bool _parseBool(dynamic v) {
-    if (v == null) return false;
-    if (v is bool) return v;
-    if (v is num) return v != 0;
-    if (v is String) return v.toLowerCase() == 'true' || v == '1';
+    if (v == null) {
+      return false;
+    }
+    if (v is bool) {
+      return v;
+    }
+    if (v is num) {
+      return v != 0;
+    }
+    if (v is String) {
+      return v.toLowerCase() == 'true' || v == '1';
+    }
     return false;
   }
 
@@ -132,57 +169,76 @@ class WatchlistService {
     final jsonString = prefs.getString(_storageKey);
     if (jsonString != null) {
       final List<dynamic> jsonList = json.decode(jsonString);
-      final parsed = jsonList.map((e) => WatchlistEntry(
-        animeId: e['animeId'],
-        title: e['title'],
-        imageUrl: e['imageUrl'],
-        episodesWatched: e['episodesWatched'],
-        totalEpisodes: e['totalEpisodes'],
-        status: WatchStatus.values[e['status']],
-        notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
-        autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
-        note: e['note'],
-        rating: (e['rating'] as num?)?.toDouble(),
-        anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
-        addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
-      )).toList();
+      final parsed = jsonList
+          .map(
+            (e) => WatchlistEntry(
+              animeId: e['animeId'],
+              title: e['title'],
+              imageUrl: e['imageUrl'],
+              episodesWatched: e['episodesWatched'],
+              totalEpisodes: e['totalEpisodes'],
+              status: WatchStatus.values[e['status']],
+              notificationsEnabled:
+                  (e['notificationsEnabled'] as bool?) ?? false,
+              autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
+              note: e['note'],
+              rating: (e['rating'] as num?)?.toDouble(),
+              anilistId: e['anilistId'] is int
+                  ? e['anilistId'] as int
+                  : (e['anilistId'] != null
+                        ? int.tryParse(e['anilistId'].toString())
+                        : null),
+              addedAt: e['addedAt'] != null
+                  ? DateTime.tryParse(e['addedAt'])
+                  : DateTime.now(),
+            ),
+          )
+          .toList();
       watchlist.replaceAll(parsed);
     }
   }
 
   Future<void> saveWatchlist() async {
     final prefs = await SharedPreferences.getInstance();
-    final jsonList = watchlist.entries.map((e) => {
-      'animeId': e.animeId,
-      'title': e.title,
-      'imageUrl': e.imageUrl,
-      'episodesWatched': e.episodesWatched,
-      'totalEpisodes': e.totalEpisodes,
-      'status': e.status.index,
-      'notificationsEnabled': e.notificationsEnabled,
-      'autoSyncTotal': e.autoSyncTotal,
-      'note': e.note,
-      'rating': e.rating,
-      'anilistId': e.anilistId,
-      'addedAt': e.addedAt?.toIso8601String(),
-    }).toList();
+    final jsonList = watchlist.entries
+        .map(
+          (e) => {
+            'animeId': e.animeId,
+            'title': e.title,
+            'imageUrl': e.imageUrl,
+            'episodesWatched': e.episodesWatched,
+            'totalEpisodes': e.totalEpisodes,
+            'status': e.status.index,
+            'notificationsEnabled': e.notificationsEnabled,
+            'autoSyncTotal': e.autoSyncTotal,
+            'note': e.note,
+            'rating': e.rating,
+            'anilistId': e.anilistId,
+            'addedAt': e.addedAt?.toIso8601String(),
+          },
+        )
+        .toList();
     await prefs.setString(_storageKey, json.encode(jsonList));
   }
 
   Future<String> exportToJson() async {
-    final jsonList = watchlist.entries.map((e) => {
-      'animeId': e.animeId,
-      'title': e.title,
-      'imageUrl': e.imageUrl,
-      'episodesWatched': e.episodesWatched,
-      'totalEpisodes': e.totalEpisodes,
-      'status': e.status.index,
-      'notificationsEnabled': e.notificationsEnabled,
-      'note': e.note,
-      'rating': e.rating,
-      'anilistId': e.anilistId,
-      'addedAt': e.addedAt?.toIso8601String(),
-    }).toList();
+    final jsonList = watchlist.entries
+        .map(
+          (e) => {
+            'animeId': e.animeId,
+            'title': e.title,
+            'imageUrl': e.imageUrl,
+            'episodesWatched': e.episodesWatched,
+            'totalEpisodes': e.totalEpisodes,
+            'status': e.status.index,
+            'notificationsEnabled': e.notificationsEnabled,
+            'note': e.note,
+            'rating': e.rating,
+            'anilistId': e.anilistId,
+            'addedAt': e.addedAt?.toIso8601String(),
+          },
+        )
+        .toList();
     return json.encode(jsonList);
   }
 
@@ -195,7 +251,9 @@ class WatchlistService {
       if (extracted != null) {
         try {
           decoded = json.decode(extracted);
-          if (kDebugMode) print('Watchlist import: used extracted JSON array fallback');
+          if (kDebugMode) {
+            print('Watchlist import: used extracted JSON array fallback');
+          }
         } catch (e2) {
           rethrow;
         }
@@ -206,9 +264,9 @@ class WatchlistService {
 
     List<dynamic> jsonList;
     if (decoded is List) {
-      jsonList = decoded as List<dynamic>;
+      jsonList = decoded;
     } else if (decoded is Map<String, dynamic>) {
-      final map = decoded as Map<String, dynamic>;
+      final map = decoded;
       if (map['watchlist'] is List) {
         jsonList = map['watchlist'] as List<dynamic>;
       } else if (map['favorites'] is List) {
@@ -226,40 +284,55 @@ class WatchlistService {
             'notificationsEnabled': _parseBool(m['notificationsEnabled']),
             'note': null,
             'rating': null,
-            'anilistId': m['anilistId'], // Try to forward ID if present in newer exports
+            'anilistId':
+                m['anilistId'], // Try to forward ID if present in newer exports
             'addedAt': m['addedDate'],
           };
         }).toList();
       } else {
         // fallback: try to find the first list value in the object
-        final firstList = map.values.firstWhere((v) => v is List, orElse: () => null);
-        if (firstList != null) {
-          jsonList = firstList as List<dynamic>;
+        final candidates = map.values.whereType<List>().toList();
+        if (candidates.isNotEmpty) {
+          jsonList = candidates.first as List<dynamic>;
         } else {
-          throw FormatException('Unsupported JSON structure for watchlist import');
+          throw const FormatException(
+            'Unsupported JSON structure for watchlist import',
+          );
         }
       }
     } else {
-      throw FormatException('Unsupported JSON structure for watchlist import');
+      throw const FormatException(
+        'Unsupported JSON structure for watchlist import',
+      );
     }
 
-    final parsed = jsonList.map((e) => WatchlistEntry(
-      animeId: e['animeId'],
-      title: e['title'],
-      imageUrl: e['imageUrl'],
-      episodesWatched: e['episodesWatched'],
-      totalEpisodes: e['totalEpisodes'],
-      status: WatchStatus.values[e['status']],
-      notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
-      autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
-      note: e['note'],
-      rating: (e['rating'] as num?)?.toDouble(),
-      anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
-      addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
-    )).toList();
+    final parsed = jsonList
+        .map(
+          (e) => WatchlistEntry(
+            animeId: e['animeId'],
+            title: e['title'],
+            imageUrl: e['imageUrl'],
+            episodesWatched: e['episodesWatched'],
+            totalEpisodes: e['totalEpisodes'],
+            status: WatchStatus.values[e['status']],
+            notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
+            autoSyncTotal: (e['autoSyncTotal'] as bool?) ?? true,
+            note: e['note'],
+            rating: (e['rating'] as num?)?.toDouble(),
+            anilistId: e['anilistId'] is int
+                ? e['anilistId'] as int
+                : (e['anilistId'] != null
+                      ? int.tryParse(e['anilistId'].toString())
+                      : null),
+            addedAt: e['addedAt'] != null
+                ? DateTime.tryParse(e['addedAt'])
+                : DateTime.now(),
+          ),
+        )
+        .toList();
     watchlist.replaceAll(parsed);
     await saveWatchlist();
-    
+
     // Trigger auto-link for newly imported entries
     _triggerAutoLinkBackground();
   }
@@ -294,7 +367,11 @@ class WatchlistService {
       if (extracted != null) {
         try {
           decoded = json.decode(extracted);
-          if (kDebugMode) print('Watchlist importFromJsonFilePath: used extracted JSON array fallback');
+          if (kDebugMode) {
+            print(
+              'Watchlist importFromJsonFilePath: used extracted JSON array fallback',
+            );
+          }
         } catch (e2) {
           rethrow;
         }
@@ -305,9 +382,9 @@ class WatchlistService {
 
     List<dynamic> jsonList;
     if (decoded is List) {
-      jsonList = decoded as List<dynamic>;
+      jsonList = decoded;
     } else if (decoded is Map<String, dynamic>) {
-      final map = decoded as Map<String, dynamic>;
+      final map = decoded;
       if (map['watchlist'] is List) {
         jsonList = map['watchlist'] as List<dynamic>;
       } else if (map['favorites'] is List) {
@@ -329,15 +406,19 @@ class WatchlistService {
           };
         }).toList();
       } else {
-        final firstList = map.values.firstWhere((v) => v is List, orElse: () => null);
-        if (firstList != null) {
-          jsonList = firstList as List<dynamic>;
+        final candidates = map.values.whereType<List>().toList();
+        if (candidates.isNotEmpty) {
+          jsonList = candidates.first as List<dynamic>;
         } else {
-          throw FormatException('Unsupported JSON structure for watchlist import');
+          throw const FormatException(
+            'Unsupported JSON structure for watchlist import',
+          );
         }
       }
     } else {
-      throw FormatException('Unsupported JSON structure for watchlist import');
+      throw const FormatException(
+        'Unsupported JSON structure for watchlist import',
+      );
     }
 
     int importedCount = 0;
@@ -353,8 +434,14 @@ class WatchlistService {
           notificationsEnabled: (e['notificationsEnabled'] as bool?) ?? false,
           note: e['note'],
           rating: (e['rating'] as num?)?.toDouble(),
-          anilistId: e['anilistId'] is int ? e['anilistId'] as int : (e['anilistId'] != null ? int.tryParse(e['anilistId'].toString()) : null),
-          addedAt: e['addedAt'] != null ? DateTime.tryParse(e['addedAt']) : DateTime.now(),
+          anilistId: e['anilistId'] is int
+              ? e['anilistId'] as int
+              : (e['anilistId'] != null
+                    ? int.tryParse(e['anilistId'].toString())
+                    : null),
+          addedAt: e['addedAt'] != null
+              ? DateTime.tryParse(e['addedAt'])
+              : DateTime.now(),
         );
 
         final exists = watchlist.entries.any((x) => x.animeId == entry.animeId);
@@ -384,13 +471,18 @@ class WatchlistService {
       final jsonString = await exportToJson();
       final directory = await getApplicationDocumentsDirectory();
       final ts = DateTime.now();
-      final fileName = 'watchlist_backup_${ts.year.toString().padLeft(4, '0')}${ts.month.toString().padLeft(2, '0')}${ts.day.toString().padLeft(2, '0')}_${ts.hour.toString().padLeft(2, '0')}${ts.minute.toString().padLeft(2, '0')}${ts.second.toString().padLeft(2, '0')}.json';
+      final fileName =
+          'watchlist_backup_${ts.year.toString().padLeft(4, '0')}${ts.month.toString().padLeft(2, '0')}${ts.day.toString().padLeft(2, '0')}_${ts.hour.toString().padLeft(2, '0')}${ts.minute.toString().padLeft(2, '0')}${ts.second.toString().padLeft(2, '0')}.json';
       final file = File('${directory.path}/$fileName');
       await file.writeAsString(jsonString);
-      if (kDebugMode) print('💾 Watchlist backup written to ${file.path}');
+      if (kDebugMode) {
+        print('💾 Watchlist backup written to ${file.path}');
+      }
       return file.path;
     } catch (e) {
-      if (kDebugMode) print('❌ Failed to backup watchlist: $e');
+      if (kDebugMode) {
+        print('❌ Failed to backup watchlist: $e');
+      }
       return null;
     }
   }
@@ -410,12 +502,16 @@ class WatchlistService {
 
     for (final fav in favorites) {
       try {
-        if (!fav.notificationsEnabled) continue;
+        if (!fav.notificationsEnabled) {
+          continue;
+        }
 
         // Versuche Match per seriesUrl, fallback auf Titel-Vergleich
         final matches = watchlist.entries.where((e) {
           if (fav.seriesUrl != null && fav.seriesUrl!.isNotEmpty) {
-            if (e.animeId == fav.seriesUrl) return true;
+            if (e.animeId == fav.seriesUrl) {
+              return true;
+            }
           }
           return e.title.toLowerCase() == fav.title.toLowerCase();
         }).toList();
@@ -446,7 +542,9 @@ class WatchlistService {
       }
     }
 
-    if (changes > 0) await saveWatchlist();
+    if (changes > 0) {
+      await saveWatchlist();
+    }
     return changes;
   }
 
@@ -455,11 +553,19 @@ class WatchlistService {
   void _triggerAutoLinkBackground() {
     // Run unawaited in microtask to not block caller
     Future.microtask(() async {
-      if (kDebugMode) print('🔄 Auto-Link: Starting background check for unlinked entries...');
-      
-      final candidates = watchlist.entries.where((e) => e.anilistId == null).toList();
+      if (kDebugMode) {
+        print(
+          '🔄 Auto-Link: Starting background check for unlinked entries...',
+        );
+      }
+
+      final candidates = watchlist.entries
+          .where((e) => e.anilistId == null)
+          .toList();
       if (candidates.isEmpty) {
-        if (kDebugMode) print('✅ Auto-Link: No unlinked entries found.');
+        if (kDebugMode) {
+          print('✅ Auto-Link: No unlinked entries found.');
+        }
         return;
       }
 
@@ -468,17 +574,19 @@ class WatchlistService {
 
       for (final entry in candidates) {
         // Double check if it was linked in the meantime
-        if (entry.anilistId != null) continue;
+        if (entry.anilistId != null) {
+          continue;
+        }
 
         try {
           final match = await anilist.findBestMatch(entry.title);
-          
+
           if (match != null) {
             entry.anilistId = match.id;
-            
+
             // Save to cache so predictor can find it
             // Use animeId if available as primary key, or title as fallback
-            final cacheKey = normalizeTitle(entry.animeId ?? entry.title);
+            final cacheKey = normalizeTitle(entry.animeId);
             try {
               final cache = AnilistCache();
               await cache.save(cacheKey, match);
@@ -487,25 +595,33 @@ class WatchlistService {
             // Update the entry in the central list (reference should be same, but to be safe use updateEntry)
             watchlist.updateEntry(entry);
             linkedCount++;
-            
+
             // Save periodically every 5 updates to persist progress
             if (linkedCount % 5 == 0) {
               await saveWatchlist();
             }
-            
+
             // Artificial delay to be gentle with API even with rate limiter
             await Future.delayed(const Duration(milliseconds: 500));
           }
         } catch (e) {
-          if (kDebugMode) print('❌ Auto-Link failed for "${entry.title}": $e');
+          if (kDebugMode) {
+            print('❌ Auto-Link failed for "${entry.title}": $e');
+          }
         }
       }
 
       if (linkedCount > 0) {
         await saveWatchlist();
-        if (kDebugMode) print('✅ Auto-Link: Completed. Successfully linked $linkedCount entries.');
+        if (kDebugMode) {
+          print(
+            '✅ Auto-Link: Completed. Successfully linked $linkedCount entries.',
+          );
+        }
       } else {
-        if (kDebugMode) print('ℹ️ Auto-Link: Completed. No confident matches found.');
+        if (kDebugMode) {
+          print('ℹ️ Auto-Link: Completed. No confident matches found.');
+        }
       }
     });
   }

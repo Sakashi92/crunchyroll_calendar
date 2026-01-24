@@ -13,7 +13,7 @@ import '../models/watchlist.dart';
 import '../services/permission_service.dart';
 import '../repositories/notification_repository.dart';
 import '../models/notification_log.dart';
-import '../settings.dart';
+import '../services/app_settings_service.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
@@ -49,17 +49,17 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _loadSettings() async {
-    final imageQuality = await AppSettings.getImageQuality();
-    final updateInterval = await AppSettings.getUpdateIntervalMinutes();
-    final autoTranslate = await AppSettings.getAutoTranslate();
-    final accentColor = await AppSettings.getAccentColor();
-    final notificationDelay = await AppSettings.getNotificationDelaySeconds();
-    final showRefreshMessage = await AppSettings.getShowRefreshMessage();
-    final autoMinimizeCalendar = await AppSettings.getAutoMinimizeCalendar();
-    final autoMinimizeScrollThreshold = await AppSettings.getAutoMinimizeScrollThreshold();
-    final hideDuplicateReleases = await AppSettings.getHideDuplicateReleases();
-    final episodeProvider = await AppSettings.getEpisodeProviderName();
-    final predictionEnabled = await AppSettings.getPredictionEnabled();
+    final imageQuality = await AppSettingsService.getImageQuality();
+    final updateInterval = await AppSettingsService.getUpdateIntervalMinutes();
+    final autoTranslate = await AppSettingsService.getAutoTranslate();
+    final accentColor = await AppSettingsService.getAccentColor();
+    final notificationDelay = await AppSettingsService.getNotificationDelaySeconds();
+    final showRefreshMessage = await AppSettingsService.getShowRefreshMessage();
+    final autoMinimizeCalendar = await AppSettingsService.getAutoMinimizeCalendar();
+    final autoMinimizeScrollThreshold = await AppSettingsService.getAutoMinimizeScrollThreshold();
+    final hideDuplicateReleases = await AppSettingsService.getHideDuplicateReleases();
+    final episodeProvider = await AppSettingsService.getEpisodeProviderName();
+    final predictionEnabled = await AppSettingsService.getPredictionEnabled();
     final permissions = await PermissionService().checkAllPermissions();
     
     setState(() {
@@ -80,7 +80,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveEpisodeProvider(String name) async {
-    await AppSettings.setEpisodeProviderName(name);
+    await AppSettingsService.setEpisodeProviderName(name);
     setState(() {
       _episodeProvider = name;
     });
@@ -89,7 +89,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveImageQuality(String quality) async {
-    await AppSettings.setImageQuality(quality);
+    await AppSettingsService.setImageQuality(quality);
     setState(() {
       _imageQuality = quality;
     });
@@ -106,8 +106,8 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveUpdateInterval(int minutes) async {
-    final previous = await AppSettings.getUpdateIntervalMinutes();
-    await AppSettings.setUpdateIntervalMinutes(minutes);
+    final previous = await AppSettingsService.getUpdateIntervalMinutes();
+    await AppSettingsService.setUpdateIntervalMinutes(minutes);
     setState(() {
       _updateIntervalMinutes = minutes;
     });
@@ -131,7 +131,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Update-Intervall auf ${AppSettings.updateIntervals[minutes]} geändert.'),
+          content: Text('Update-Intervall auf ${AppSettingsService.updateIntervals[minutes]} geändert.'),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -139,7 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveAutoMinimizeCalendar(bool enabled) async {
-    await AppSettings.setAutoMinimizeCalendar(enabled);
+    await AppSettingsService.setAutoMinimizeCalendar(enabled);
     setState(() {
       _autoMinimizeCalendar = enabled;
     });
@@ -155,7 +155,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveAutoMinimizeScrollThreshold(double pixels) async {
-    await AppSettings.setAutoMinimizeScrollThreshold(pixels);
+    await AppSettingsService.setAutoMinimizeScrollThreshold(pixels);
     setState(() {
       _autoMinimizeScrollThreshold = pixels;
     });
@@ -171,7 +171,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _saveHideDuplicateReleases(bool enabled) async {
-    await AppSettings.setHideDuplicateReleases(enabled);
+    await AppSettingsService.setHideDuplicateReleases(enabled);
     setState(() {
       _hideDuplicateReleases = enabled;
     });
@@ -187,7 +187,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _savePredictionEnabled(bool enabled) async {
-    await AppSettings.setPredictionEnabled(enabled);
+    await AppSettingsService.setPredictionEnabled(enabled);
     setState(() {
       _predictionEnabled = enabled;
     });
@@ -264,7 +264,7 @@ class _SettingsPageState extends State<SettingsPage> {
       if (kDebugMode) print('Error reloading CrunchyrollService cache: $e');
     }
     try {
-      final predictionEnabled = await AppSettings.getPredictionEnabled();
+      final predictionEnabled = await AppSettingsService.getPredictionEnabled();
       if (predictionEnabled) {
         try {
           await cs.removeAllPredictedReleases();
@@ -691,7 +691,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.high_quality),
       title: const Text('Cover-Bildqualität'),
-      subtitle: Text(AppSettings.imageQualities[_imageQuality] ?? 'Unbekannt'),
+      subtitle: Text(AppSettingsService.imageQualities[_imageQuality] ?? 'Unbekannt'),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showImageQualityDialog(),
     );
@@ -702,7 +702,7 @@ class _SettingsPageState extends State<SettingsPage> {
       leading: const Icon(Icons.refresh),
       title: const Text('Update-Intervall'),
       subtitle: Text(
-        'Crunchyroll wird alle ${AppSettings.updateIntervals[_updateIntervalMinutes]} auf neue Einträge überprüft',
+        'Crunchyroll wird alle ${AppSettingsService.updateIntervals[_updateIntervalMinutes]} auf neue Einträge überprüft',
       ),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showUpdateIntervalDialog(),
@@ -716,7 +716,7 @@ class _SettingsPageState extends State<SettingsPage> {
       subtitle: const Text('Beschreibungen automatisch ins Deutsche übersetzen'),
       value: _autoTranslate,
       onChanged: (value) async {
-        await AppSettings.setAutoTranslate(value);
+        await AppSettingsService.setAutoTranslate(value);
         setState(() {
           _autoTranslate = value;
         });
@@ -767,7 +767,7 @@ class _SettingsPageState extends State<SettingsPage> {
       subtitle: const Text('Meldung nach dem Aktualisieren anzeigen'),
       value: _showRefreshMessage,
       onChanged: (value) async {
-        await AppSettings.setShowRefreshMessage(value);
+        await AppSettingsService.setShowRefreshMessage(value);
         setState(() {
           _showRefreshMessage = value;
         });
@@ -849,7 +849,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildTestFavoritesNotificationsTile() {
-    final delayText = AppSettings.notificationDelays[_notificationDelaySeconds] ?? 'Sofort';
+    final delayText = AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort';
     return ListTile(
       leading: const Icon(Icons.notifications_active),
       title: const Text('🔔 Test: Favoriten-Benachrichtigungen'),
@@ -925,21 +925,21 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.schedule),
       title: const Text('Benachrichtigungs-Verzögerung'),
-      subtitle: Text('${AppSettings.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}'),
+      subtitle: Text('${AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}'),
       trailing: DropdownButton<int>(
         value: _notificationDelaySeconds,
         underline: Container(),
-        items: AppSettings.notificationDelays.entries.map((entry) {
+        items: AppSettingsService.notificationDelays.entries.map((entry) {
           return DropdownMenuItem<int>(value: entry.key, child: Text(entry.value));
         }).toList(),
         onChanged: (int? newValue) async {
           if (newValue != null) {
-            await AppSettings.setNotificationDelaySeconds(newValue);
+            await AppSettingsService.setNotificationDelaySeconds(newValue);
             setState(() {
               _notificationDelaySeconds = newValue;
             });
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Verzögerung auf ${AppSettings.notificationDelays[newValue]} eingestellt'), duration: const Duration(seconds: 2)));
+              ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('✓ Verzögerung auf ${AppSettingsService.notificationDelays[newValue]} eingestellt'), duration: const Duration(seconds: 2)));
             }
           }
         },
@@ -963,7 +963,7 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('Bildqualität wählen'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: AppSettings.imageQualities.entries.map((entry) {
+          children: AppSettingsService.imageQualities.entries.map((entry) {
             return RadioListTile<String>(
               title: Text(entry.value),
               value: entry.key,
@@ -1005,7 +1005,7 @@ class _SettingsPageState extends State<SettingsPage> {
         title: const Text('Update-Intervall wählen'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
-          children: AppSettings.updateIntervals.entries.map((entry) {
+          children: AppSettingsService.updateIntervals.entries.map((entry) {
             return RadioListTile<int>(
               title: Text(entry.value),
               value: entry.key,
@@ -1046,7 +1046,7 @@ class _SettingsPageState extends State<SettingsPage> {
           Wrap(
             spacing: 12,
             runSpacing: 12,
-            children: AppSettings.accentColors.map((color) {
+            children: AppSettingsService.accentColors.map((color) {
               final isSelected = _accentColor.value == color.value;
               return GestureDetector(
                 onTap: () => _selectAccentColor(color),
@@ -1067,7 +1067,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _selectAccentColor(Color color) async {
-    await AppSettings.setAccentColor(color);
+    await AppSettingsService.setAccentColor(color);
     setState(() { _accentColor = color; });
     widget.onSettingsChanged?.call();
     if (mounted) {

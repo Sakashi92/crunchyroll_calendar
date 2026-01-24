@@ -2,7 +2,7 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:flutter/foundation.dart';
-import '../settings.dart';
+import '../services/app_settings_service.dart';
 
 /// Service für lokale Benachrichtigungen
 /// Zeigt Benachrichtigungen an wenn neue Releases verfügbar sind
@@ -304,7 +304,7 @@ class NotificationService {
 
     try {
       // Lade die Verzögerung aus den Einstellungen
-      final delaySeconds = await AppSettings.getNotificationDelaySeconds();
+      final delaySeconds = await AppSettingsService.getNotificationDelaySeconds();
       if (kDebugMode) print('⏱️ [NOTIF] Using notification delay: ${delaySeconds}s');
 
       // Sende für jedes Favorit eine Benachrichtigung

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -15,14 +14,14 @@ import '../services/next_episode_predictor.dart';
 import '../services/anilist_service.dart';
 import '../services/anilist_cache.dart';
 import '../utils/title_utils.dart';
-import '../settings.dart';
+import '../services/app_settings_service.dart';
 
 // Sorting modes for the watchlist
 enum SortMode { addedAtDesc, alphabet, status }
 
 class WatchlistPage extends StatefulWidget {
   final WatchlistService service;
-  const WatchlistPage({Key? key, required this.service}) : super(key: key);
+  const WatchlistPage({super.key, required this.service});
 
   @override
   State<WatchlistPage> createState() => _WatchlistPageState();
@@ -35,9 +34,11 @@ class _WatchlistPageState extends State<WatchlistPage> {
   bool _fabVisible = true;
   late ScrollController _scrollController;
 
-  
-
-  Future<int?> _promptForEpisodeNumber(BuildContext ctx, String title, int initial) async {
+  Future<int?> _promptForEpisodeNumber(
+    BuildContext ctx,
+    String title,
+    int initial,
+  ) async {
     final controller = TextEditingController(text: initial.toString());
     return await showDialog<int?>(
       context: ctx,
@@ -50,11 +51,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
           decoration: InputDecoration(labelText: 'Folgenanzahl'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dCtx, null), child: Text('Abbrechen')),
-          ElevatedButton(onPressed: () {
-            final v = int.tryParse(controller.text.trim());
-            Navigator.pop(dCtx, v ?? initial);
-          }, child: Text('OK')),
+          TextButton(
+            onPressed: () => Navigator.pop(dCtx, null),
+            child: Text('Abbrechen'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final v = int.tryParse(controller.text.trim());
+              Navigator.pop(dCtx, v ?? initial);
+            },
+            child: Text('OK'),
+          ),
         ],
       ),
     );
@@ -69,20 +76,25 @@ class _WatchlistPageState extends State<WatchlistPage> {
     // Load watchlist and refresh totals asynchronously
     _initAsync();
     // Load saved sort mode then apply
-    AppSettings.getWatchlistSortModeIndex().then((idx) {
-      if (!mounted) return;
-      setState(() {
-        _sortMode = SortMode.values.elementAt(idx.clamp(0, SortMode.values.length - 1));
-        _applySort();
-      });
-    }).catchError((e) {
-      if (kDebugMode) print('Failed to load saved watchlist sort mode: $e');
-      _applySort();
-    });
+    AppSettingsService.getWatchlistSortModeIndex()
+        .then((idx) {
+          if (!mounted) return;
+          setState(() {
+            _sortMode = SortMode.values.elementAt(
+              idx.clamp(0, SortMode.values.length - 1),
+            );
+            _applySort();
+          });
+        })
+        .catchError((e) {
+          if (kDebugMode) print('Failed to load saved watchlist sort mode: $e');
+          _applySort();
+        });
     _scrollController = ScrollController();
     _scrollController.addListener(() {
       try {
-        final dirStr = _scrollController.position.userScrollDirection.toString();
+        final dirStr = _scrollController.position.userScrollDirection
+            .toString();
         if (dirStr.contains('reverse') && _fabVisible) {
           setState(() => _fabVisible = false);
         } else if (dirStr.contains('forward') && !_fabVisible) {
@@ -170,8 +182,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
         return 'Pausiert';
       case WatchStatus.dropped:
         return 'Abgebrochen';
-      default:
-        return s.name;
     }
   }
 
@@ -183,7 +193,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
         return db.compareTo(da); // newest first
       });
     } else if (_sortMode == SortMode.alphabet) {
-      _displayEntries.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+      _displayEntries.sort(
+        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+      );
     } else if (_sortMode == SortMode.status) {
       _displayEntries.sort((a, b) => a.status.index.compareTo(b.status.index));
     }
@@ -213,59 +225,101 @@ class _WatchlistPageState extends State<WatchlistPage> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(controller: titleController, decoration: InputDecoration(labelText: 'Titel')),
+              TextField(
+                controller: titleController,
+                decoration: InputDecoration(labelText: 'Titel'),
+              ),
               const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(child: Text('Gesehene Folgen')),
-                  IconButton(onPressed: () { if (episodes>0) setState(() => episodes--); }, icon: Icon(Icons.remove_circle_outline)),
+                  IconButton(
+                    onPressed: () {
+                      if (episodes > 0) setState(() => episodes--);
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
                   InkWell(
                     onTap: () async {
-                      final v = await _promptForEpisodeNumber(context, 'Gesehene Folgen eingeben', episodes);
+                      final v = await _promptForEpisodeNumber(
+                        context,
+                        'Gesehene Folgen eingeben',
+                        episodes,
+                      );
                       if (v != null) setState(() => episodes = v);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
                       child: Text('$episodes', style: TextStyle(fontSize: 16)),
                     ),
                   ),
-                  IconButton(onPressed: () => setState(() => episodes++), icon: Icon(Icons.add_circle_outline)),
+                  IconButton(
+                    onPressed: () => setState(() => episodes++),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
                 ],
               ),
               Row(
                 children: [
                   Expanded(child: Text('Gesamtfolgen')),
-                  IconButton(onPressed: () { if (total>0) setState(() => total--); }, icon: Icon(Icons.remove_circle_outline)),
+                  IconButton(
+                    onPressed: () {
+                      if (total > 0) {
+                        setState(() => total--);
+                      }
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
                   InkWell(
                     onTap: () async {
-                      final v = await _promptForEpisodeNumber(context, 'Gesamtfolgen eingeben', total);
+                      final v = await _promptForEpisodeNumber(
+                        context,
+                        'Gesamtfolgen eingeben',
+                        total,
+                      );
                       if (v != null) setState(() => total = v);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
                       child: Text('$total', style: TextStyle(fontSize: 16)),
                     ),
                   ),
-                  IconButton(onPressed: () => setState(() => total++), icon: Icon(Icons.add_circle_outline)),
+                  IconButton(
+                    onPressed: () => setState(() => total++),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
                 ],
               ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Abbrechen')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Abbrechen'),
+            ),
             ElevatedButton(
-
               onPressed: () async {
                 final crunch = CrunchyrollService(); // Needed for predictor
-                
+
                 // Try auto-link
                 int? autoId;
                 try {
-                  final best = await AnilistService().findBestMatch(titleController.text);
+                  final best = await AnilistService().findBestMatch(
+                    titleController.text,
+                  );
                   if (best != null) {
                     autoId = best.id;
-                    if (kDebugMode) print('✅ Auto-linked "${titleController.text}" to AniList ID: $autoId');
-                    
+                    if (kDebugMode)
+                      print(
+                        '✅ Auto-linked "${titleController.text}" to AniList ID: $autoId',
+                      );
+
                     // Save to cache so predictor can find it
                     final cache = AnilistCache();
                     final key = normalizeTitle(titleController.text);
@@ -274,7 +328,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 } catch (_) {}
 
                 final entry = WatchlistEntry(
-                  animeId: titleController.text, // Use title as ID for manual adds
+                  animeId:
+                      titleController.text, // Use title as ID for manual adds
                   title: titleController.text,
                   episodesWatched: episodes,
                   totalEpisodes: total,
@@ -285,18 +340,30 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 );
                 watchlist.addEntry(entry);
                 widget.service.saveWatchlist();
-                Navigator.pop(ctx);
-                
+                if (mounted) {
+                  Navigator.pop(ctx);
+                }
+
                 if (autoId != null && mounted) {
-                   ScaffoldMessenger.of(context).showSnackBar(
-                     SnackBar(content: Text('Automatisch mit AniList verknüpft (ID: $autoId)')),
-                   );
-                   
-                   // Trigger prediction refresh immediately
-                   try {
-                      final predictor = NextEpisodePredictor(crunch, AnilistService());
-                      await predictor.predictNextForSeries(entry.animeId, entry.title);
-                   } catch (_) {}
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Automatisch mit AniList verknüpft (ID: $autoId)',
+                      ),
+                    ),
+                  );
+
+                  // Trigger prediction refresh immediately
+                  try {
+                    final predictor = NextEpisodePredictor(
+                      crunch,
+                      AnilistService(),
+                    );
+                    await predictor.predictNextForSeries(
+                      entry.animeId,
+                      entry.title,
+                    );
+                  } catch (_) {}
                 }
               },
               child: Text('Hinzufügen'),
@@ -306,7 +373,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
       ),
     );
   }
-
 
   Future<void> _toggleNotifications(WatchlistEntry entry, bool enabled) async {
     // Optimistic update
@@ -339,35 +405,77 @@ class _WatchlistPageState extends State<WatchlistPage> {
               Row(
                 children: [
                   Expanded(child: Text('Gesehene Folgen')),
-                  IconButton(onPressed: () { if (episodes>0) setState(() => episodes--); }, icon: Icon(Icons.remove_circle_outline)),
+                  IconButton(
+                    onPressed: () {
+                      if (episodes > 0) setState(() => episodes--);
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
                   InkWell(
                     onTap: () async {
-                      final v = await _promptForEpisodeNumber(ctx, 'Gesehene Folgen eingeben', episodes);
+                      final v = await _promptForEpisodeNumber(
+                        ctx,
+                        'Gesehene Folgen eingeben',
+                        episodes,
+                      );
                       if (v != null) setState(() => episodes = v);
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
                       child: Text('$episodes', style: TextStyle(fontSize: 16)),
                     ),
                   ),
-                  IconButton(onPressed: () => setState(() => episodes++), icon: Icon(Icons.add_circle_outline)),
+                  IconButton(
+                    onPressed: () => setState(() => episodes++),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
                 ],
               ),
               Row(
                 children: [
                   Expanded(child: Text('Gesamtfolgen')),
-                  IconButton(onPressed: () { if (total>0) setState(() { total--; autoSync = false; }); }, icon: Icon(Icons.remove_circle_outline)),
+                  IconButton(
+                    onPressed: () {
+                      if (total > 0) {
+                        setState(() {
+                          total--;
+                          autoSync = false;
+                        });
+                      }
+                    },
+                    icon: Icon(Icons.remove_circle_outline),
+                  ),
                   InkWell(
                     onTap: () async {
-                      final v = await _promptForEpisodeNumber(ctx, 'Gesamtfolgen eingeben', total);
-                      if (v != null) setState(() { total = v; autoSync = false; });
+                      final v = await _promptForEpisodeNumber(
+                        ctx,
+                        'Gesamtfolgen eingeben',
+                        total,
+                      );
+                      if (v != null)
+                        setState(() {
+                          total = v;
+                          autoSync = false;
+                        });
                     },
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8.0,
+                        vertical: 4.0,
+                      ),
                       child: Text('$total', style: TextStyle(fontSize: 16)),
                     ),
                   ),
-                  IconButton(onPressed: () => setState(() { total++; autoSync = false; }), icon: Icon(Icons.add_circle_outline)),
+                  IconButton(
+                    onPressed: () => setState(() {
+                      total++;
+                      autoSync = false;
+                    }),
+                    icon: Icon(Icons.add_circle_outline),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -386,12 +494,16 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         if (v) {
                           try {
                             final crunch = CrunchyrollService();
-                            final known = await crunch.getMaxEpisodeForSeries(entry.animeId, entry.title);
+                            final known = await crunch.getMaxEpisodeForSeries(
+                              entry.animeId,
+                              entry.title,
+                            );
                             if (known != null && known > total) {
                               if (mounted) setState(() => total = known);
                             }
                           } catch (e) {
-                            if (kDebugMode) print('Error fetching max episode on toggle: $e');
+                            if (kDebugMode)
+                              print('Error fetching max episode on toggle: $e');
                           }
                         }
                       },
@@ -401,14 +513,31 @@ class _WatchlistPageState extends State<WatchlistPage> {
               ),
               DropdownButton<WatchStatus>(
                 value: status,
-                items: WatchStatus.values.map((s) => DropdownMenuItem(value: s, child: Text(_statusLabel(s)))).toList(),
-                onChanged: (s) { if (s != null) setState(() => status = s); },
+                items: WatchStatus.values
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(_statusLabel(s)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (s) {
+                  if (s != null) {
+                    setState(() => status = s);
+                  }
+                },
               ),
-              TextField(controller: noteController, decoration: InputDecoration(labelText: 'Notiz')),
+              TextField(
+                controller: noteController,
+                decoration: InputDecoration(labelText: 'Notiz'),
+              ),
             ],
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx), child: Text('Abbrechen')),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: Text('Abbrechen'),
+            ),
             ElevatedButton(
               onPressed: () {
                 final newEntry = WatchlistEntry(
@@ -435,6 +564,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
       ),
     );
   }
+
   void _exportJson() async {
     if (watchlist.entries.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -449,7 +579,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
     try {
       final jsonString = await widget.service.exportToJson();
 
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').split('.')[0];
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
       final suggestedFileName = 'crunchyroll_watchlist_$timestamp.json';
       final bytes = utf8.encode(jsonString);
 
@@ -485,28 +618,53 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
                 ),
                 const SizedBox(height: 4),
-                Text(outputPath, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+                Text(
+                  outputPath,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                ),
               ],
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, 'close'), child: const Text('Schließen')),
-              ElevatedButton.icon(onPressed: () => Navigator.pop(context, 'share'), icon: const Icon(Icons.share), label: const Text('Teilen')),
+              TextButton(
+                onPressed: () => Navigator.pop(context, 'close'),
+                child: const Text('Schließen'),
+              ),
+              ElevatedButton.icon(
+                onPressed: () => Navigator.pop(context, 'share'),
+                icon: const Icon(Icons.share),
+                label: const Text('Teilen'),
+              ),
             ],
           ),
         );
 
         if (result == 'share') {
           try {
-            await Share.shareXFiles([XFile(outputPath)], subject: 'Meine Crunchyroll Watchlist', text: 'Crunchyroll Watchlist (${watchlist.entries.length} Einträge)');
+            await Share.shareXFiles(
+              [XFile(outputPath)],
+              subject: 'Meine Crunchyroll Watchlist',
+              text:
+                  'Crunchyroll Watchlist (${watchlist.entries.length} Einträge)',
+            );
           } catch (e) {
             if (kDebugMode) print('Share error: $e');
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Fehler beim Teilen: $e')));
+            if (mounted)
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('❌ Fehler beim Teilen: $e')),
+              );
           }
         }
       }
     } catch (e) {
       if (kDebugMode) print('Export error: $e');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('❌ Fehler beim Exportieren: $e'), duration: const Duration(seconds: 3), backgroundColor: Colors.red.shade700));
+      if (mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Fehler beim Exportieren: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
     }
   }
 
@@ -545,45 +703,95 @@ class _WatchlistPageState extends State<WatchlistPage> {
         );
       }
 
-      final importedCount = await widget.service.importFromJsonFilePath(filePath);
+      final importedCount = await widget.service.importFromJsonFilePath(
+        filePath,
+      );
 
       if (mounted) Navigator.pop(context); // close loading
 
       if (importedCount > 0) {
-        if (mounted) showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [Icon(Icons.check_circle, color: Colors.green), SizedBox(width: 8), Text('Import erfolgreich')],
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text('Import erfolgreich'),
+                ],
+              ),
+              content: Text(
+                importedCount == 1
+                    ? '1 neuer Eintrag wurde importiert'
+                    : '$importedCount neue Einträge wurden importiert',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-            content: Text(importedCount == 1 ? '1 neuer Eintrag wurde importiert' : '$importedCount neue Einträge wurden importiert'),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-          ),
-        );
+          );
+        }
       } else {
-        if (mounted) showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [Icon(Icons.info, color: Colors.orange), SizedBox(width: 8), Text('Keine neuen Einträge')],
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: const Row(
+                children: [
+                  Icon(Icons.info, color: Colors.orange),
+                  SizedBox(width: 8),
+                  Text('Keine neuen Einträge'),
+                ],
+              ),
+              content: const Text(
+                'Die Datei wurde eingelesen, jedoch wurden keine neuen Einträge hinzugefügt.',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('OK'),
+                ),
+              ],
             ),
-            content: const Text('Die Datei wurde eingelesen, jedoch wurden keine neuen Einträge hinzugefügt.'),
-            actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-          ),
-        );
+          );
+        }
       }
     } catch (e) {
       // close loading dialog if open
-      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-      if (kDebugMode) print('Import error: $e');
-      if (mounted) showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Row(children: [Icon(Icons.error, color: Colors.red), SizedBox(width: 8), Text('Import fehlgeschlagen')]),
-          content: Text('Fehler beim Importieren:\n\n$e', style: const TextStyle(fontSize: 13)),
-          actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('OK'))],
-        ),
-      );
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      if (kDebugMode) {
+        print('Import error: $e');
+      }
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Row(
+              children: [
+                Icon(Icons.error, color: Colors.red),
+                SizedBox(width: 8),
+                Text('Import fehlgeschlagen'),
+              ],
+            ),
+            content: Text(
+              'Fehler beim Importieren:\n\n$e',
+              style: const TextStyle(fontSize: 13),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
     }
   }
 
@@ -615,14 +823,28 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 _applySort();
               });
               // persist selection
-              AppSettings.setWatchlistSortModeIndex(m.index).catchError((e) {
+              AppSettingsService.setWatchlistSortModeIndex(m.index).catchError((
+                e,
+              ) {
                 if (kDebugMode) print('Failed to save watchlist sort mode: $e');
               });
             },
             itemBuilder: (ctx) => [
-              CheckedPopupMenuItem(value: SortMode.addedAtDesc, checked: _sortMode == SortMode.addedAtDesc, child: Text('Datum: zuletzt hinzugefügt')),
-              CheckedPopupMenuItem(value: SortMode.alphabet, checked: _sortMode == SortMode.alphabet, child: Text('Alphabet')),
-              CheckedPopupMenuItem(value: SortMode.status, checked: _sortMode == SortMode.status, child: Text('Status')),
+              CheckedPopupMenuItem(
+                value: SortMode.addedAtDesc,
+                checked: _sortMode == SortMode.addedAtDesc,
+                child: Text('Datum: zuletzt hinzugefügt'),
+              ),
+              CheckedPopupMenuItem(
+                value: SortMode.alphabet,
+                checked: _sortMode == SortMode.alphabet,
+                child: Text('Alphabet'),
+              ),
+              CheckedPopupMenuItem(
+                value: SortMode.status,
+                checked: _sortMode == SortMode.status,
+                child: Text('Status'),
+              ),
             ],
           ),
           PopupMenuButton<String>(
@@ -673,184 +895,313 @@ class _WatchlistPageState extends State<WatchlistPage> {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                // Cover image (tappable to open details)
-                if (entry.imageUrl != null && entry.imageUrl!.isNotEmpty)
-                  InkWell(
-                    onTap: () => _openDetailsDialog(entry),
-                    child: Container(
-                      width: 120,
-                      padding: const EdgeInsets.only(top: 0.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: entry.imageUrl!,
-                              width: 120,
-                              height: 133,
-                              fit: BoxFit.cover,
-                              placeholder: (context, url) => SizedBox(width: 120, height: 138, child: Container(color: Colors.grey.shade200, child: Icon(Icons.image, color: Colors.grey.shade400))),
-                              errorWidget: (context, url, error) => SizedBox(width: 120, height: 138, child: Container(color: Colors.grey.shade200, child: Icon(Icons.broken_image, color: Colors.grey.shade400))),
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Transform.translate(
-                            offset: const Offset(0, -2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    entry.notificationsEnabled ? Icons.notifications_active : Icons.notifications_off,
-                                    color: entry.notificationsEnabled ? Theme.of(context).colorScheme.primary : Colors.grey,
-                                    size: 20,
-                                  ),
-                                  tooltip: entry.notificationsEnabled ? 'Push deaktivieren' : 'Push aktivieren',
-                                  onPressed: () => _toggleNotifications(entry, !entry.notificationsEnabled),
-                                  padding: const EdgeInsets.all(6),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 18),
-                                  tooltip: 'Bearbeiten',
-                                  onPressed: () => _showEditDialog(entry),
-                                  padding: const EdgeInsets.all(6),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  )
-                else
-                  InkWell(
-                    onTap: () => _openDetailsDialog(entry),
-                    child: Container(
-                      width: 120,
-                      padding: const EdgeInsets.only(top: 4.0),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: SizedBox(width: 120, height: 138, child: Container(color: Colors.grey.shade200, child: Icon(Icons.image_not_supported, color: Colors.grey.shade400))),
-                          ),
-                          const SizedBox(height: 4),
-                          Transform.translate(
-                            offset: const Offset(0, -2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                IconButton(
-                                  icon: Icon(
-                                    entry.notificationsEnabled ? Icons.notifications_active : Icons.notifications_off,
-                                    color: entry.notificationsEnabled ? Theme.of(context).colorScheme.primary : Colors.grey,
-                                    size: 20,
-                                  ),
-                                  tooltip: entry.notificationsEnabled ? 'Push deaktivieren' : 'Push aktivieren',
-                                  onPressed: () => _toggleNotifications(entry, !entry.notificationsEnabled),
-                                  padding: const EdgeInsets.all(6),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                ),
-                                const SizedBox(width: 4),
-                                IconButton(
-                                  icon: const Icon(Icons.edit, size: 18),
-                                  tooltip: 'Bearbeiten',
-                                  onPressed: () => _showEditDialog(entry),
-                                  padding: const EdgeInsets.all(6),
-                                  constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 6.0, bottom: 2.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(entry.title, style: Theme.of(context).textTheme.titleMedium, maxLines: 2, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text('Folgen: ${entry.episodesWatched}/${entry.totalEpisodes}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 4),
-                        Text('Status: ${_statusLabel(entry.status)}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        if (entry.anilistId != null) ...[
-                          const SizedBox(height: 4),
-                          const Row(
-                            children: [
-                              Icon(Icons.check_circle, size: 14, color: Colors.green),
-                              SizedBox(width: 4),
-                              Text('Verknüpft', style: TextStyle(fontSize: 12, color: Colors.green)),
-                            ],
-                          ),
-                        ],
-                        if (entry.note != null && entry.note!.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text('Notiz: ${entry.note}', maxLines: 2, overflow: TextOverflow.ellipsis),
-                        ],
-                        const SizedBox(height: 6),
-                        if ((entry.addedAt) != null) ...[
-                          Text(
-                            _formatAddedAt(entry.addedAt),
-                            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                          ),
-                          const SizedBox(height: 6),
-                        ],
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: Icon(Icons.delete, color: Theme.of(context).colorScheme.error, size: 20),
-                                tooltip: 'Entfernen',
-                                onPressed: () async {
-                                  final confirmed = await showDialog<bool>(
-                                    context: context,
-                                    builder: (ctx) => AlertDialog(
-                                      title: const Text('Eintrag entfernen'),
-                                      content: Text('Möchtest du "${entry.title}" wirklich aus der Watchlist entfernen?'),
-                                      actions: [
-                                        TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Abbrechen')),
-                                        TextButton(
-                                          onPressed: () => Navigator.pop(ctx, true),
-                                          child: Text('Entfernen', style: TextStyle(color: Theme.of(context).colorScheme.error)),
-                                        ),
-                                      ],
+                  // Cover image (tappable to open details)
+                  if (entry.imageUrl != null && entry.imageUrl!.isNotEmpty)
+                    InkWell(
+                      onTap: () => _openDetailsDialog(entry),
+                      child: Container(
+                        width: 120,
+                        padding: const EdgeInsets.only(top: 0.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: CachedNetworkImage(
+                                imageUrl: entry.imageUrl!,
+                                width: 120,
+                                height: 133,
+                                fit: BoxFit.cover,
+                                placeholder: (context, url) => SizedBox(
+                                  width: 120,
+                                  height: 138,
+                                  child: Container(
+                                    color: Colors.grey.shade200,
+                                    child: Icon(
+                                      Icons.image,
+                                      color: Colors.grey.shade400,
                                     ),
-                                  );
-                                  if (confirmed == true) {
-                                    watchlist.removeEntry(entry.animeId);
-                                    await widget.service.saveWatchlist();
-                                    // Remove predicted releases for this series
-                                    final crunch = CrunchyrollService();
-                                    await crunch.removePredictedReleasesForSeries(entry.animeId, entry.title);
-                                    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Eintrag entfernt'), duration: Duration(seconds: 2)));
-                                  }
-                                },
-                                padding: const EdgeInsets.all(6),
-                                constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => SizedBox(
+                                  width: 120,
+                                  height: 138,
+                                  child: Container(
+                                    color: Colors.grey.shade200,
+                                    child: Icon(
+                                      Icons.broken_image,
+                                      color: Colors.grey.shade400,
+                                    ),
+                                  ),
+                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(height: 4),
+                            Transform.translate(
+                              offset: const Offset(0, -2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      entry.notificationsEnabled
+                                          ? Icons.notifications_active
+                                          : Icons.notifications_off,
+                                      color: entry.notificationsEnabled
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : Colors.grey,
+                                      size: 20,
+                                    ),
+                                    tooltip: entry.notificationsEnabled
+                                        ? 'Push deaktivieren'
+                                        : 'Push aktivieren',
+                                    onPressed: () => _toggleNotifications(
+                                      entry,
+                                      !entry.notificationsEnabled,
+                                    ),
+                                    padding: const EdgeInsets.all(6),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    tooltip: 'Bearbeiten',
+                                    onPressed: () => _showEditDialog(entry),
+                                    padding: const EdgeInsets.all(6),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
+                      ),
+                    )
+                  else
+                    InkWell(
+                      onTap: () => _openDetailsDialog(entry),
+                      child: Container(
+                        width: 120,
+                        padding: const EdgeInsets.only(top: 4.0),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: SizedBox(
+                                width: 120,
+                                height: 138,
+                                child: Container(
+                                  color: Colors.grey.shade200,
+                                  child: Icon(
+                                    Icons.image_not_supported,
+                                    color: Colors.grey.shade400,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Transform.translate(
+                              offset: const Offset(0, -2),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: Icon(
+                                      entry.notificationsEnabled
+                                          ? Icons.notifications_active
+                                          : Icons.notifications_off,
+                                      color: entry.notificationsEnabled
+                                          ? Theme.of(
+                                              context,
+                                            ).colorScheme.primary
+                                          : Colors.grey,
+                                      size: 20,
+                                    ),
+                                    tooltip: entry.notificationsEnabled
+                                        ? 'Push deaktivieren'
+                                        : 'Push aktivieren',
+                                    onPressed: () => _toggleNotifications(
+                                      entry,
+                                      !entry.notificationsEnabled,
+                                    ),
+                                    padding: const EdgeInsets.all(6),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  IconButton(
+                                    icon: const Icon(Icons.edit, size: 18),
+                                    tooltip: 'Bearbeiten',
+                                    onPressed: () => _showEditDialog(entry),
+                                    padding: const EdgeInsets.all(6),
+                                    constraints: const BoxConstraints(
+                                      minWidth: 36,
+                                      minHeight: 36,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 6.0, bottom: 2.0),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            entry.title,
+                            style: Theme.of(context).textTheme.titleMedium,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Folgen: ${entry.episodesWatched}/${entry.totalEpisodes}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Status: ${_statusLabel(entry.status)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          if (entry.anilistId != null) ...[
+                            const SizedBox(height: 4),
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.check_circle,
+                                  size: 14,
+                                  color: Colors.green,
+                                ),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Verknüpft',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.green,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                          if (entry.note != null && entry.note!.isNotEmpty) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Notiz: ${entry.note}',
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                          const SizedBox(height: 6),
+                          if ((entry.addedAt) != null) ...[
+                            Text(
+                              _formatAddedAt(entry.addedAt),
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                          ],
+                          Align(
+                            alignment: Alignment.bottomRight,
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: Icon(
+                                    Icons.delete,
+                                    color: Theme.of(context).colorScheme.error,
+                                    size: 20,
+                                  ),
+                                  tooltip: 'Entfernen',
+                                  onPressed: () async {
+                                    final confirmed = await showDialog<bool>(
+                                      context: context,
+                                      builder: (ctx) => AlertDialog(
+                                        title: const Text('Eintrag entfernen'),
+                                        content: Text(
+                                          'Möchtest du "${entry.title}" wirklich aus der Watchlist entfernen?',
+                                        ),
+                                        actions: [
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, false),
+                                            child: const Text('Abbrechen'),
+                                          ),
+                                          TextButton(
+                                            onPressed: () =>
+                                                Navigator.pop(ctx, true),
+                                            child: Text(
+                                              'Entfernen',
+                                              style: TextStyle(
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.error,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                    if (confirmed == true) {
+                                      watchlist.removeEntry(entry.animeId);
+                                      await widget.service.saveWatchlist();
+                                      // Remove predicted releases for this series
+                                      final crunch = CrunchyrollService();
+                                      await crunch
+                                          .removePredictedReleasesForSeries(
+                                            entry.animeId,
+                                            entry.title,
+                                          );
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text('Eintrag entfernt'),
+                                            duration: Duration(seconds: 2),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  },
+                                  padding: const EdgeInsets.all(6),
+                                  constraints: const BoxConstraints(
+                                    minWidth: 36,
+                                    minHeight: 36,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ));
+          );
         },
       ),
       // FloatingActionButton removed; '+' added to AppBar actions.

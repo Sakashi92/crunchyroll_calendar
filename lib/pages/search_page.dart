@@ -12,7 +12,7 @@ import '../services/anilist_service.dart';
 import '../services/anilist_cache.dart';
 import '../services/next_episode_predictor.dart';
 import '../utils/title_utils.dart';
-import '../settings.dart';
+import '../services/app_settings_service.dart';
 import '../widgets/anime_details_dialog.dart';
 
 /// Einfache In-App Suchseite für lokal geladene Releases
@@ -45,8 +45,10 @@ class _SearchPageState extends State<SearchPage> {
     });
     _allSuggestions = titles.toList()..sort();
 
-    AppSettings.getSearchHistory().then((list) {
-      if (mounted) setState(() => _history = list);
+    AppSettingsService.getSearchHistory().then((list) {
+      if (mounted) {
+        setState(() => _history = list);
+      }
     });
   }
 
@@ -73,7 +75,10 @@ class _SearchPageState extends State<SearchPage> {
       return;
     }
     final q = text.toLowerCase();
-    final matched = _allSuggestions.where((s) => s.toLowerCase().contains(q)).take(10).toList();
+    final matched = _allSuggestions
+        .where((s) => s.toLowerCase().contains(q))
+        .take(10)
+        .toList();
     setState(() {
       _suggestions = matched;
     });
@@ -90,7 +95,8 @@ class _SearchPageState extends State<SearchPage> {
 
     widget.releases.forEach((date, list) {
       for (var r in list) {
-        final hay = '${r.title} ${r.episodeTitle} ${r.episodeInfo}'.toLowerCase();
+        final hay = '${r.title} ${r.episodeTitle} ${r.episodeInfo}'
+            .toLowerCase();
         if (hay.contains(q)) {
           matches.add({'release': r, 'date': date});
         }
@@ -105,18 +111,27 @@ class _SearchPageState extends State<SearchPage> {
   void _onSuggestionTap(String suggestion) async {
     _controller.text = suggestion;
     _updateSuggestions(suggestion);
-    await AppSettings.addToSearchHistory(suggestion);
-    final list = await AppSettings.getSearchHistory();
-    if (mounted) setState(() => _history = list);
+    await AppSettingsService.addToSearchHistory(suggestion);
+    final list = await AppSettingsService.getSearchHistory();
+    if (mounted) {
+      setState(() => _history = list);
+    }
     _performSearch(suggestion);
   }
 
   Future<void> _addToWatchlist(AnimeRelease release) async {
-    if (widget.watchlistService == null) return;
+    if (widget.watchlistService == null) {
+      return;
+    }
     final cs = CrunchyrollService();
     final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
-    final knownMax = await cs.getMaxEpisodeFromCache(release.seriesUrl, release.title);
-    final total = (knownMax != null && knownMax > parsedCurrent) ? knownMax : parsedCurrent;
+    final knownMax = await cs.getMaxEpisodeFromCache(
+      release.seriesUrl,
+      release.title,
+    );
+    final total = (knownMax != null && knownMax > parsedCurrent)
+        ? knownMax
+        : parsedCurrent;
 
     // Auto-link integration
     int? autoId;
@@ -124,10 +139,12 @@ class _SearchPageState extends State<SearchPage> {
       final best = await AnilistService().findBestMatch(release.title);
       if (best != null) {
         autoId = best.id;
-        if (kDebugMode) print('✅ Auto-linked "${release.title}" to AniList ID: $autoId');
-        
+        if (kDebugMode) {
+          print('✅ Auto-linked "${release.title}" to AniList ID: $autoId');
+        }
+
         final cache = AnilistCache();
-        final key = normalizeTitle(release.seriesUrl ?? release.title);
+        final key = normalizeTitle(release.seriesUrl);
         await cache.save(key, best);
       }
     } catch (_) {}
@@ -145,23 +162,31 @@ class _SearchPageState extends State<SearchPage> {
     await widget.watchlistService!.saveWatchlist();
     // schedule background update (may perform network)
     cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}')),
-    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}',
+          ),
+        ),
+      );
+    }
 
     // Trigger prediction refresh if auto-linked
     if (autoId != null) {
-       try {
-          final predictor = NextEpisodePredictor(cs, AnilistService());
-          await predictor.predictNextForSeries(entry.animeId, entry.title);
-       } catch (_) {}
+      try {
+        final predictor = NextEpisodePredictor(cs, AnilistService());
+        await predictor.predictNextForSeries(entry.animeId, entry.title);
+      } catch (_) {}
     }
   }
 
   Future<void> _onResultTap(AnimeRelease r, DateTime date) async {
-    await AppSettings.addToSearchHistory(r.title);
-    final list = await AppSettings.getSearchHistory();
-    if (mounted) setState(() => _history = list);
+    await AppSettingsService.addToSearchHistory(r.title);
+    final list = await AppSettingsService.getSearchHistory();
+    if (mounted) {
+      setState(() => _history = list);
+    }
 
     try {
       final tempLog = NotificationLog(
@@ -173,9 +198,14 @@ class _SearchPageState extends State<SearchPage> {
       final hash = tempLog.generateContentHash();
       await SeenRepository().markSeen(hash);
     } catch (e) {
-      if (kDebugMode) print('❌ Error marking seen from search: $e');
+      if (kDebugMode) {
+        print('❌ Error marking seen from search: $e');
+      }
     }
 
+    if (!mounted) {
+      return;
+    }
     await showDialog(
       context: context,
       builder: (BuildContext ctx) => AnimeDetailsDialog(
@@ -191,7 +221,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildHistoryList() {
-    if (_history.isEmpty) return const Center(child: Text('Keine letzten Suchanfragen'));
+    if (_history.isEmpty) {
+      return const Center(child: Text('Keine letzten Suchanfragen'));
+    }
     return ListView.separated(
       itemCount: _history.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
@@ -207,7 +239,9 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   Widget _buildSuggestionList() {
-    if (_suggestions.isEmpty) return const SizedBox.shrink();
+    if (_suggestions.isEmpty) {
+      return const SizedBox.shrink();
+    }
     return ListView.separated(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
@@ -254,39 +288,51 @@ class _SearchPageState extends State<SearchPage> {
         child: _controller.text.isEmpty
             ? _buildHistoryList()
             : (_results.isNotEmpty
-                ? ListView.separated(
-                    itemCount: _results.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (context, index) {
-                      final entry = _results[index];
-                      final AnimeRelease r = entry['release'] as AnimeRelease;
-                      final DateTime date = entry['date'] as DateTime;
-                      return ListTile(
-                        title: Text(r.title),
-                        subtitle: Text('${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}'),
-                        onTap: () => _onResultTap(r, date),
-                      );
-                    },
-                  )
-                : SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const SizedBox(height: 8),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 8.0),
-                          child: Text('Vorschläge', style: TextStyle(color: Colors.grey.shade700)),
-                        ),
-                        const SizedBox(height: 4),
-                        _buildSuggestionList(),
-                        if (_suggestions.isEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(top: 32.0),
-                            child: Center(child: Text('Keine Treffer', style: TextStyle(color: Colors.grey.shade600))),
+                  ? ListView.separated(
+                      itemCount: _results.length,
+                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final entry = _results[index];
+                        final AnimeRelease r = entry['release'] as AnimeRelease;
+                        final DateTime date = entry['date'] as DateTime;
+                        return ListTile(
+                          title: Text(r.title),
+                          subtitle: Text(
+                            '${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}',
                           ),
-                      ],
-                    ),
-                  )),
+                          onTap: () => _onResultTap(r, date),
+                        );
+                      },
+                    )
+                  : SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8.0,
+                            ),
+                            child: Text(
+                              'Vorschläge',
+                              style: TextStyle(color: Colors.grey.shade700),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          _buildSuggestionList(),
+                          if (_suggestions.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(top: 32.0),
+                              child: Center(
+                                child: Text(
+                                  'Keine Treffer',
+                                  style: TextStyle(color: Colors.grey.shade600),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    )),
       ),
     );
   }

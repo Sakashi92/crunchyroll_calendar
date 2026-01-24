@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 
-/// Einstellungen für die App
-class AppSettings {
+/// Service für die App-Einstellungen
+class AppSettingsService {
   static const String _imageQualityKey = 'image_quality';
   static const String _updateIntervalKey = 'update_interval_minutes';
   static const String _autoTranslateKey = 'auto_translate';
@@ -63,128 +63,107 @@ class AppSettings {
     Colors.amber,
   ];
   
-  /// Lädt die aktuelle Bildqualität
   static Future<String> getImageQuality() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_imageQualityKey) ?? 'original';
   }
   
-  /// Speichert die Bildqualität
   static Future<void> setImageQuality(String quality) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_imageQualityKey, quality);
   }
   
-  /// Lädt das Update-Intervall in Minuten
   static Future<int> getUpdateIntervalMinutes() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_updateIntervalKey) ?? 20;
   }
   
-  /// Speichert das Update-Intervall in Minuten
   static Future<void> setUpdateIntervalMinutes(int minutes) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_updateIntervalKey, minutes);
   }
   
-  /// Lädt das Update-Intervall als Duration
   static Future<Duration> getUpdateInterval() async {
     final minutes = await getUpdateIntervalMinutes();
     return Duration(minutes: minutes);
   }
   
-  /// Lädt die automatische Übersetzung-Einstellung
   static Future<bool> getAutoTranslate() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_autoTranslateKey) ?? true;
   }
   
-  /// Speichert die automatische Übersetzung-Einstellung
   static Future<void> setAutoTranslate(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoTranslateKey, enabled);
   }
   
-  /// Lädt die Accent-Farbe
   static Future<Color> getAccentColor() async {
     final prefs = await SharedPreferences.getInstance();
     final colorValue = prefs.getInt(_accentColorKey) ?? Colors.orange.value;
     return Color(colorValue);
   }
   
-  /// Speichert die Accent-Farbe
   static Future<void> setAccentColor(Color color) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_accentColorKey, color.value);
   }
 
-  /// Lädt die Benachrichtigungs-Verzögerung in Sekunden
   static Future<int> getNotificationDelaySeconds() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_notificationDelayKey) ?? 0;
   }
 
-  /// Speichert die Benachrichtigungs-Verzögerung in Sekunden
   static Future<void> setNotificationDelaySeconds(int seconds) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_notificationDelayKey, seconds);
   }
 
-  /// Lädt ob Aktualisierungsmeldungen angezeigt werden sollen
   static Future<bool> getShowRefreshMessage() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_showRefreshMessageKey) ?? true;
   }
 
-  /// Speichert ob Aktualisierungsmeldungen angezeigt werden sollen
   static Future<void> setShowRefreshMessage(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_showRefreshMessageKey, enabled);
   }
 
-  /// Lädt ob der Kalender beim Scroll automatisch minimiert werden soll
   static Future<bool> getAutoMinimizeCalendar() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_autoMinimizeCalendarKey) ?? true;
   }
 
-  /// Speichert die Einstellung für automatisches Minimieren des Kalenders
   static Future<void> setAutoMinimizeCalendar(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_autoMinimizeCalendarKey, enabled);
   }
 
-  /// Lädt den kumulativen Scroll-Schwellenwert (in Pixel) bevor der Kalender minimiert wird
   static Future<double> getAutoMinimizeScrollThreshold() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getDouble(_autoMinimizeScrollThresholdKey) ?? 200.0;
   }
 
-  /// Speichert den Scroll-Schwellenwert (in Pixel)
   static Future<void> setAutoMinimizeScrollThreshold(double pixels) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setDouble(_autoMinimizeScrollThresholdKey, pixels);
   }
 
-  /// Lädt, ob doppelte Releases ausgeblendet werden sollen
   static Future<bool> getHideDuplicateReleases() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_hideDuplicateReleasesKey) ?? true;
   }
 
-  /// Speichert die Einstellung zum Ausblenden doppelter Releases
   static Future<void> setHideDuplicateReleases(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hideDuplicateReleasesKey, enabled);
   }
 
-  /// Lädt den Suchverlauf (neueste zuerst)
   static Future<List<String>> getSearchHistory() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getStringList(_searchHistoryKey)?.toList() ?? <String>[];
   }
 
-  /// Fügt einen Eintrag zum Suchverlauf hinzu (an den Anfang). Max-Größe: 20
   static Future<void> addToSearchHistory(String term) async {
     final prefs = await SharedPreferences.getInstance();
     final normalized = term.trim();
@@ -196,43 +175,36 @@ class AppSettings {
     await prefs.setStringList(_searchHistoryKey, list);
   }
 
-  /// Löscht den Suchverlauf
   static Future<void> clearSearchHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_searchHistoryKey);
   }
 
-  /// Lädt die gespeicherte Sortier-Einstellung für die Watchlist (als Index des SortMode)
   static Future<int> getWatchlistSortModeIndex() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getInt(_watchlistSortModeKey) ?? 0;
   }
 
-  /// Speichert die Sortier-Einstellung für die Watchlist (als Index des SortMode)
   static Future<void> setWatchlistSortModeIndex(int index) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setInt(_watchlistSortModeKey, index);
   }
 
-  /// Lädt den aktuell gewählten Episode-Provider (z.B. 'crunchyroll' oder 'anilist')
   static Future<String> getEpisodeProviderName() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString(_episodeProviderKey) ?? 'anilist';
   }
 
-  /// Speichert den Episode-Provider Namen
   static Future<void> setEpisodeProviderName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_episodeProviderKey, name);
   }
 
-  /// Lädt ob die Vorhersage für nächste Episoden aktiviert ist
   static Future<bool> getPredictionEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_predictionEnabledKey) ?? true;
   }
 
-  /// Speichert ob die Vorhersage für nächste Episoden aktiviert ist
   static Future<void> setPredictionEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_predictionEnabledKey, enabled);
