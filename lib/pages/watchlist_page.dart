@@ -212,6 +212,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
     return 'Hinzugefügt: ${dt.day.toString().padLeft(2, '0')}.${dt.month.toString().padLeft(2, '0')}.${dt.year}';
   }
 
+  bool _isCrunchyrollItem(WatchlistEntry entry) {
+    // Debug: print ID to help diagnose why banner isn't showing
+    // print('Checking _isCrunchyrollItem for "${entry.title}" ID: "${entry.animeId}"');
+
+    if (entry.animeId.contains('/')) return true;
+    if (entry.animeId.toLowerCase().contains('crunchyroll')) return true;
+    return false;
+  }
+
   void _addAnime() async {
     // Dummy dialog for adding anime
     final titleController = TextEditingController();
@@ -906,37 +915,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            ClipRRect(
-                              borderRadius: BorderRadius.circular(8),
-                              child: CachedNetworkImage(
-                                imageUrl: entry.imageUrl!,
-                                width: 120,
-                                height: 133,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => SizedBox(
-                                  width: 120,
-                                  height: 138,
-                                  child: Container(
-                                    color: Colors.grey.shade200,
-                                    child: Icon(
-                                      Icons.image,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => SizedBox(
-                                  width: 120,
-                                  height: 138,
-                                  child: Container(
-                                    color: Colors.grey.shade200,
-                                    child: Icon(
-                                      Icons.broken_image,
-                                      color: Colors.grey.shade400,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
+                            _buildCoverImage(entry),
                             const SizedBox(height: 4),
                             Transform.translate(
                               offset: const Offset(0, -2),
@@ -1205,7 +1184,96 @@ class _WatchlistPageState extends State<WatchlistPage> {
           );
         },
       ),
-      // FloatingActionButton removed; '+' added to AppBar actions.
+    );
+  }
+
+  Widget _buildCoverImage(WatchlistEntry entry) {
+    if (entry.imageUrl == null || entry.imageUrl!.isEmpty) {
+      // Placeholder for missing image
+      final placeholder = Container(
+        width: 120,
+        height: 133,
+        child: Container(
+          color: Colors.grey.shade200,
+          child: Icon(Icons.image_not_supported, color: Colors.grey.shade400),
+        ),
+      );
+
+      Widget widget = ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: placeholder,
+      );
+
+      if (_isCrunchyrollItem(entry)) {
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Banner(
+            message: 'Crunchyroll',
+            location: BannerLocation.topEnd,
+            color: Theme.of(context).brightness == Brightness.light
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context)
+                      .colorScheme
+                      .inversePrimary, // Use saturated color in both modes
+            textStyle: const TextStyle(
+              color: Colors.white,
+              fontSize: 8, // Small font
+              fontWeight: FontWeight.bold,
+            ),
+            child: placeholder,
+          ),
+        );
+      }
+      return widget;
+    }
+
+    Widget imageWidget = CachedNetworkImage(
+      imageUrl: entry.imageUrl!,
+      width: 120,
+      height: 133,
+      fit: BoxFit.cover,
+      placeholder: (context, url) => SizedBox(
+        width: 120,
+        height: 138,
+        child: Container(
+          color: Colors.grey.shade200,
+          child: Icon(Icons.image, color: Colors.grey.shade400),
+        ),
+      ),
+      errorWidget: (context, url, error) => SizedBox(
+        width: 120,
+        height: 138,
+        child: Container(
+          color: Colors.grey.shade200,
+          child: Icon(Icons.broken_image, color: Colors.grey.shade400),
+        ),
+      ),
+    );
+
+    if (_isCrunchyrollItem(entry)) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Banner(
+          message: 'Crunchyroll',
+          location: BannerLocation.topEnd,
+          color: Theme.of(context).brightness == Brightness.light
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context)
+                    .colorScheme
+                    .inversePrimary, // Use saturated color in both modes
+          textStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 8, // Small font
+            fontWeight: FontWeight.bold,
+          ),
+          child: imageWidget,
+        ),
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: imageWidget,
     );
   }
 }

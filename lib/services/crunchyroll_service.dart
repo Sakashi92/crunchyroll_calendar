@@ -996,20 +996,23 @@ class CrunchyrollService implements EpisodeProvider {
 
       for (final entry in watchlistService.watchlist.entries) {
         final normEntryTitle = normalize(entry.title);
-        final matches = _cachedReleases.where((r) {
-          // Prefer exact seriesUrl match
-          if (r.seriesUrl == entry.animeId) {
-            return true;
-          }
-          // Normalize titles and allow contains / equality to be resilient to minor differences
-          final rt = normalize(r.title);
-          if (rt.isEmpty || normEntryTitle.isEmpty) {
-            return false;
-          }
-          return rt == normEntryTitle ||
-              rt.contains(normEntryTitle) ||
-              normEntryTitle.contains(rt);
-        }).toList();
+        final matches = _cachedReleases
+            .where((r) {
+              // Prefer exact seriesUrl match
+              if (r.seriesUrl == entry.animeId) {
+                return true;
+              }
+              // Normalize titles and allow contains / equality to be resilient to minor differences
+              final rt = normalize(r.title);
+              if (rt.isEmpty || normEntryTitle.isEmpty) {
+                return false;
+              }
+              return rt == normEntryTitle ||
+                  rt.contains(normEntryTitle) ||
+                  normEntryTitle.contains(rt);
+            })
+            .where((r) => !r.isPredicted)
+            .toList(); // EXCLUDE PREDICTIONS from watchlist count
         if (matches.isEmpty) {
           continue;
         }
@@ -1106,7 +1109,12 @@ class CrunchyrollService implements EpisodeProvider {
       List<AnimeRelease> matches = [];
       if (seriesUrl != null) {
         matches = _cachedReleases
-            .where((r) => r.seriesUrl.isNotEmpty && r.seriesUrl == seriesUrl)
+            .where(
+              (r) =>
+                  r.seriesUrl.isNotEmpty &&
+                  r.seriesUrl == seriesUrl &&
+                  !r.isPredicted,
+            )
             .toList();
         if (kDebugMode) {
           print(
@@ -1118,15 +1126,18 @@ class CrunchyrollService implements EpisodeProvider {
       // If none, try normalized/fuzzy title matching
       if (matches.isEmpty && title != null) {
         final normTitle = normalize(title);
-        matches = _cachedReleases.where((r) {
-          final rt = normalize(r.title);
-          if (rt.isEmpty || normTitle.isEmpty) {
-            return false;
-          }
-          return rt == normTitle ||
-              rt.contains(normTitle) ||
-              normTitle.contains(rt);
-        }).toList();
+        matches = _cachedReleases
+            .where((r) {
+              final rt = normalize(r.title);
+              if (rt.isEmpty || normTitle.isEmpty) {
+                return false;
+              }
+              return rt == normTitle ||
+                  rt.contains(normTitle) ||
+                  normTitle.contains(rt);
+            })
+            .where((r) => !r.isPredicted)
+            .toList();
         if (kDebugMode) {
           print(
             'ℹ️ [CrunchyrollService] getMaxEpisodeForSeries: found ${matches.length} matches by title="$title"',
@@ -1143,20 +1154,23 @@ class CrunchyrollService implements EpisodeProvider {
         }
         await forceRefresh(forMonth: DateTime.now());
         final normTitle = normalize(title);
-        matches = _cachedReleases.where((r) {
-          if (seriesUrl != null &&
-              r.seriesUrl.isNotEmpty &&
-              r.seriesUrl == seriesUrl) {
-            return true;
-          }
-          final rt = normalize(r.title);
-          if (rt.isEmpty || normTitle.isEmpty) {
-            return false;
-          }
-          return rt == normTitle ||
-              rt.contains(normTitle) ||
-              normTitle.contains(rt);
-        }).toList();
+        matches = _cachedReleases
+            .where((r) {
+              if (seriesUrl != null &&
+                  r.seriesUrl.isNotEmpty &&
+                  r.seriesUrl == seriesUrl) {
+                return true;
+              }
+              final rt = normalize(r.title);
+              if (rt.isEmpty || normTitle.isEmpty) {
+                return false;
+              }
+              return rt == normTitle ||
+                  rt.contains(normTitle) ||
+                  normTitle.contains(rt);
+            })
+            .where((r) => !r.isPredicted)
+            .toList();
         if (kDebugMode) {
           print(
             'ℹ️ [CrunchyrollService] After refresh: found ${matches.length} matches',
@@ -1264,20 +1278,28 @@ class CrunchyrollService implements EpisodeProvider {
       List<AnimeRelease> matches = [];
       if (seriesUrl != null) {
         matches = _cachedReleases
-            .where((r) => r.seriesUrl.isNotEmpty && r.seriesUrl == seriesUrl)
+            .where(
+              (r) =>
+                  r.seriesUrl.isNotEmpty &&
+                  r.seriesUrl == seriesUrl &&
+                  !r.isPredicted,
+            )
             .toList();
       }
       if (matches.isEmpty && title != null) {
         final normTitle = normalize(title);
-        matches = _cachedReleases.where((r) {
-          final rt = normalize(r.title);
-          if (rt.isEmpty || normTitle.isEmpty) {
-            return false;
-          }
-          return rt == normTitle ||
-              rt.contains(normTitle) ||
-              normTitle.contains(rt);
-        }).toList();
+        matches = _cachedReleases
+            .where((r) {
+              final rt = normalize(r.title);
+              if (rt.isEmpty || normTitle.isEmpty) {
+                return false;
+              }
+              return rt == normTitle ||
+                  rt.contains(normTitle) ||
+                  normTitle.contains(rt);
+            })
+            .where((r) => !r.isPredicted)
+            .toList();
       }
 
       if (matches.isEmpty) {
@@ -2397,7 +2419,9 @@ class CrunchyrollService implements EpisodeProvider {
 
       bool matchesRelease(AnimeRelease r) {
         // Prefer exact seriesUrl match
-        if (seriesUrl != null && seriesUrl.isNotEmpty && r.seriesUrl.isNotEmpty) {
+        if (seriesUrl != null &&
+            seriesUrl.isNotEmpty &&
+            r.seriesUrl.isNotEmpty) {
           if (r.seriesUrl == seriesUrl) return true;
         }
 
@@ -2553,7 +2577,9 @@ class CrunchyrollService implements EpisodeProvider {
         if (normTitle.isNotEmpty) {
           final rt = normalize(r.title);
           if (rt.isNotEmpty &&
-              (rt == normTitle || rt.contains(normTitle) || normTitle.contains(rt))) {
+              (rt == normTitle ||
+                  rt.contains(normTitle) ||
+                  normTitle.contains(rt))) {
             return true;
           }
         }
