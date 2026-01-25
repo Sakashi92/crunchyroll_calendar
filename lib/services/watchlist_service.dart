@@ -10,7 +10,10 @@ import 'next_episode_predictor.dart';
 import 'anilist_service.dart';
 import 'prediction_notifier.dart';
 import 'anilist_cache.dart';
+import 'kitsu_service.dart';
+import 'jikan_service.dart';
 import '../utils/title_utils.dart';
+import '../models/anime_metadata.dart';
 
 class WatchlistService {
   static const _storageKey = 'watchlist_data';
@@ -656,5 +659,114 @@ class WatchlistService {
         }
       }
     });
+  }
+
+  /// Refreshes metadata for a single entry using multiple providers as fallback.
+  /// Checks for "FINISHED" status and deactivates notifications if not in CR calendar.
+  Future<void> refreshMetadataWithFallback(WatchlistEntry entry) async {
+    final anilist = AnilistService();
+    final kitsu = KitsuService();
+    final jikan = JikanService();
+    final cr = CrunchyrollService();
+
+    if (kDebugMode) {
+      print('🔄 [WATCHLIST-SYNC] Refreshing metadata for "${entry.title}"...');
+    }
+
+    AnimeMetadata? meta;
+
+    // 1. Try AniList (most comprehensive)
+    try {
+      meta = await anilist.fetchSeriesMetadata(entry.animeId, entry.title);
+    } catch (e) {
+      if (kDebugMode)
+        print('⚠️ [SYNC] AniList failed for "${entry.title}": $e');
+    }
+
+    // 2. Try Kitsu fallback
+    if (meta == null || meta.status == null) {
+      try {
+        meta = await kitsu.fetchSeriesMetadata(entry.animeId, entry.title);
+      } catch (e) {
+        if (kDebugMode)
+          print('⚠️ [SYNC] Kitsu failed for "${entry.title}": $e');
+      }
+    }
+
+    // 3. Try Jikan/MAL fallback
+    if (meta == null || meta.status == null) {
+      try {
+        meta = await jikan.fetchSeriesMetadata(entry.animeId, entry.title);
+      } catch (e) {
+        if (kDebugMode)
+          print('⚠️ [SYNC] Jikan failed for "${entry.title}": $e');
+      }
+    }
+
+    if (meta != null) {
+      bool changed = false;
+
+      // Update airing status
+      if (meta.status != null && meta.status != entry.airingStatus) {
+        entry.airingStatus = meta.status;
+        changed = true;
+      }
+
+      // Update total episodes if missing or auto-sync is on
+      if (meta.totalEpisodes != null &&
+          (entry.totalEpisodes == 0 || entry.autoSyncTotal)) {
+        if (entry.totalEpisodes != meta.totalEpisodes) {
+          entry.totalEpisodes = meta.totalEpisodes!;
+          changed = true;
+        }
+      }
+
+      // AUTO-DEACTIVATION LOGIC
+      // If finished/cancelled AND not in Crunchyroll calendar
+      final isFinished =
+          meta.status?.toUpperCase() == 'FINISHED' ||
+          meta.status?.toUpperCase() == 'CANCELLED';
+      if (isFinished) {
+        final inCalendar = cr.isTitleInCalendar(entry.title);
+        if (!inCalendar) {
+          if (entry.notificationsEnabled || entry.predictionsEnabled) {
+            if (kDebugMode) {
+              print(
+                '🛑 [SYNC] Deactivating "${entry.title}" - Finished and NOT in CR calendar',
+              );
+            }
+            entry.notificationsEnabled = false;
+            entry.predictionsEnabled = false;
+            // Clean up predictions
+            cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
+            changed = true;
+          }
+        }
+      }
+
+      if (changed) {
+        watchlist.updateEntry(entry);
+      }
+    }
+  }
+
+  /// Refreshes all active (Watching) entries in the watchlist.
+  Future<void> refreshActiveSeriesMetadata() async {
+    final activeEntries = watchlist.entries
+        .where((e) => e.status == WatchStatus.watching)
+        .toList();
+    if (kDebugMode) {
+      print(
+        '🔄 [WATCHLIST-SYNC] Starting batch refresh for ${activeEntries.length} active entries',
+      );
+    }
+
+    for (final entry in activeEntries) {
+      await refreshMetadataWithFallback(entry);
+      // Gentleness delay for APIs
+      await Future.delayed(const Duration(milliseconds: 1000));
+    }
+
+    await saveWatchlist();
   }
 }

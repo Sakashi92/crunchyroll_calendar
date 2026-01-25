@@ -7,7 +7,7 @@ class WatchlistEntry {
   final String title;
   final String? imageUrl;
   int episodesWatched;
-  final int totalEpisodes;
+  int totalEpisodes;
   WatchStatus status;
   bool notificationsEnabled;
   bool autoSyncTotal;

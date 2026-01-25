@@ -378,6 +378,11 @@ Future<bool> _executeBackgroundScraper() async {
           await watchlistService.generateForecastForAllEntries();
           if (kDebugMode)
             print('🔮 [BACKGROUND-SCRAPER] Watchlist predictor finished');
+
+          // Batch refresh metadata for all active series to check for finished status
+          if (kDebugMode)
+            print('🔄 [BACKGROUND-SCRAPER] Refreshing active metadata...');
+          await watchlistService.refreshActiveSeriesMetadata();
         } else {
           if (kDebugMode)
             print(
@@ -569,6 +574,24 @@ Future<bool> _executeBackgroundScraper() async {
         print(
           '✅ [BACKGROUND-SCRAPER] LOGGED TO DB: ${release.title} ep.${release.episodeNumber} hash=$contentHash',
         );
+        print(
+          '🔄 [BACKGROUND-SCRAPER] Triggering post-notification metadata sync for "${release.title}"',
+        );
+      }
+
+      // Targeted metadata refresh after push to check for upcoming status/next episodes
+      try {
+        final entryIdx = watchlist.entries.indexWhere(
+          (e) => e.title.toLowerCase() == release.title.toLowerCase(),
+        );
+        if (entryIdx != -1) {
+          await watchlistService.refreshMetadataWithFallback(
+            watchlist.entries[entryIdx],
+          );
+        }
+      } catch (e) {
+        if (kDebugMode)
+          print('⚠️ [BACKGROUND-SCRAPER] Post-notification sync failed: $e');
       }
     }
 

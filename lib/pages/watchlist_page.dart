@@ -1364,10 +1364,13 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (entry.status == WatchStatus.watching &&
-                                    entry.airingStatus?.toUpperCase() !=
-                                        'FINISHED' &&
-                                    entry.airingStatus?.toUpperCase() !=
-                                        'CANCELLED')
+                                    (CrunchyrollService().isTitleInCalendar(
+                                          entry.title,
+                                        ) ||
+                                        (entry.airingStatus?.toUpperCase() !=
+                                                'FINISHED' &&
+                                            entry.airingStatus?.toUpperCase() !=
+                                                'CANCELLED')))
                                   IconButton(
                                     icon: Icon(
                                       entry.notificationsEnabled
