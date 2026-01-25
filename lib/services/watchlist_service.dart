@@ -721,7 +721,7 @@ class WatchlistService {
         }
       }
 
-      // AUTO-DEACTIVATION LOGIC
+      // AUTO-DEACTIVATION LOGIC 1: Metadata Providers
       // If finished/cancelled AND not in Crunchyroll calendar
       final isFinished =
           meta.status?.toUpperCase() == 'FINISHED' ||
@@ -741,6 +741,57 @@ class WatchlistService {
             cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
             changed = true;
           }
+        }
+      }
+
+      // AUTO-DEACTIVATION LOGIC 2: Calendar Stale Check (User requested)
+      // If last release was > 4 weeks ago or not found, deactivate.
+      if (!isFinished) {
+        try {
+          final cachedReleases = await cr.getReleasesForSeriesCached(
+            entry.animeId,
+            entry.title,
+          );
+          // Filter out predictions to get actual airing history
+          final actualReleases = cachedReleases
+              .where((r) => !r.isPredicted)
+              .toList();
+
+          if (actualReleases.isEmpty) {
+            if (kDebugMode) {
+              print(
+                '🛑 [SYNC] No past releases found for "${entry.title}" - Deactivating',
+              );
+            }
+            entry.airingStatus = 'FINISHED';
+            entry.notificationsEnabled = false;
+            entry.predictionsEnabled = false;
+            cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
+            changed = true;
+          } else {
+            // Find latest actual release
+            actualReleases.sort(
+              (a, b) => b.releaseTime.compareTo(a.releaseTime),
+            );
+            final latest = actualReleases.first.releaseTime;
+            final diff = DateTime.now().difference(latest).inDays;
+
+            if (diff > 28) {
+              // 4 weeks
+              if (kDebugMode) {
+                print(
+                  '🛑 [SYNC] Last release for "${entry.title}" was $diff days ago - Deactivating',
+                );
+              }
+              entry.airingStatus = 'FINISHED';
+              entry.notificationsEnabled = false;
+              entry.predictionsEnabled = false;
+              cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
+              changed = true;
+            }
+          }
+        } catch (e) {
+          if (kDebugMode) print('⚠️ [SYNC] Calendar stale check failed: $e');
         }
       }
 

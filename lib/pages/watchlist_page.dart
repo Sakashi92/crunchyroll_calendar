@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -574,6 +575,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
     watchlist.addEntry(entry);
     await widget.service.saveWatchlist();
 
+    // Immediate metadata sync & auto-deactivation for the new entry
+    unawaited(widget.service.refreshMetadataWithFallback(entry));
+
     if (mounted) {
       setState(() {
         _displayEntries = List.from(watchlist.entries);
@@ -924,6 +928,14 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 );
                 watchlist.updateEntry(newEntry);
                 widget.service.saveWatchlist();
+
+                // If status is watching, trigger an immediate sync to re-evaluate deactivation logic
+                if (newEntry.status == WatchStatus.watching) {
+                  unawaited(
+                    widget.service.refreshMetadataWithFallback(newEntry),
+                  );
+                }
+
                 Navigator.pop(ctx);
               },
               child: Text('Speichern'),

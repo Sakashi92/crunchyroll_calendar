@@ -161,6 +161,10 @@ class _SearchPageState extends State<SearchPage> {
     );
     widget.watchlistService!.watchlist.addEntry(entry);
     await widget.watchlistService!.saveWatchlist();
+
+    // Immediate metadata check & auto-deactivation
+    unawaited(widget.watchlistService!.refreshMetadataWithFallback(entry));
+
     // schedule background update (may perform network)
     cs.scheduleWatchlistEntryUpdate(widget.watchlistService!, entry);
     if (mounted) {
