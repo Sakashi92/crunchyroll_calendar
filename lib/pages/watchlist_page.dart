@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -892,6 +893,20 @@ class _WatchlistPageState extends State<WatchlistPage> {
             ),
             ElevatedButton(
               onPressed: () {
+                bool finalNotifications = entry.notificationsEnabled;
+                bool finalPredictions = entry.predictionsEnabled;
+
+                if (status != WatchStatus.watching) {
+                  finalNotifications = false;
+                  finalPredictions = false;
+                  // Clean up predictions from calendar if status changed to inactive
+                  final cs = CrunchyrollService();
+                  cs.removePredictedReleasesForSeries(
+                    entry.animeId,
+                    entry.title,
+                  );
+                }
+
                 final newEntry = WatchlistEntry(
                   animeId: currentId,
                   title: entry.title,
@@ -899,12 +914,13 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   episodesWatched: episodes,
                   totalEpisodes: total,
                   status: status,
-                  notificationsEnabled: entry.notificationsEnabled,
+                  notificationsEnabled: finalNotifications,
                   autoSyncTotal: autoSync,
                   note: noteController.text,
                   rating: entry.rating,
                   anilistId: entry.anilistId,
                   addedAt: entry.addedAt,
+                  predictionsEnabled: finalPredictions,
                 );
                 watchlist.updateEntry(newEntry);
                 widget.service.saveWatchlist();
@@ -940,7 +956,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
       final suggestedFileName = 'crunchyroll_watchlist_$timestamp.json';
       final bytes = utf8.encode(jsonString);
 
-      final outputPath = await FilePicker.platform.saveFile(
+      String? chosenPath = await FilePicker.platform.saveFile(
         dialogTitle: 'Watchlist exportieren',
         fileName: suggestedFileName,
         type: FileType.custom,
@@ -948,33 +964,73 @@ class _WatchlistPageState extends State<WatchlistPage> {
         bytes: bytes,
       );
 
-      if (outputPath == null) return; // user cancelled
+      if (chosenPath == null) return; // user cancelled
+
+      // On some platforms (Android), saveFile might return a path that needs cleanup
+      if (chosenPath.startsWith('file://')) {
+        chosenPath = Uri.parse(chosenPath).toFilePath();
+      }
+
+      // Manually write the bytes at the path to ensure it is saved on Windows
+      final file = File(chosenPath);
+      await file.writeAsBytes(bytes);
+
+      // Get the actual filename and directory from the chosen path
+      final actualFileName = file.path
+          .split(Platform.isWindows ? '\\' : '/')
+          .last;
+      final actualPath = file.parent.path;
 
       if (mounted) {
         final result = await showDialog<String>(
           context: context,
           builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.green),
-                SizedBox(width: 8),
-                Text('Export erfolgreich'),
-              ],
+            icon: CircleAvatar(
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withOpacity(0.1),
+              child: Icon(
+                Icons.check,
+                color: Theme.of(context).colorScheme.primary,
+              ),
             ),
+            title: const Text('Export erfolgreich'),
             content: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('${watchlist.entries.length} Einträge exportiert'),
-                const SizedBox(height: 8),
-                const Text(
-                  'Gespeichert unter:',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                ),
-                const SizedBox(height: 4),
                 Text(
-                  outputPath,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+                  '${watchlist.entries.length} Einträge wurden erfolgreich exportiert.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Speicherort:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    actualPath,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Dateiname:',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  actualFileName,
+                  style: const TextStyle(fontSize: 13),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
@@ -983,9 +1039,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 onPressed: () => Navigator.pop(context, 'close'),
                 child: const Text('Schließen'),
               ),
-              ElevatedButton.icon(
+              FilledButton.icon(
                 onPressed: () => Navigator.pop(context, 'share'),
-                icon: const Icon(Icons.share),
+                icon: const Icon(Icons.share, size: 18),
                 label: const Text('Teilen'),
               ),
             ],
@@ -994,12 +1050,18 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
         if (result == 'share') {
           try {
-            await Share.shareXFiles(
-              [XFile(outputPath)],
-              subject: 'Meine Crunchyroll Watchlist',
-              text:
-                  'Crunchyroll Watchlist (${watchlist.entries.length} Einträge)',
-            );
+            // Slight delay to ensure file system has flushed the file
+            await Future.delayed(const Duration(milliseconds: 300));
+
+            if (await file.exists()) {
+              await Share.shareXFiles(
+                [XFile(file.path)],
+                subject: 'Meine Crunchyroll Watchlist',
+                text: 'Schau dir meine Crunchyroll Watchlist an!',
+              );
+            } else {
+              throw Exception('Datei nicht gefunden unter: ${file.path}');
+            }
           } catch (e) {
             if (kDebugMode) print('Share error: $e');
             if (mounted)
@@ -1301,7 +1363,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               mainAxisSize: MainAxisSize.min,
                               children: [
-                                if (entry.airingStatus?.toUpperCase() !=
+                                if (entry.status == WatchStatus.watching &&
+                                    entry.airingStatus?.toUpperCase() !=
                                         'FINISHED' &&
                                     entry.airingStatus?.toUpperCase() !=
                                         'CANCELLED')
@@ -1342,9 +1405,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                     height: 36,
                                   ),
                                 ),
-                                if (CrunchyrollService().isTitleInCalendar(
-                                  entry.title,
-                                ))
+                                if (entry.status == WatchStatus.watching &&
+                                    CrunchyrollService().isTitleInCalendar(
+                                      entry.title,
+                                    ))
                                   IconButton(
                                     icon: Icon(
                                       entry.predictionsEnabled

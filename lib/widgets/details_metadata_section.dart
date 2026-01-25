@@ -7,7 +7,7 @@ class DetailsMetadataSection extends StatelessWidget {
   final String timeString;
   final bool showEpisodeBadge;
   final bool showTimeBadge;
-  final bool hideTotalForAnilist;
+  final bool hideTotalCount;
 
   const DetailsMetadataSection({
     super.key,
@@ -17,7 +17,7 @@ class DetailsMetadataSection extends StatelessWidget {
     required this.timeString,
     this.showEpisodeBadge = true,
     this.showTimeBadge = true,
-    this.hideTotalForAnilist = false,
+    this.hideTotalCount = false,
   });
 
   @override
@@ -29,10 +29,7 @@ class DetailsMetadataSection extends StatelessWidget {
       children: [
         Text(
           title,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-          ),
+          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
         ),
@@ -50,7 +47,7 @@ class DetailsMetadataSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  hideTotalForAnilist
+                  hideTotalCount
                       ? episodeInfo
                       : '$episodeInfo${knownMaxEpisode != null ? ' / $knownMaxEpisode' : ''}',
                   style: TextStyle(

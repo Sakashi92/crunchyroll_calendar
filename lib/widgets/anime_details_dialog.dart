@@ -65,7 +65,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   bool _isInWatchlist = false;
   bool _isProcessingWatchlist = false;
   int? _knownMaxEpisode;
-  bool _hideTotalForAnilist = false;
+  bool _hideTotalCount = false;
 
   @override
   void initState() {
@@ -85,7 +85,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     AppSettingsService.getEpisodeProviderName().then((name) {
       if (mounted) {
         setState(() {
-          _hideTotalForAnilist = (name == 'anilist');
+          _hideTotalCount =
+              (name == 'anilist' || name == 'jikan' || name == 'crunchyroll');
         });
       }
     });
@@ -373,7 +374,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                         timeString: release.timeString,
                         showEpisodeBadge: widget.showEpisodeBadge,
                         showTimeBadge: widget.showTimeBadge,
-                        hideTotalForAnilist: _hideTotalForAnilist,
+                        hideTotalCount: _hideTotalCount,
                       ),
                       const SizedBox(height: 16),
                       DetailsDescriptionSection(
