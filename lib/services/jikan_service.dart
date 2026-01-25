@@ -77,8 +77,9 @@ class JikanService implements EpisodeProvider {
             }
             if (kDebugMode) print('📺 [JIKAN] hasCrunchyroll: $hasCrunchyroll');
           } else {
-            if (kDebugMode)
+            if (kDebugMode) {
               print('❌ [JIKAN] Streaming API error: ${response.statusCode}');
+            }
           }
         } catch (_) {}
 
@@ -157,14 +158,15 @@ class JikanService implements EpisodeProvider {
           String? rawStatus = item['status'];
           String? status;
           if (rawStatus != null) {
-            if (rawStatus == 'Finished Airing')
+            if (rawStatus == 'Finished Airing') {
               status = 'FINISHED';
-            else if (rawStatus == 'Currently Airing')
+            } else if (rawStatus == 'Currently Airing') {
               status = 'RELEASING';
-            else if (rawStatus == 'Not yet aired')
+            } else if (rawStatus == 'Not yet aired') {
               status = 'NOT_YET_RELEASED';
-            else
+            } else {
               status = rawStatus.toUpperCase();
+            }
           }
 
           return AnimeMetadata(
@@ -186,11 +188,13 @@ class JikanService implements EpisodeProvider {
     return [];
   }
 
+  @override
   Future<String?> getCrunchyrollUrl(int id) async {
     try {
       final streamUrl = '$_baseUrl/anime/$id/streaming';
-      if (kDebugMode)
+      if (kDebugMode) {
         print('🔎 [JIKAN] Checking streaming for ID $id: $streamUrl');
+      }
       final response = await http.get(Uri.parse(streamUrl));
       if (response.statusCode == 200) {
         final body = json.decode(response.body);

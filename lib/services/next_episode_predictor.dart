@@ -72,8 +72,9 @@ class NextEpisodePredictor {
         if (meta == null ||
             (meta.status == null && meta.nextEpisodeDate == null)) {
           try {
-            if (kDebugMode)
+            if (kDebugMode) {
               print('🔎 [PREDICTOR] Anilist incomplete, trying Kitsu...');
+            }
             final kitsu = KitsuService();
             final kitsuMeta = await kitsu.fetchSeriesMetadata(
               seriesUrl,
@@ -93,8 +94,9 @@ class NextEpisodePredictor {
         if (meta == null ||
             (meta.status == null && meta.nextEpisodeDate == null)) {
           try {
-            if (kDebugMode)
+            if (kDebugMode) {
               print('🔎 [PREDICTOR] Kitsu incomplete, trying Jikan (MAL)...');
+            }
             final jikan = JikanService();
             final malMeta = await jikan.fetchSeriesMetadata(
               seriesUrl,
@@ -119,10 +121,10 @@ class NextEpisodePredictor {
               !nextDay.isAfter(maxAllowedMidnight)) {
             final bestTitle =
                 title ??
-                (releases.isNotEmpty ? releases.last.title : meta?.siteUrl) ??
+                (releases.isNotEmpty ? releases.last.title : meta.siteUrl) ??
                 'Unknown';
             final epParams =
-                meta?.nextEpisodeNumber ??
+                meta.nextEpisodeNumber ??
                 ((releases.isNotEmpty)
                     ? (int.tryParse(releases.last.episodeNumber) != null
                           ? (int.parse(releases.last.episodeNumber) + 1)
@@ -141,7 +143,7 @@ class NextEpisodePredictor {
 
             // Fallback to AniList or old release image
             displayImage ??=
-                meta?.imageUrl ??
+                meta.imageUrl ??
                 (releases.isNotEmpty ? releases.last.imageUrl : null);
 
             final predicted = AnimeRelease(
@@ -151,16 +153,16 @@ class NextEpisodePredictor {
               releaseTime: nextDate,
               imageUrl: displayImage,
               description:
-                  meta?.description ??
+                  meta.description ??
                   (releases.isNotEmpty ? releases.last.description : null),
               seriesUrl:
                   seriesUrl ??
                   (releases.isNotEmpty
                       ? releases.last.seriesUrl
-                      : meta?.siteUrl) ??
+                      : meta.siteUrl) ??
                   '',
               episodeUrl:
-                  meta?.siteUrl ??
+                  meta.siteUrl ??
                   (releases.isNotEmpty ? releases.last.episodeUrl : null) ??
                   '',
               isPremiere: false,

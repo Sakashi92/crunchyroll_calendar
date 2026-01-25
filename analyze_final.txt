@@ -1,0 +1,15 @@
+﻿Analyzing crunchyroll_calendar...                               
+
+   info - Dangling library doc comment - lib\models\notification_log.dart:1:1 - dangling_library_doc_comments
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:858:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\pages\watchlist_page.dart:872:40 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:884:42 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:893:29 - use_build_context_synchronously
+   info - Don't use 'BuildContext's across async gaps - lib\pages\watchlist_page.dart:1570:51 - use_build_context_synchronously
+   info - Statements in an if should be enclosed in a block - lib\repositories\notification_repository.dart:46:17 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\repositories\notification_repository.dart:77:9 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\repositories\notification_repository.dart:142:11 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\repositories\notification_repository.dart:262:9 - curly_braces_in_flow_control_structures
+   info - Don't invoke 'print' in production code - lib\repositories\notification_repository.dart:396:9 - avoid_print
+   info - Statements in an if should be enclosed in a block - lib\repositories\notification_repository.dart:419:9 - curly_braces_in_flow_control_structures
+

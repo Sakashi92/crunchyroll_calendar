@@ -93,7 +93,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
     // Load saved sort mode then apply
     AppSettingsService.getWatchlistSortModeIndex()
         .then((idx) {
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
           setState(() {
             _sortMode = SortMode.values.elementAt(
               idx.clamp(0, SortMode.values.length - 1),
@@ -102,7 +104,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
           });
         })
         .catchError((e) {
-          if (kDebugMode) print('Failed to load saved watchlist sort mode: $e');
+          if (kDebugMode) {
+            print('Failed to load saved watchlist sort mode: $e');
+          }
           _applySort();
         });
     _scrollController = ScrollController();
@@ -124,7 +128,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
   Future<void> _initAsync() async {
     try {
       await widget.service.loadWatchlist();
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _displayEntries = List.from(watchlist.entries);
         _applySort();
@@ -137,13 +143,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
       await crunch.loadCacheOnStartup();
       await crunch.syncWatchlistWithReleases(widget.service, notifRepo);
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
       setState(() {
         _displayEntries = List.from(watchlist.entries);
         _applySort();
       });
     } catch (e) {
-      if (kDebugMode) print('Error updating watchlist totals: $e');
+      if (kDebugMode) {
+        print('Error updating watchlist totals: $e');
+      }
     }
   }
 
@@ -181,13 +191,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
     try {
       watchlist.removeListener(_onWatchlistChanged);
     } catch (e) {
-      if (kDebugMode) print('Dispose: watchlist not initialized: $e');
+      if (kDebugMode) {
+        print('Dispose: watchlist not initialized: $e');
+      }
     }
 
     try {
       _scrollController.dispose();
     } catch (e) {
-      if (kDebugMode) print('Dispose: _scrollController not initialized: $e');
+      if (kDebugMode) {
+        print('Dispose: _scrollController not initialized: $e');
+      }
     }
 
     super.dispose();
@@ -297,7 +311,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 });
               }
             } catch (e) {
-              if (kDebugMode) print('Search error: $e');
+              if (kDebugMode) {
+                print('Search error: $e');
+              }
               if (context.mounted) {
                 setState(() {
                   isSearching = false;
@@ -357,16 +373,20 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       child: ListView.separated(
                         shrinkWrap: true,
                         itemCount: searchResults.length,
-                        separatorBuilder: (_, __) => const Divider(),
+                        separatorBuilder: (context, index) => const Divider(),
                         itemBuilder: (context, index) {
                           final meta = searchResults[index];
                           // Format subtitle info
                           final parts = <String>[];
-                          if (meta.totalEpisodes != null)
+                          if (meta.totalEpisodes != null) {
                             parts.add('${meta.totalEpisodes} Folgen');
-                          if (meta.startDate != null)
+                          }
+                          if (meta.startDate != null) {
                             parts.add('${meta.startDate!.year}');
-                          if (meta.status != null) parts.add(meta.status!);
+                          }
+                          if (meta.status != null) {
+                            parts.add(meta.status!);
+                          }
 
                           return ListTile(
                             leading: meta.imageUrl != null
@@ -377,9 +397,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                       width: 50,
                                       height: 75,
                                       fit: BoxFit.cover,
-                                      placeholder: (_, __) =>
+                                      placeholder: (context, url) =>
                                           Container(color: Colors.grey[300]),
-                                      errorWidget: (_, __, ___) =>
+                                      errorWidget: (context, url, error) =>
                                           const Icon(Icons.broken_image),
                                     ),
                                   )
@@ -425,10 +445,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         crUrl != null &&
                                         crUrl.contains('crunchyroll.com');
 
-                                    if (crUrl == null) {
-                                      // Deep link fallback if no specific URL found
-                                      crUrl = 'crunchyroll://';
-                                    }
+                                    // Deep link fallback if no specific URL found
+                                    crUrl ??= 'crunchyroll://';
 
                                     itemToAdd = meta.copyWith(
                                       hasCrunchyroll: foundRealCrunchyrollUrl,
@@ -648,7 +666,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
             );
           }
         } catch (e) {
-          if (kDebugMode) print('Error looking up date in toggle: $e');
+          if (kDebugMode) {
+            print('Error looking up date in toggle: $e');
+          }
         }
       } else {
         if (mounted) {
@@ -660,7 +680,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
         }
       }
     } catch (e) {
-      if (kDebugMode) print('❌ Error toggling watchlist notifications: $e');
+      if (kDebugMode) {
+        print('❌ Error toggling watchlist notifications: $e');
+      }
       entry.notificationsEnabled = old;
       if (mounted) setState(() {});
     }
@@ -735,11 +757,12 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         'Gesamtfolgen eingeben',
                         total,
                       );
-                      if (v != null)
+                      if (v != null) {
                         setState(() {
                           total = v;
                           autoSync = false;
                         });
+                      }
                     },
                     child: Padding(
                       padding: const EdgeInsets.symmetric(
@@ -782,8 +805,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               if (mounted) setState(() => total = known);
                             }
                           } catch (e) {
-                            if (kDebugMode)
+                            if (kDebugMode) {
                               print('Error fetching max episode on toggle: $e');
+                            }
                           }
                         }
                       },
@@ -830,6 +854,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           entry.anilistId!,
                         );
                         if (url != null) {
+                          if (!mounted) return;
                           // ... handle found URL as before
                           _applyFoundUrl(context, url, (newUrl) {
                             setState(() => currentId = newUrl);
@@ -845,9 +870,11 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       if (match != null &&
                           match.hasCrunchyroll == true &&
                           match.bannerImage != null) {
-                        _applyFoundUrl(context, match.bannerImage!, (newUrl) {
-                          setState(() => currentId = newUrl);
-                        });
+                        if (mounted) {
+                          _applyFoundUrl(context, match.bannerImage!, (newUrl) {
+                            setState(() => currentId = newUrl);
+                          });
+                        }
                         return;
                       }
 
@@ -856,7 +883,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         entry.title,
                       );
                       if (url != null) {
-                        if (context.mounted) {
+                        if (mounted) {
                           _applyFoundUrl(context, url, (newUrl) {
                             setState(() {
                               currentId = newUrl;
@@ -864,7 +891,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           });
                         }
                       } else {
-                        if (context.mounted) {
+                        if (mounted) {
                           UIUtils.showSnackBar(
                             context,
                             const SnackBar(
@@ -1001,7 +1028,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
             icon: CircleAvatar(
               backgroundColor: Theme.of(
                 context,
-              ).colorScheme.primary.withOpacity(0.1),
+              ).colorScheme.primary.withValues(alpha: 0.1),
               child: Icon(
                 Icons.check,
                 color: Theme.of(context).colorScheme.primary,
@@ -1076,18 +1103,23 @@ class _WatchlistPageState extends State<WatchlistPage> {
               throw Exception('Datei nicht gefunden unter: ${file.path}');
             }
           } catch (e) {
-            if (kDebugMode) print('Share error: $e');
-            if (mounted)
+            if (kDebugMode) {
+              print('Share error: $e');
+            }
+            if (mounted) {
               UIUtils.showSnackBar(
                 context,
                 SnackBar(content: Text('❌ Fehler beim Teilen: $e')),
               );
+            }
           }
         }
       }
     } catch (e) {
-      if (kDebugMode) print('Export error: $e');
-      if (mounted)
+      if (kDebugMode) {
+        print('Export error: $e');
+      }
+      if (mounted) {
         UIUtils.showSnackBar(
           context,
           SnackBar(
@@ -1096,6 +1128,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
             backgroundColor: Colors.red.shade700,
           ),
         );
+      }
     }
   }
 
@@ -1288,7 +1321,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
               AppSettingsService.setWatchlistSortModeIndex(m.index).catchError((
                 e,
               ) {
-                if (kDebugMode) print('Failed to save watchlist sort mode: $e');
+                if (kDebugMode) {
+                  print('Failed to save watchlist sort mode: $e');
+                }
               });
             },
             itemBuilder: (ctx) => [
@@ -1463,7 +1498,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                               entry.animeId,
                                               entry.title,
                                             );
-                                        if (mounted) {
+                                        if (context.mounted) {
                                           UIUtils.showSnackBar(
                                             context,
                                             const SnackBar(
@@ -1474,7 +1509,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                           );
                                         }
                                       } else {
-                                        if (mounted) {
+                                        if (context.mounted) {
                                           UIUtils.showSnackBar(
                                             context,
                                             const SnackBar(
@@ -1498,7 +1533,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                                 anilistId: entry.anilistId,
                                               );
 
-                                          if (mounted) {
+                                          if (context.mounted) {
                                             UIUtils.hideCurrentSnackBar(
                                               context,
                                             );
@@ -1519,33 +1554,38 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                                     .saveWatchlist();
                                               }
 
-                                              UIUtils.showSnackBar(
-                                                context,
-                                                SnackBar(
-                                                  content: Text(
-                                                    'Gefunden: $dateStr (Benachrichtigung aktiv)',
+                                              if (context.mounted) {
+                                                UIUtils.showSnackBar(
+                                                  context,
+                                                  SnackBar(
+                                                    content: Text(
+                                                      'Gefunden: $dateStr (Benachrichtigung aktiv)',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.green,
+                                                    duration: const Duration(
+                                                      seconds: 4,
+                                                    ),
                                                   ),
-                                                  backgroundColor: Colors.green,
-                                                  duration: const Duration(
-                                                    seconds: 4,
-                                                  ),
-                                                ),
-                                              );
+                                                );
+                                              }
                                             } else {
-                                              UIUtils.showSnackBar(
-                                                context,
-                                                const SnackBar(
-                                                  content: Text(
-                                                    'Keine bevorstehende Folge gefunden.',
+                                              if (context.mounted) {
+                                                UIUtils.showSnackBar(
+                                                  context,
+                                                  const SnackBar(
+                                                    content: Text(
+                                                      'Keine bevorstehende Folge gefunden.',
+                                                    ),
+                                                    backgroundColor:
+                                                        Colors.orange,
                                                   ),
-                                                  backgroundColor:
-                                                      Colors.orange,
-                                                ),
-                                              );
+                                                );
+                                              }
                                             }
                                           }
                                         } catch (_) {
-                                          if (mounted) {
+                                          if (context.mounted) {
                                             UIUtils.hideCurrentSnackBar(
                                               context,
                                             );
@@ -1648,7 +1688,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                               entry.animeId,
                                               entry.title,
                                             );
-                                        if (mounted) {
+                                        if (context.mounted) {
                                           UIUtils.showSnackBar(
                                             context,
                                             const SnackBar(
@@ -1750,7 +1790,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   color: Theme.of(context)
                                       .colorScheme
                                       .surfaceContainerHighest
-                                      .withOpacity(0.3),
+                                      .withValues(alpha: 0.3),
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: Text(

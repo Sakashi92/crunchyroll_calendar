@@ -119,8 +119,9 @@ class ExternalSearchService {
       final isAlphanumeric = RegExp(r'^[A-Z0-9]+$').hasMatch(id.toUpperCase());
       final isNumeric = RegExp(r'^\d+$').hasMatch(id);
 
-      if (isAlphanumeric && !isNumeric)
+      if (isAlphanumeric && !isNumeric) {
         score += 5; // Strategic bonus for modern IDs
+      }
 
       // Check slug for title words
       for (final word in titleWords) {
@@ -151,8 +152,9 @@ class ExternalSearchService {
 
     // Require a minimum confidence score
     if (maxScore < 2) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('⚠️ [SEARCH] No high-confidence match found for "$title"');
+      }
       return '';
     }
 

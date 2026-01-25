@@ -50,8 +50,9 @@ class AnimeMetadata {
     }
     DateTime? nextDate;
     try {
-      if (json['nextEpisodeDate'] != null)
+      if (json['nextEpisodeDate'] != null) {
         nextDate = DateTime.parse(json['nextEpisodeDate']);
+      }
     } catch (_) {
       nextDate = null;
     }

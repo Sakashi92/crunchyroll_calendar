@@ -61,7 +61,7 @@ class WatchlistImporter {
         // fallback: try to find the first list value in the object
         final candidates = map.values.whereType<List>().toList();
         if (candidates.isNotEmpty) {
-          jsonList = candidates.first as List<dynamic>;
+          jsonList = candidates.first;
         } else {
           throw const FormatException('Unsupported JSON structure');
         }

@@ -1605,10 +1605,11 @@ class CrunchyrollService implements EpisodeProvider {
         0,
       ); // Letzter Tag des Monats
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           'Loading releases from ${monthStart.day}.${monthStart.month} to ${monthEnd.day}.${monthEnd.month}',
         );
+      }
 
       // Finde alle Montage (Wochenstart) im Monat
       DateTime currentWeekStart = monthStart.subtract(
@@ -1684,10 +1685,11 @@ class CrunchyrollService implements EpisodeProvider {
         0,
       ); // Letzter Tag des Monats
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           'Loading releases from ${monthStart.day}.${monthStart.month} to ${monthEnd.day}.${monthEnd.month}',
         );
+      }
 
       // Finde alle Montage (Wochenstart) im Monat
       DateTime currentWeekStart = monthStart.subtract(
@@ -2273,7 +2275,7 @@ class CrunchyrollService implements EpisodeProvider {
       final providerName = await AppSettingsService.getEpisodeProviderName();
 
       // Delegate to Anilist
-      if (providerName == EpisodeProviderFactory.PROVIDER_ANILIST) {
+      if (providerName == EpisodeProviderFactory.providerAnilist) {
         if (kDebugMode) print('Using Anilist for description...');
         final meta = await AnilistService().fetchSeriesMetadata(
           null,
@@ -2285,7 +2287,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
       // Delegate to Jikan
-      else if (providerName == EpisodeProviderFactory.PROVIDER_JIKAN) {
+      else if (providerName == EpisodeProviderFactory.providerJikan) {
         if (kDebugMode) print('Using Jikan for description...');
         final meta = await JikanService().fetchSeriesMetadata(null, animeName);
         if (meta?.description != null) {
@@ -2296,8 +2298,10 @@ class CrunchyrollService implements EpisodeProvider {
 
       // Fallback: Use built-in Kitsu logic (default)
       if (kDebugMode &&
-          providerName != EpisodeProviderFactory.PROVIDER_CRUNCHYROLL) {
-        print('Fallback to Kitsu for description...');
+          providerName != EpisodeProviderFactory.providerCrunchyroll) {
+        if (kDebugMode) {
+          print('Fallback to Kitsu for description...');
+        }
       }
 
       // Kitsu API - gleiche Logik wie für Bilder
@@ -2571,10 +2575,11 @@ class CrunchyrollService implements EpisodeProvider {
             filtered,
             preservePredictions: false,
           );
-          if (kDebugMode)
+          if (kDebugMode) {
             print(
               'Removed predicted releases from cache for ${monthDate.month}/${monthDate.year}',
             );
+          }
         }
       }
 
@@ -2606,7 +2611,7 @@ class CrunchyrollService implements EpisodeProvider {
       String normalize(String? s) => s == null
           ? ''
           : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
-      final normUrl = normalize(seriesUrl);
+
       final normTitle = normalize(title);
 
       bool matches(AnimeRelease r) {

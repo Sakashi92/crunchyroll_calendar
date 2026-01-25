@@ -47,7 +47,9 @@ class _MainAppState extends State<MainApp> {
     super.initState();
     // Load stored watchlist asynchronously so widgets reflect initial state
     watchlistService.loadWatchlist().catchError((e) {
-      if (kDebugMode) print('❌ Failed to load watchlist on startup: $e');
+      if (kDebugMode) {
+        print('❌ Failed to load watchlist on startup: $e');
+      }
     });
     _loadAccentColor();
     // Versuche einmalig Migration von Favoriten-Notification-Settings in die Watchlist
@@ -59,12 +61,15 @@ class _MainAppState extends State<MainApp> {
       final migrated = await watchlistService
           .migrateNotificationSettingsFromFavorites();
       if (migrated > 0) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '🔁 Migrated $migrated notification settings from favorites to watchlist',
           );
+        }
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
+          if (!mounted) {
+            return;
+          }
           UIUtils.showSnackBar(
             context,
             SnackBar(
@@ -76,7 +81,9 @@ class _MainAppState extends State<MainApp> {
         });
       }
     } catch (e) {
-      if (kDebugMode) print('❌ Migration error: $e');
+      if (kDebugMode) {
+        print('❌ Migration error: $e');
+      }
     }
   }
 

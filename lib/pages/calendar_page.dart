@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:table_calendar/table_calendar.dart';
-import 'package:intl/intl.dart';
+
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'dart:async';
@@ -14,7 +14,7 @@ import '../services/permission_service.dart';
 import '../services/battery_optimization_service.dart';
 import '../repositories/seen_repository.dart';
 import '../services/app_settings_service.dart';
-import '../utils/ui_utils.dart';
+
 import '../widgets/calendar_app_bar.dart';
 import '../widgets/calendar_display.dart';
 import '../widgets/calendar_release_list.dart';
@@ -248,7 +248,6 @@ class _CalendarPageState extends State<CalendarPage>
   double _cumulativeScrollDelta = 0.0;
   // threshold (pixels) read from settings before auto-minimizing
   double _autoMinimizeScrollThreshold = 200.0;
-  OverlayEntry? _topDateOverlay;
 
   @override
   void dispose() {
@@ -534,10 +533,11 @@ class _CalendarPageState extends State<CalendarPage>
         referenceDate.month - 1,
         1,
       );
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '📅 Preloading previous month: ${previousMonth.month}/${previousMonth.year}',
         );
+      }
       final previousMonthReleases = await _crunchyrollService
           .getReleasesForWeek(previousMonth);
 
@@ -547,8 +547,9 @@ class _CalendarPageState extends State<CalendarPage>
         referenceDate.month + 1,
         1,
       );
-      if (kDebugMode)
+      if (kDebugMode) {
         print('📅 Preloading next month: ${nextMonth.month}/${nextMonth.year}');
+      }
       final nextMonthReleases = await _crunchyrollService.getReleasesForWeek(
         nextMonth,
       );
@@ -670,8 +671,9 @@ class _CalendarPageState extends State<CalendarPage>
       try {
         final ws = widget.watchlistService;
         if (ws != null && ws.watchlist.entries.isNotEmpty) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print('🔮 Manual refresh: rebuilding predictions for watchlist...');
+          }
           await ws.generateForecastForAllEntries();
           if (kDebugMode) {
             print('✅ Manual refresh: predictions complete');
@@ -682,10 +684,11 @@ class _CalendarPageState extends State<CalendarPage>
           }
         }
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             'Error running watchlist-based predictor during manual refresh: $e',
           );
+        }
       }
 
       final Map<DateTime, List<AnimeRelease>> releasesByDay = {};
@@ -769,65 +772,6 @@ class _CalendarPageState extends State<CalendarPage>
     }
   }
 
-  void _showSelectedDateDialog(DateTime selected) {
-    final full = DateFormat("EEEE, d. MMMM yyyy", 'de_DE').format(selected);
-    if (!mounted) {
-      return;
-    }
-
-    // remove any existing overlay
-    _topDateOverlay?.remove();
-    _topDateOverlay = null;
-
-    final overlay = Overlay.of(context);
-    if (overlay == null) {
-      return;
-    }
-
-    final topOffset = MediaQuery.of(context).padding.top + 48.0 + 8.0 + 3.0;
-
-    _topDateOverlay = OverlayEntry(
-      builder: (context) => Positioned(
-        top: topOffset,
-        left: 16,
-        right: 16,
-        child: Material(
-          color: Colors.transparent,
-          child: SafeArea(
-            top: false,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(8),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: DefaultTextStyle(
-                style: Theme.of(
-                  context,
-                ).textTheme.bodyMedium!.copyWith(fontWeight: FontWeight.w500),
-                child: Text(full, textAlign: TextAlign.center),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-
-    overlay.insert(_topDateOverlay!);
-
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      _topDateOverlay?.remove();
-      _topDateOverlay = null;
-    });
-  }
-
   /// Zeigt eine Nachricht an, dass der Monat eingeforen ist
   void _showFrozenMonthMessage() {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -898,10 +842,11 @@ class _CalendarPageState extends State<CalendarPage>
           )
           .toList();
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           'Loading ${otherMonths.length} additional months sequentially...',
         );
+      }
 
       // Lade nacheinander SEQUENZIELL, nicht parallel
       final predictionEnabled = await AppSettingsService.getPredictionEnabled();
@@ -955,10 +900,11 @@ class _CalendarPageState extends State<CalendarPage>
         setState(() {});
       }
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '✓ Loaded ${_releases.length} days with anime releases from cache',
         );
+      }
     } catch (e) {
       if (kDebugMode) print('Error loading cached months: $e');
     }

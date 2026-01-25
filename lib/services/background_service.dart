@@ -15,8 +15,9 @@ import '../models/notification_log.dart';
 int _notificationIdFromHash(String contentHash) {
   try {
     final hex = contentHash.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
-    if (hex.length < 8)
+    if (hex.length < 8) {
       return DateTime.now().millisecondsSinceEpoch & 0x7fffffff;
+    }
     final sub = hex.substring(0, 8);
     return int.parse(sub, radix: 16) & 0x7fffffff;
   } catch (_) {
@@ -50,8 +51,9 @@ class BackgroundService {
 
       if (kDebugMode) print('✓ Background Service initialized successfully');
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ CRITICAL: Error initializing background service: $e');
+      }
       rethrow;
     }
   }
@@ -64,10 +66,11 @@ class BackgroundService {
     int delaySeconds = 0,
   }) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '🔔 [TEST] Scheduling favorites test notifications via Workmanager (delay: ${delaySeconds}s)...',
         );
+      }
 
       final uniqueName =
           'favorites_test_${DateTime.now().millisecondsSinceEpoch}';
@@ -101,10 +104,11 @@ class BackgroundService {
   /// Test: Führt den Background-Scraper SOFORT aus (zum Testen ob er funktioniert)
   Future<void> testBackgroundScraperNow() async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '🧪 [TEST] Scheduling background scraper test via Workmanager...',
         );
+      }
 
       final uniqueName =
           'scraper_test_${DateTime.now().millisecondsSinceEpoch}';
@@ -133,11 +137,14 @@ class BackgroundService {
   /// [intervalMinutes] - Wiederholungsintervall (minimum 15 Minuten)
   Future<void> startPeriodicScraperTask({int intervalMinutes = 30}) async {
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('📅 Attempting to register periodic scraper task...');
+      }
 
       if (intervalMinutes < 15) {
-        if (kDebugMode) print('⚠️  Minimum interval is 15 minutes, using 15');
+        if (kDebugMode) {
+          print('⚠️  Minimum interval is 15 minutes, using 15');
+        }
         intervalMinutes = 15;
       }
 
@@ -270,8 +277,9 @@ void callbackDispatcher() {
 
       // Sofort-Test Task
       if (taskName == 'workmanager_test_now') {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('✅ [BACKGROUND] WORKMANAGER WORKS! Immediate test successful!');
+        }
         return Future.value(true);
       }
 
@@ -279,12 +287,14 @@ void callbackDispatcher() {
         if (kDebugMode) print('📱 [BACKGROUND] Running scraper task...');
         return await _executeBackgroundScraper();
       } else if (taskName == BackgroundService._testNotificationTaskName) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('🧪 [BACKGROUND] Running test notification task...');
+        }
         return await _executeTestNotification(inputData);
       } else if (taskName == BackgroundService._favoritesTestTaskName) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('🔔 [BACKGROUND] Running favorites test notification task...');
+        }
         return await _executeFavoritesTestNotification();
       }
 
@@ -301,10 +311,11 @@ void callbackDispatcher() {
 /// Wird periodisch aufgerufen wenn die App geschlossen ist
 Future<bool> _executeBackgroundScraper() async {
   try {
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '🔄 [BACKGROUND-SCRAPER] Background scraper started at ${DateTime.now()}',
       );
+    }
 
     final startTime = DateTime.now();
 
@@ -315,94 +326,109 @@ Future<bool> _executeBackgroundScraper() async {
     final notificationService = NotificationService();
 
     // WICHTIG: Initialisiere NotificationService im Background Isolate!
-    if (kDebugMode)
+    if (kDebugMode) {
       print('📲 [BACKGROUND-SCRAPER] Initializing notification service...');
+    }
     final notificationInitialized = await notificationService.initialize();
     if (!notificationInitialized) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '❌ [BACKGROUND-SCRAPER] Failed to initialize notification service in background',
         );
+      }
       return false;
     }
 
     // 2. Scrape aktuelle Releases (dies aktualisiert automatisch den Cache!)
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '🌐 [BACKGROUND-SCRAPER] Fetching and caching current releases from Crunchyroll...',
       );
+    }
     final now = DateTime.now();
     final allReleases = await crunchyrollService.getReleasesForWeek(now);
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📺 [BACKGROUND-SCRAPER] Fetched and cached ${allReleases.length} releases for this week',
       );
+    }
 
     // Load watchlist once for all subsequent operations
-    if (kDebugMode)
+    if (kDebugMode) {
       print('📚 [BACKGROUND-SCRAPER] Loading watchlist from prefs...');
+    }
     final watchlist = Watchlist();
     final watchlistService = WatchlistService(watchlist);
     await watchlistService.loadWatchlist();
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '✅ [BACKGROUND-SCRAPER] Loaded ${watchlist.entries.length} watchlist entries',
       );
+    }
 
     // 2.a Synchronisiere die Watchlist mit den gecachten Releases (falls vorhanden)
     try {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '🔁 [BACKGROUND-SCRAPER] Syncing watchlist totals with cached releases...',
         );
+      }
       await crunchyrollService.syncWatchlistWithReleases(
         watchlistService,
         notificationRepo,
       );
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ [BACKGROUND-SCRAPER] Failed to sync watchlist: $e');
+      }
     }
 
     // 2.b Wenn Vorhersagen aktiviert sind, führe den Predictor im Hintergrund aus (nur für Watchlist)
     try {
       final predEnabled = await AppSettingsService.getPredictionEnabled();
       if (predEnabled) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '🔮 [BACKGROUND-SCRAPER] Predictions enabled - running watchlist-only predictor',
           );
+        }
         // Only predict for watchlist entries, not all known series
         if (watchlist.entries.isNotEmpty) {
           await watchlistService.generateForecastForAllEntries();
-          if (kDebugMode)
+          if (kDebugMode) {
             print('🔮 [BACKGROUND-SCRAPER] Watchlist predictor finished');
+          }
 
           // Batch refresh metadata for all active series to check for finished status
-          if (kDebugMode)
+          if (kDebugMode) {
             print('🔄 [BACKGROUND-SCRAPER] Refreshing active metadata...');
+          }
           await watchlistService.refreshActiveSeriesMetadata();
         } else {
-          if (kDebugMode)
+          if (kDebugMode) {
             print(
               '🔮 [BACKGROUND-SCRAPER] Watchlist empty - skipping predictions',
             );
+          }
         }
       } else {
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '🔮 [BACKGROUND-SCRAPER] Predictions disabled - skipping predictor',
           );
+        }
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ [BACKGROUND-SCRAPER] Error checking/running predictor: $e');
+      }
     }
 
     if (allReleases.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('⚠️  [BACKGROUND-SCRAPER] No releases found for this week');
+      }
       return true;
     }
 
@@ -414,17 +440,19 @@ Future<bool> _executeBackgroundScraper() async {
         .toList();
 
     if (enabledWatchlist.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '🔕 [BACKGROUND-SCRAPER] No enabled watchlist entries - skipping notifications',
         );
+      }
       return true;
     }
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '🔔 [BACKGROUND-SCRAPER] Checking ${enabledWatchlist.length} watchlist items with notifications on',
       );
+    }
 
     // WICHTIG: Filtere nur Releases von HEUTE (nicht aus der Vergangenheit!)
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -435,22 +463,25 @@ Future<bool> _executeBackgroundScraper() async {
           release.releaseTime.isBefore(todayEnd);
     }).toList();
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📅 [BACKGROUND-SCRAPER] Releases from today only: ${todaysReleases.length}',
       );
+    }
 
     if (todaysReleases.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           'ℹ️  [BACKGROUND-SCRAPER] Keine Releases für heute gefunden - cache updated, done',
         );
+      }
       return true;
     }
 
     // 4. Filtere nach Favoriten/Watchlist-Titeln
-    if (kDebugMode)
+    if (kDebugMode) {
       print('🔍 [BACKGROUND-SCRAPER] Filtering releases by watchlist...');
+    }
     final watchlistTitles = enabledWatchlist
         .map((w) => w.title.toLowerCase())
         .toList();
@@ -461,17 +492,19 @@ Future<bool> _executeBackgroundScraper() async {
     );
 
     if (relevantReleases.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '✓ [BACKGROUND-SCRAPER] No new releases for watchlist today - cache updated, done',
         );
+      }
       return true;
     }
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '✅ [BACKGROUND-SCRAPER] Found ${relevantReleases.length} releases for watchlist today',
       );
+    }
 
     // 5. Prüfe auf bereits gesendete Benachrichtigungen
     final uniqueReleases = ReleaseComparator.sortByRelevance(relevantReleases);
@@ -490,10 +523,11 @@ Future<bool> _executeBackgroundScraper() async {
     int skippedDuplicates = 0;
     final seenRepo = SeenRepository();
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📤 [BACKGROUND-SCRAPER] Processing ${uniqueReleases.length} releases...',
       );
+    }
 
     for (final release in uniqueReleases) {
       // Erstelle NotificationLog mit Content-Hash
@@ -511,10 +545,11 @@ Future<bool> _executeBackgroundScraper() async {
       // Skip if user already saw this release in the app
       final alreadySeen = await seenRepo.isSeen(contentHash);
       if (alreadySeen) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '⏭️  [BACKGROUND-SCRAPER] SKIPPED (already seen): ${release.title} ep.${release.episodeNumber}',
           );
+        }
         skippedDuplicates++;
         continue;
       }
@@ -590,8 +625,9 @@ Future<bool> _executeBackgroundScraper() async {
           );
         }
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('⚠️ [BACKGROUND-SCRAPER] Post-notification sync failed: $e');
+        }
       }
     }
 
@@ -619,8 +655,9 @@ Future<bool> _executeBackgroundScraper() async {
 /// Test-Benachrichtigung ausführen (im Background Isolate)
 Future<bool> _executeTestNotification(Map<String, dynamic>? inputData) async {
   try {
-    if (kDebugMode)
+    if (kDebugMode) {
       print('🔔 [BACKGROUND] Sending test notification from background...');
+    }
 
     final delaySeconds = inputData?['delay_seconds'] ?? 0;
 
@@ -636,8 +673,9 @@ Future<bool> _executeTestNotification(Map<String, dynamic>? inputData) async {
       payload: 'background_test',
     );
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print('✅ [BACKGROUND] Background test notification sent successfully');
+    }
 
     return true;
   } catch (e) {
@@ -649,8 +687,9 @@ Future<bool> _executeTestNotification(Map<String, dynamic>? inputData) async {
 /// Favoriten-Test-Benachrichtigungen im Background ausführen
 Future<bool> _executeFavoritesTestNotification() async {
   try {
-    if (kDebugMode)
+    if (kDebugMode) {
       print('🔔 [BACKGROUND] Starting favorites test notifications...');
+    }
 
     // Initialisiere Services
     final favoritesRepo = FavoritesRepository();
@@ -658,29 +697,37 @@ Future<bool> _executeFavoritesTestNotification() async {
     final notificationService = NotificationService();
 
     // WICHTIG: Initialisiere NotificationService im Background Isolate!
-    if (kDebugMode)
+    if (kDebugMode) {
       print('📲 [BACKGROUND] Initializing notification service...');
+    }
     final initialized = await notificationService.initialize();
     if (!initialized) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ [BACKGROUND] Failed to initialize notification service');
+      }
       return false;
     }
 
     // Lade alle Favoriten + Watchlist und filtere aktivierte Benachrichtigungen
-    if (kDebugMode) print('📚 [BACKGROUND] Loading favorites from database...');
+    if (kDebugMode) {
+      print('📚 [BACKGROUND] Loading favorites from database...');
+    }
     final allFavorites = await favoritesRepo.getAllFavorites();
-    if (kDebugMode)
+    if (kDebugMode) {
       print('📚 [BACKGROUND] Loaded ${allFavorites.length} favorites');
+    }
 
-    if (kDebugMode) print('📚 [BACKGROUND] Loading watchlist from prefs...');
+    if (kDebugMode) {
+      print('📚 [BACKGROUND] Loading watchlist from prefs...');
+    }
     final watchlist = Watchlist();
     final watchlistService = WatchlistService(watchlist);
     await watchlistService.loadWatchlist();
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📚 [BACKGROUND] Loaded ${watchlist.entries.length} watchlist entries',
       );
+    }
 
     // Filtere nur Favoriten / Watchlist-Einträge mit aktivierter Benachrichtigung
     final enabledFavorites = allFavorites
@@ -691,24 +738,27 @@ Future<bool> _executeFavoritesTestNotification() async {
         .toList();
 
     if (enabledFavorites.isEmpty && enabledWatchlist.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           'ℹ️  [BACKGROUND] Keine aktivierten Favoriten/Watchlist-Einträge',
         );
+      }
       return true;
     }
 
     // WICHTIG: Verwende forceRefresh um FRISCHE Daten zu bekommen (nicht aus Cache!)
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '🌐 [BACKGROUND] Force-fetching fresh releases from Crunchyroll...',
       );
+    }
     final now = DateTime.now();
     final allReleases = await crunchyrollService.forceRefresh(forMonth: now);
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📺 [BACKGROUND] Found ${allReleases.length} fresh releases for this month',
       );
+    }
 
     // WICHTIG: Filtere nur Releases von HEUTE (nicht aus der Vergangenheit!)
     final todayStart = DateTime(now.year, now.month, now.day);
@@ -719,14 +769,16 @@ Future<bool> _executeFavoritesTestNotification() async {
           release.releaseTime.isBefore(todayEnd);
     }).toList();
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📅 [BACKGROUND] Releases from today only: ${todaysReleases.length}',
       );
+    }
 
     if (todaysReleases.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('ℹ️  [BACKGROUND] Keine Releases für heute gefunden');
+      }
       return true;
     }
 
@@ -741,15 +793,17 @@ Future<bool> _executeFavoritesTestNotification() async {
     }).toList();
 
     if (favoritesWithTodaysReleases.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('ℹ️  [BACKGROUND] Keine Favoriten mit Releases von heute');
+      }
       return true;
     }
 
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📤 [BACKGROUND] Sending notifications for ${favoritesWithTodaysReleases.length} enabled entries with releases today',
       );
+    }
 
     // Sende Benachrichtigungen für jeden Favoriten mit Release heute
     final notificationRepo = NotificationRepository();
@@ -772,24 +826,27 @@ Future<bool> _executeFavoritesTestNotification() async {
         );
 
         final hash = log.generateContentHash();
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '🔍 [FAV-TEST] Checking duplicate for ${release.title} ep.${release.episodeNumber} hash=$hash',
           );
+        }
 
         final already = await notificationRepo.isDuplicate(hash);
         if (already) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print(
               '⏭️  [FAV-TEST] Duplicate found, skipping: ${release.title} ep.${release.episodeNumber}',
             );
+          }
           continue;
         }
 
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '📤 [BACKGROUND] SENDING favorite-test notification for: ${release.title} - ${release.episodeInfo}',
           );
+        }
 
         final favNotifId = _notificationIdFromHash(hash);
         await notificationService.showNotification(
@@ -803,13 +860,15 @@ Future<bool> _executeFavoritesTestNotification() async {
         try {
           final withHash = log.copyWith(contentHash: hash);
           await notificationRepo.logNotification(withHash);
-          if (kDebugMode)
+          if (kDebugMode) {
             print(
               '✅ [FAV-TEST] Logged favorite-test notification: ${release.title} ep.${release.episodeNumber} hash=$hash',
             );
+          }
         } catch (e) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print('❌ [FAV-TEST] Error logging favorite-test notification: $e');
+          }
         }
 
         // Kleine Verzögerung zwischen Benachrichtigungen
@@ -817,7 +876,9 @@ Future<bool> _executeFavoritesTestNotification() async {
       }
     }
 
-    if (kDebugMode) print('✅ [BACKGROUND] All notifications sent!');
+    if (kDebugMode) {
+      print('✅ [BACKGROUND] All notifications sent!');
+    }
     return true;
   } catch (e, stackTrace) {
     if (kDebugMode) {

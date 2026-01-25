@@ -96,7 +96,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _episodeProvider = name;
     });
     widget.onSettingsChanged?.call();
-    if (mounted)
+    if (mounted) {
       UIUtils.showSnackBar(
         context,
         SnackBar(
@@ -104,6 +104,7 @@ class _SettingsPageState extends State<SettingsPage> {
           duration: const Duration(seconds: 2),
         ),
       );
+    }
   }
 
   Future<void> _saveImageQuality(String quality) async {
@@ -148,8 +149,9 @@ class _SettingsPageState extends State<SettingsPage> {
         }
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ Error restarting background service or auto-update: $e');
+      }
     }
 
     if (mounted) {
@@ -231,14 +233,16 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       _predictionEnabled = enabled;
     });
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '🔎 [SETTINGS] Toggling predictions: ${enabled ? 'ENABLED' : 'DISABLED'}',
       );
+    }
     if (enabled) {
       try {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('🔎 [SETTINGS] Preparing CrunchyrollService and predictor...');
+        }
         final cs = widget.crunchyrollService ?? CrunchyrollService();
         await cs.removeAllPredictedReleases();
         await cs.loadCacheOnStartup();
@@ -263,8 +267,9 @@ class _SettingsPageState extends State<SettingsPage> {
             await ws.loadWatchlist();
           }
         } catch (e) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print('🔎 [SETTINGS] Could not load watchlist entries: $e');
+          }
         }
         await anilist.refreshMetadataForCrunchyroll(
           cs,
@@ -274,10 +279,11 @@ class _SettingsPageState extends State<SettingsPage> {
         try {
           if (ws != null) {
             final created = await ws.generateForecastForAllEntries();
-            if (kDebugMode)
+            if (kDebugMode) {
               print(
                 '🔎 [SETTINGS] Created $created predictions for watchlist entries',
               );
+            }
             if (mounted) {
               UIUtils.showSnackBar(
                 context,
@@ -286,10 +292,11 @@ class _SettingsPageState extends State<SettingsPage> {
             }
           }
         } catch (e) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print(
               '🔎 [SETTINGS] Error running watchlist-based predictions: $e',
             );
+          }
         }
         try {
           predictionsUpdated.value = true;
@@ -297,11 +304,12 @@ class _SettingsPageState extends State<SettingsPage> {
         widget.onSettingsChanged?.call();
       } catch (e) {
         if (kDebugMode) print('Error triggering predictor from settings: $e');
-        if (mounted)
+        if (mounted) {
           UIUtils.showSnackBar(
             context,
             SnackBar(content: Text('Fehler beim Ausführen der Vorhersage: $e')),
           );
+        }
       }
     } else {
       try {
@@ -311,8 +319,9 @@ class _SettingsPageState extends State<SettingsPage> {
           predictionsUpdated.value = true;
         } catch (_) {}
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('Error removing predicted releases from settings: $e');
+        }
       }
     }
     widget.onSettingsChanged?.call();
@@ -350,8 +359,9 @@ class _SettingsPageState extends State<SettingsPage> {
         } catch (_) {}
       }
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('Error re-running predictions after clearing image cache: $e');
+      }
     }
     widget.onSettingsChanged?.call();
     if (mounted) {
@@ -416,7 +426,7 @@ class _SettingsPageState extends State<SettingsPage> {
 
                   if (confirmed == true) {
                     await NotificationRepository().deleteAllNotifications();
-                    if (mounted) {
+                    if (context.mounted) {
                       UIUtils.showSnackBar(
                         context,
                         const SnackBar(
@@ -469,7 +479,8 @@ class _SettingsPageState extends State<SettingsPage> {
               : ListView.separated(
                   shrinkWrap: true,
                   itemCount: history.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (context, index) =>
+                      const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final entry = history[index];
                     return ListTile(
@@ -597,7 +608,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: ListTile(
               leading: const Icon(Icons.cloud),
               title: const Text('Datenanbieter'),
-              subtitle: Text('Aktuell: ${_episodeProvider}'),
+              subtitle: Text('Aktuell: $_episodeProvider'),
               trailing: DropdownButton<String>(
                 value: _episodeProvider,
                 items: const [
@@ -615,7 +626,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   ),
                 ],
                 onChanged: (v) {
-                  if (v != null) _saveEpisodeProvider(v);
+                  if (v != null) {
+                    _saveEpisodeProvider(v);
+                  }
                 },
               ),
             ),
@@ -1178,7 +1191,8 @@ class _SettingsPageState extends State<SettingsPage> {
       leading: const Icon(Icons.schedule),
       title: const Text('Benachrichtigungs-Verzögerung'),
       subtitle: Text(
-        '${AppSettingsService.notificationDelays[_notificationDelaySeconds] ?? 'Sofort'}',
+        AppSettingsService.notificationDelays[_notificationDelaySeconds] ??
+            'Sofort',
       ),
       trailing: DropdownButton<int>(
         value: _notificationDelaySeconds,
@@ -1232,7 +1246,9 @@ class _SettingsPageState extends State<SettingsPage> {
             return RadioListTile<String>(
               title: Text(entry.value),
               value: entry.key,
+              // ignore: deprecated_member_use
               groupValue: _imageQuality,
+              // ignore: deprecated_member_use
               onChanged: (value) {
                 if (value != null) {
                   Navigator.pop(context);
@@ -1263,7 +1279,9 @@ class _SettingsPageState extends State<SettingsPage> {
             RadioListTile<double>(
               title: const Text('Niedrig (100 px)'),
               value: 100.0,
+              // ignore: deprecated_member_use
               groupValue: _autoMinimizeScrollThreshold,
+              // ignore: deprecated_member_use
               onChanged: (v) {
                 if (v != null) {
                   Navigator.pop(context);
@@ -1274,7 +1292,9 @@ class _SettingsPageState extends State<SettingsPage> {
             RadioListTile<double>(
               title: const Text('Standard (200 px)'),
               value: 200.0,
+              // ignore: deprecated_member_use
               groupValue: _autoMinimizeScrollThreshold,
+              // ignore: deprecated_member_use
               onChanged: (v) {
                 if (v != null) {
                   Navigator.pop(context);
@@ -1285,7 +1305,9 @@ class _SettingsPageState extends State<SettingsPage> {
             RadioListTile<double>(
               title: const Text('Hoch (300 px)'),
               value: 300.0,
+              // ignore: deprecated_member_use
               groupValue: _autoMinimizeScrollThreshold,
+              // ignore: deprecated_member_use
               onChanged: (v) {
                 if (v != null) {
                   Navigator.pop(context);
@@ -1296,7 +1318,9 @@ class _SettingsPageState extends State<SettingsPage> {
             RadioListTile<double>(
               title: const Text('Sehr hoch (500 px)'),
               value: 500.0,
+              // ignore: deprecated_member_use
               groupValue: _autoMinimizeScrollThreshold,
+              // ignore: deprecated_member_use
               onChanged: (v) {
                 if (v != null) {
                   Navigator.pop(context);
@@ -1327,7 +1351,9 @@ class _SettingsPageState extends State<SettingsPage> {
             return RadioListTile<int>(
               title: Text(entry.value),
               value: entry.key,
+              // ignore: deprecated_member_use
               groupValue: _updateIntervalMinutes,
+              // ignore: deprecated_member_use
               onChanged: (value) {
                 if (value != null) {
                   Navigator.pop(context);
@@ -1387,7 +1413,7 @@ class _SettingsPageState extends State<SettingsPage> {
             spacing: 12,
             runSpacing: 12,
             children: AppSettingsService.accentColors.map((color) {
-              final isSelected = _accentColor.value == color.value;
+              final isSelected = _accentColor.toARGB32() == color.toARGB32();
               return GestureDetector(
                 onTap: () => _selectAccentColor(color),
                 child: Stack(

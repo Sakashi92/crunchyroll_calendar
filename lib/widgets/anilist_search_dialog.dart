@@ -7,7 +7,7 @@ import '../services/anilist_service.dart';
 class AnilistSearchDialog extends StatefulWidget {
   final String initialQuery;
 
-  const AnilistSearchDialog({Key? key, required this.initialQuery}) : super(key: key);
+  const AnilistSearchDialog({super.key, required this.initialQuery});
 
   @override
   State<AnilistSearchDialog> createState() => _AnilistSearchDialogState();
@@ -94,9 +94,22 @@ class _AnilistSearchDialogState extends State<AnilistSearchDialog> {
             ),
             const SizedBox(height: 16),
             if (_isLoading)
-              const Center(child: Padding(padding: EdgeInsets.all(32), child: CircularProgressIndicator()))
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: CircularProgressIndicator(),
+                ),
+              )
             else if (_error != null)
-              Center(child: Padding(padding: EdgeInsets.all(32), child: Text(_error!, style: const TextStyle(color: Colors.red))))
+              Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text(
+                    _error!,
+                    style: const TextStyle(color: Colors.red),
+                  ),
+                ),
+              )
             else if (_results.isNotEmpty)
               Flexible(
                 child: ListView.separated(
@@ -115,19 +128,36 @@ class _AnilistSearchDialogState extends State<AnilistSearchDialog> {
                                 width: 50,
                                 height: 70,
                                 fit: BoxFit.cover,
-                                placeholder: (c, u) => Container(color: Colors.grey[200]),
-                                errorWidget: (c, u, e) => const Icon(Icons.broken_image),
+                                placeholder: (c, u) =>
+                                    Container(color: Colors.grey[200]),
+                                errorWidget: (c, u, e) =>
+                                    const Icon(Icons.broken_image),
                               )
-                            : Container(color: Colors.grey[200], width: 50, height: 70, child: const Icon(Icons.image)),
+                            : Container(
+                                color: Colors.grey[200],
+                                width: 50,
+                                height: 70,
+                                child: const Icon(Icons.image),
+                              ),
                       ),
-                      title: Text(meta.siteUrl ?? 'Unbekannter Titel', maxLines: 2, overflow: TextOverflow.ellipsis), // siteUrl often contains the title slug or useful info if null
+                      title: Text(
+                        meta.siteUrl ?? 'Unbekannter Titel',
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ), // siteUrl often contains the title slug or useful info if null
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                           if (meta.startDate != null)
-                             Text('Start: ${meta.startDate!.year}'),
-                           if (meta.id != null)
-                             Text('ID: ${meta.id}', style: TextStyle(fontSize: 10, color: Colors.grey)),
+                          if (meta.startDate != null)
+                            Text('Start: ${meta.startDate!.year}'),
+                          if (meta.id != null)
+                            Text(
+                              'ID: ${meta.id}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.grey,
+                              ),
+                            ),
                         ],
                       ),
                       onTap: () {
@@ -138,7 +168,12 @@ class _AnilistSearchDialogState extends State<AnilistSearchDialog> {
                 ),
               )
             else
-              const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('Suche nach einem Anime...'))),
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text('Suche nach einem Anime...'),
+                ),
+              ),
           ],
         ),
       ),

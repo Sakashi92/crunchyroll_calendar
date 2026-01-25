@@ -1,5 +1,3 @@
-/// Modell für eine Benachrichtigungs-Historie
-/// Speichert alle gesendeten Benachrichtigungen zur Vermeidung von Duplikaten
 import 'package:crypto/crypto.dart';
 
 class NotificationLog {
@@ -11,7 +9,7 @@ class NotificationLog {
   final DateTime notifyTime;
   final bool isShown;
   final String? contentHash; // SHA256 des Inhalts für Deduplication
-  
+
   NotificationLog({
     this.id,
     this.favoriteId,
@@ -22,15 +20,12 @@ class NotificationLog {
     this.isShown = false,
     this.contentHash,
   });
-  
+
   /// Erstellt einen Content-Hash für Deduplication
   /// Hash basiert auf: favoriteTitle + releaseTitle + episodeNumber
   String generateContentHash() {
     String normalize(String s) {
-      return s
-          .toLowerCase()
-          .replaceAll(RegExp(r"\s+"), ' ')
-          .trim();
+      return s.toLowerCase().replaceAll(RegExp(r"\s+"), ' ').trim();
     }
 
     final fav = normalize(favoriteTitle);
@@ -40,7 +35,7 @@ class NotificationLog {
     final content = '$fav|$rel|$ep';
     return sha256.convert(content.codeUnits).toString();
   }
-  
+
   /// Konvertiert das Modell zu JSON für Speicherung
   Map<String, dynamic> toJson() {
     return {
@@ -54,7 +49,7 @@ class NotificationLog {
       'contentHash': contentHash ?? generateContentHash(),
     };
   }
-  
+
   /// Erstellt ein NotificationLog-Objekt aus JSON
   factory NotificationLog.fromJson(Map<String, dynamic> json) {
     return NotificationLog(
@@ -68,7 +63,7 @@ class NotificationLog {
       contentHash: json['contentHash'] as String?,
     );
   }
-  
+
   /// Erstellt eine Kopie mit optionalen Änderungen
   NotificationLog copyWith({
     int? id,
@@ -91,9 +86,10 @@ class NotificationLog {
       contentHash: contentHash ?? this.contentHash,
     );
   }
-  
+
   @override
-  String toString() => 'NotificationLog('
+  String toString() =>
+      'NotificationLog('
       'favoriteTitle: $favoriteTitle, '
       'releaseTitle: $releaseTitle, '
       'episodeNumber: $episodeNumber, '

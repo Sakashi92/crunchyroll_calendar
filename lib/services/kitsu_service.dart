@@ -22,7 +22,9 @@ class KitsuService implements EpisodeProvider {
 
   @override
   Future<List<AnimeRelease>> getReleasesForWeek(DateTime startDate) async {
-    if (kDebugMode) print('[KitsuService] getReleasesForWeek not implemented');
+    if (kDebugMode) {
+      print('[KitsuService] getReleasesForWeek not implemented');
+    }
     return [];
   }
 
@@ -98,14 +100,15 @@ class KitsuService implements EpisodeProvider {
               attrs['status']; // "current", "finished", "tba", "unreleased", "upcoming"
           String? status;
           if (rawStatus != null) {
-            if (rawStatus == 'finished')
+            if (rawStatus == 'finished') {
               status = 'FINISHED';
-            else if (rawStatus == 'current')
+            } else if (rawStatus == 'current') {
               status = 'RELEASING';
-            else if (rawStatus == 'upcoming')
+            } else if (rawStatus == 'upcoming') {
               status = 'NOT_YET_RELEASED';
-            else
+            } else {
               status = rawStatus.toUpperCase();
+            }
           }
 
           int? epCount = attrs['episodeCount'];
@@ -121,10 +124,14 @@ class KitsuService implements EpisodeProvider {
           );
         }).toList();
       } else {
-        if (kDebugMode) print('❌ [KITSU] Error ${response.statusCode}');
+        if (kDebugMode) {
+          print('❌ [KITSU] Error ${response.statusCode}');
+        }
       }
     } catch (e) {
-      if (kDebugMode) print('❌ [KITSU] Search error: $e');
+      if (kDebugMode) {
+        print('❌ [KITSU] Search error: $e');
+      }
     }
     return [];
   }

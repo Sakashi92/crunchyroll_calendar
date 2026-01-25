@@ -6,9 +6,9 @@ import 'jikan_service.dart';
 import 'app_settings_service.dart';
 
 class EpisodeProviderFactory {
-  static const String PROVIDER_CRUNCHYROLL = 'crunchyroll';
-  static const String PROVIDER_ANILIST = 'anilist';
-  static const String PROVIDER_JIKAN = 'jikan';
+  static const String providerCrunchyroll = 'crunchyroll';
+  static const String providerAnilist = 'anilist';
+  static const String providerJikan = 'jikan';
 
   /// Returns an instance of the currently selected EpisodeProvider.
   /// By default returns `CrunchyrollService` to preserve current behavior.
@@ -16,11 +16,11 @@ class EpisodeProviderFactory {
     final name = await AppSettingsService.getEpisodeProviderName();
     if (kDebugMode) print('[EpisodeProviderFactory] selected provider: $name');
     switch (name) {
-      case PROVIDER_ANILIST:
+      case providerAnilist:
         return AnilistService();
-      case PROVIDER_JIKAN:
+      case providerJikan:
         return JikanService();
-      case PROVIDER_CRUNCHYROLL:
+      case providerCrunchyroll:
       default:
         return CrunchyrollService();
     }

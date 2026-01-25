@@ -14,7 +14,7 @@ import 'kitsu_service.dart';
 import 'jikan_service.dart';
 import '../utils/title_utils.dart';
 import 'dart:async';
-import 'package:flutter/foundation.dart';
+
 import '../models/anime_metadata.dart';
 import '../utils/watchlist_importer.dart';
 
@@ -457,8 +457,9 @@ class WatchlistService {
     try {
       meta = await anilist.fetchSeriesMetadata(entry.animeId, entry.title);
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('⚠️ [SYNC] AniList failed for "${entry.title}": $e');
+      }
     }
 
     // 2. Try Kitsu fallback
@@ -466,8 +467,9 @@ class WatchlistService {
       try {
         meta = await kitsu.fetchSeriesMetadata(entry.animeId, entry.title);
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('⚠️ [SYNC] Kitsu failed for "${entry.title}": $e');
+        }
       }
     }
 
@@ -476,8 +478,9 @@ class WatchlistService {
       try {
         meta = await jikan.fetchSeriesMetadata(entry.animeId, entry.title);
       } catch (e) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('⚠️ [SYNC] Jikan failed for "${entry.title}": $e');
+        }
       }
     }
 

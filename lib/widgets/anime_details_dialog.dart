@@ -118,10 +118,6 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
   }
 
-  Future<void> _checkIfFavorite() async {
-    // favorite feature removed; no-op
-  }
-
   // Favorite feature removed; no-op placeholder kept for API stability if needed.
 
   Future<void> _loadDescription() async {
@@ -494,12 +490,10 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
       } else {
         int parsedCurrent = int.tryParse(widget.release.episodeNumber) ?? 0;
         int? knownMax = _knownMaxEpisode;
-        if (knownMax == null) {
-          knownMax = await widget.crunchyrollService.getMaxEpisodeFromCache(
-            id,
-            widget.release.title,
-          );
-        }
+        knownMax ??= await widget.crunchyrollService.getMaxEpisodeFromCache(
+          id,
+          widget.release.title,
+        );
         final total = (knownMax != null && knownMax > parsedCurrent)
             ? knownMax
             : parsedCurrent;
@@ -612,10 +606,11 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
               updatedUrl = result.bannerImage;
               if (updatedUrl != oldId) {
                 ws.watchlist.renameEntry(oldId, updatedUrl!);
-                if (kDebugMode)
+                if (kDebugMode) {
                   print(
                     '🔗 Sync: Updated Crunchyroll URL from AniList: $updatedUrl',
                   );
+                }
               }
             }
 

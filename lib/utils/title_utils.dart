@@ -9,12 +9,28 @@ String normalizeTitle(String? s) {
   t = t.replaceAll('&amp;', '&');
   // replace common diacritics
   const replacements = {
-    'ä': 'a', 'ö': 'o', 'ü': 'u', 'ß': 'ss',
-    'é': 'e', 'è': 'e', 'ê': 'e', 'á': 'a', 'à': 'a', 'â': 'a',
-    'ó': 'o', 'ò': 'o', 'ô': 'o', 'í': 'i', 'ì': 'i', 'î': 'i',
-    'ñ': 'n', 'ç': 'c'
+    'ä': 'a',
+    'ö': 'o',
+    'ü': 'u',
+    'ß': 'ss',
+    'é': 'e',
+    'è': 'e',
+    'ê': 'e',
+    'á': 'a',
+    'à': 'a',
+    'â': 'a',
+    'ó': 'o',
+    'ò': 'o',
+    'ô': 'o',
+    'í': 'i',
+    'ì': 'i',
+    'î': 'i',
+    'ñ': 'n',
+    'ç': 'c',
   };
-  replacements.forEach((k, v) { t = t.replaceAll(k, v); });
+  replacements.forEach((k, v) {
+    t = t.replaceAll(k, v);
+  });
   // remove punctuation and extra spaces
   t = t.replaceAll(RegExp(r"[^a-z0-9\s]"), ' ');
   t = t.replaceAll(RegExp(r"\s+"), ' ').trim();
@@ -27,15 +43,19 @@ int _levenshtein(String s, String t) {
   if (n == 0) return m;
   if (m == 0) return n;
   List<List<int>> d = List.generate(n + 1, (_) => List.filled(m + 1, 0));
-  for (var i = 0; i <= n; i++) d[i][0] = i;
-  for (var j = 0; j <= m; j++) d[0][j] = j;
+  for (var i = 0; i <= n; i++) {
+    d[i][0] = i;
+  }
+  for (var j = 0; j <= m; j++) {
+    d[0][j] = j;
+  }
   for (var i = 1; i <= n; i++) {
     for (var j = 1; j <= m; j++) {
       final cost = s.codeUnitAt(i - 1) == t.codeUnitAt(j - 1) ? 0 : 1;
       d[i][j] = [
         d[i - 1][j] + 1,
         d[i][j - 1] + 1,
-        d[i - 1][j - 1] + cost
+        d[i - 1][j - 1] + cost,
       ].reduce((a, b) => a < b ? a : b);
     }
   }

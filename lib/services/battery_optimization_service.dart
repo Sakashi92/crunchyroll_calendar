@@ -9,24 +9,26 @@ import 'package:url_launcher/url_launcher.dart';
 /// Zeigt beim ersten Start einen Hinweis an und öffnet die richtigen Einstellungen
 class BatteryOptimizationService {
   static const String _firstStartKey = 'battery_optimization_shown';
-  static const MethodChannel _channel = MethodChannel('de.sakashi.crunchyroll_calendar/battery');
-  
+  static const MethodChannel _channel = MethodChannel(
+    'de.sakashi.crunchyroll_calendar/battery',
+  );
+
   /// Prüft ob der Hinweis bereits gezeigt wurde
   static Future<bool> hasShownDialog() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool(_firstStartKey) ?? false;
   }
-  
+
   /// Markiert den Hinweis als gezeigt
   static Future<void> markDialogAsShown() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_firstStartKey, true);
   }
-  
+
   /// Ermittelt den Gerätehersteller
   static Future<String> getManufacturer() async {
     if (!Platform.isAndroid) return 'unknown';
-    
+
     try {
       final deviceInfo = DeviceInfoPlugin();
       final androidInfo = await deviceInfo.androidInfo;
@@ -35,11 +37,11 @@ class BatteryOptimizationService {
       return 'unknown';
     }
   }
-  
+
   /// Öffnet die Akku-Einstellungen (plattformspezifisch)
   static Future<void> openBatterySettings() async {
     if (!Platform.isAndroid) return;
-    
+
     try {
       // Versuche native Methode
       try {
@@ -54,7 +56,7 @@ class BatteryOptimizationService {
       debugPrint('Error opening battery settings: $e');
     }
   }
-  
+
   /// Gibt die herstellerspezifischen Anweisungen zurück
   static String getInstructionsForManufacturer(String manufacturer) {
     switch (manufacturer) {
@@ -69,7 +71,7 @@ class BatteryOptimizationService {
 **Zusätzlich wichtig:**
 • Einstellungen → Verbindungen → Datennutzung → App auswählen → "Hintergrunddaten zulassen"
 ''';
-      
+
       case 'xiaomi':
       case 'redmi':
       case 'poco':
@@ -83,7 +85,7 @@ class BatteryOptimizationService {
 **MIUI-spezifisch:**
 • Sicherheits-App → Berechtigungen → Autostart → App aktivieren
 ''';
-      
+
       case 'huawei':
       case 'honor':
         return '''
@@ -95,7 +97,7 @@ class BatteryOptimizationService {
 **Zusätzlich:**
 • Telefonmanager → App-Start → App auf "Manuell verwalten" setzen
 ''';
-      
+
       case 'oppo':
       case 'realme':
       case 'oneplus':
@@ -108,7 +110,7 @@ class BatteryOptimizationService {
 **ColorOS-spezifisch:**
 • Telefonmanager → Energiesparen → App individuell einstellen
 ''';
-      
+
       case 'vivo':
         return '''
 **Vivo Geräte:**
@@ -116,7 +118,7 @@ class BatteryOptimizationService {
 2. App hinzufügen
 3. i Manager → App-Manager → Autostart-Manager → App aktivieren
 ''';
-      
+
       case 'sony':
         return '''
 **Sony Geräte:**
@@ -124,7 +126,7 @@ class BatteryOptimizationService {
 2. Alle Apps → Crunchyroll Calendar → "Nicht optimieren"
 3. STAMINA-Modus → App als Ausnahme hinzufügen
 ''';
-      
+
       case 'google':
         return '''
 **Google Pixel Geräte:**
@@ -132,7 +134,7 @@ class BatteryOptimizationService {
 2. Wähle "Nicht eingeschränkt"
 3. Einstellungen → Akku → Akkuoptimierung → Alle Apps → App auf "Nicht optimieren"
 ''';
-      
+
       default:
         return '''
 **Allgemeine Android-Einstellungen:**
@@ -145,14 +147,16 @@ class BatteryOptimizationService {
 ''';
     }
   }
-  
+
   /// Zeigt den Hinweis-Dialog an
-  static Future<void> showBatteryOptimizationDialog(BuildContext context) async {
+  static Future<void> showBatteryOptimizationDialog(
+    BuildContext context,
+  ) async {
     final manufacturer = await getManufacturer();
     final instructions = getInstructionsForManufacturer(manufacturer);
-    
+
     if (!context.mounted) return;
-    
+
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -160,9 +164,15 @@ class BatteryOptimizationService {
         final theme = Theme.of(context);
         final isDark = theme.brightness == Brightness.dark;
         final iconColor = theme.colorScheme.secondary;
-        final cardBackground = isDark ? theme.colorScheme.surfaceVariant : Colors.orange.shade50;
-        final cardBorder = isDark ? Colors.grey.shade700 : Colors.orange.shade200;
-        final manufacturerColor = isDark ? theme.colorScheme.primary : Colors.orange.shade800;
+        final cardBackground = isDark
+            ? theme.colorScheme.surfaceContainerHighest
+            : Colors.orange.shade50;
+        final cardBorder = isDark
+            ? Colors.grey.shade700
+            : Colors.orange.shade200;
+        final manufacturerColor = isDark
+            ? theme.colorScheme.primary
+            : Colors.orange.shade800;
 
         return AlertDialog(
           backgroundColor: theme.colorScheme.surface,
@@ -209,7 +219,9 @@ class BatteryOptimizationService {
                       const SizedBox(height: 8),
                       Text(
                         instructions,
-                        style: theme.textTheme.bodySmall?.copyWith(fontSize: 12),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
@@ -220,7 +232,9 @@ class BatteryOptimizationService {
                   'vom System blockiert werden.',
                   style: theme.textTheme.bodySmall?.copyWith(
                     fontStyle: FontStyle.italic,
-                    color: theme.textTheme.bodySmall?.color?.withOpacity(0.8),
+                    color: theme.textTheme.bodySmall?.color?.withValues(
+                      alpha: 0.8,
+                    ),
                   ),
                 ),
               ],

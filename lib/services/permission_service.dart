@@ -1,5 +1,5 @@
 import 'dart:io';
-import 'package:flutter/material.dart';
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
@@ -20,7 +20,9 @@ class PermissionService {
   static final PermissionService _instance = PermissionService._internal();
   final FlutterLocalNotificationsPlugin _flutterLocalNotificationsPlugin =
       FlutterLocalNotificationsPlugin();
-  static const MethodChannel _platform = MethodChannel('de.sakashi.crunchyroll_calendar/battery');
+  static const MethodChannel _platform = MethodChannel(
+    'de.sakashi.crunchyroll_calendar/battery',
+  );
 
   factory PermissionService() {
     return _instance;
@@ -37,75 +39,88 @@ class PermissionService {
         // Initialize Android plugin first
         const AndroidInitializationSettings initializationSettingsAndroid =
             AndroidInitializationSettings('@mipmap/hime');
-        
+
         final InitializationSettings initializationSettings =
             InitializationSettings(android: initializationSettingsAndroid);
-        
-        await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
+
+        await _flutterLocalNotificationsPlugin.initialize(
+          initializationSettings,
+        );
 
         // Request permission by trying to show a notification
         // This will trigger the permission dialog on Android 13+
         final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
             _flutterLocalNotificationsPlugin
                 .resolvePlatformSpecificImplementation<
-                    AndroidFlutterLocalNotificationsPlugin>();
+                  AndroidFlutterLocalNotificationsPlugin
+                >();
 
         if (androidImplementation != null) {
           // Android 13+ (API 33+): Explizit POST_NOTIFICATIONS Permission anfragen
-          final bool? granted = await androidImplementation.requestNotificationsPermission();
-          
+          final bool? granted = await androidImplementation
+              .requestNotificationsPermission();
+
           if (granted == true) {
             if (kDebugMode) print('✅ Notification Permission erteilt');
-            
+
             // Erstelle Notification Channel
-            const AndroidNotificationChannel channel = AndroidNotificationChannel(
-              'permission_request_channel',
-              'Permission Requests',
-              description: 'Used for initial permission request',
-              importance: Importance.high,
-            );
+            const AndroidNotificationChannel channel =
+                AndroidNotificationChannel(
+                  'permission_request_channel',
+                  'Permission Requests',
+                  description: 'Used for initial permission request',
+                  importance: Importance.high,
+                );
             await androidImplementation.createNotificationChannel(channel);
           } else if (granted == false) {
             if (kDebugMode) print('❌ Notification Permission abgelehnt');
           } else {
-            if (kDebugMode) print('⚠️ Notification Permission bereits entschieden (granted=$granted)');
+            if (kDebugMode) {
+              print(
+                '⚠️ Notification Permission bereits entschieden (granted=$granted)',
+              );
+            }
           }
         }
       } else if (Platform.isIOS) {
         // iOS permission request
         const DarwinInitializationSettings initializationSettingsIOS =
             DarwinInitializationSettings(
-          requestAlertPermission: true,
-          requestBadgePermission: true,
-          requestSoundPermission: true,
-        );
-        
+              requestAlertPermission: true,
+              requestBadgePermission: true,
+              requestSoundPermission: true,
+            );
+
         final InitializationSettings initializationSettings =
             InitializationSettings(iOS: initializationSettingsIOS);
-        
-        await _flutterLocalNotificationsPlugin.initialize(initializationSettings);
-        
+
+        await _flutterLocalNotificationsPlugin.initialize(
+          initializationSettings,
+        );
+
         if (kDebugMode) print('✓ iOS notification permissions requested');
       }
     } catch (e) {
       if (kDebugMode) print('❌ Error requesting permissions: $e');
     }
   }
-  
+
   /// Prüft den Status aller Permissions
   Future<Map<String, PermissionStatus>> checkAllPermissions() async {
     final Map<String, PermissionStatus> permissions = {};
-    
+
     try {
       if (Platform.isAndroid) {
         final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
             _flutterLocalNotificationsPlugin
                 .resolvePlatformSpecificImplementation<
-                    AndroidFlutterLocalNotificationsPlugin>();
-        
+                  AndroidFlutterLocalNotificationsPlugin
+                >();
+
         // Benachrichtigungen
         if (androidImplementation != null) {
-          final bool? granted = await androidImplementation.areNotificationsEnabled();
+          final bool? granted = await androidImplementation
+              .areNotificationsEnabled();
           if (granted == true) {
             permissions['Benachrichtigungen'] = PermissionStatus.granted;
           } else if (granted == false) {
@@ -116,13 +131,16 @@ class PermissionService {
         } else {
           permissions['Benachrichtigungen'] = PermissionStatus.unknown;
         }
-        
+
         // Weitere Permissions die wir benötigen
-        permissions['Internet'] = PermissionStatus.granted; // Wird über AndroidManifest geprüft
+        permissions['Internet'] =
+            PermissionStatus.granted; // Wird über AndroidManifest geprüft
 
         // Hintergrund-Ausführung: prüfe ob das System Hintergrund-Restriktionen aktiv hat
         try {
-          final bool? bgRestricted = await _platform.invokeMethod<bool>('isBackgroundRestricted');
+          final bool? bgRestricted = await _platform.invokeMethod<bool>(
+            'isBackgroundRestricted',
+          );
           if (bgRestricted == true) {
             permissions['Hintergrund-Ausführung'] = PermissionStatus.restricted;
           } else if (bgRestricted == false) {
@@ -136,7 +154,9 @@ class PermissionService {
 
         // Akku-Optimierung: prüfe ob die App von Optimierungen ausgenommen ist
         try {
-          final bool? isIgnoring = await _platform.invokeMethod<bool>('isIgnoringBatteryOptimizations');
+          final bool? isIgnoring = await _platform.invokeMethod<bool>(
+            'isIgnoringBatteryOptimizations',
+          );
           if (isIgnoring == true) {
             permissions['Akku-Optimierung'] = PermissionStatus.granted;
           } else if (isIgnoring == false) {
@@ -153,17 +173,17 @@ class PermissionService {
     } catch (e) {
       if (kDebugMode) print('Error checking permissions: $e');
     }
-    
+
     return permissions;
   }
-  
+
   /// Gibt eine lesbare Beschreibung für jede Permission
   static Map<String, String> getPermissionDescriptions() => {
     'Benachrichtigungen': 'Benötigt um Push-Benachrichtigungen zu erhalten',
     'Internet': 'Benötigt um Anime-Daten zu laden',
-    'Hintergrund-Ausführung': 'Benötigt für regelmäßige Benachrichtigungen im Hintergrund',
-    'Akku-Optimierung': 'Muss deaktiviert sein damit Hintergrund-Tasks funktionieren',
+    'Hintergrund-Ausführung':
+        'Benötigt für regelmäßige Benachrichtigungen im Hintergrund',
+    'Akku-Optimierung':
+        'Muss deaktiviert sein damit Hintergrund-Tasks funktionieren',
   };
 }
-
-

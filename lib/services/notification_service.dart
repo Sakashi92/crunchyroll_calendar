@@ -156,8 +156,9 @@ class NotificationService {
 
       final int notifId =
           id ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
-      if (kDebugMode)
+      if (kDebugMode) {
         print('📲 [NOTIF] Showing notification id=$notifId title=$title');
+      }
       await _notificationsPlugin.show(
         notifId,
         title,
@@ -192,8 +193,9 @@ class NotificationService {
     try {
       // Prüfe ob Zeitpunkt in der Vergangenheit liegt
       if (scheduledTime.isBefore(DateTime.now())) {
-        if (kDebugMode)
+        if (kDebugMode) {
           print('⚠️  Scheduled time is in the past, showing immediately');
+        }
         await showNotification(title: title, body: body, payload: payload);
         return;
       }
@@ -220,10 +222,11 @@ class NotificationService {
 
       final int schedId =
           id ?? (DateTime.now().millisecondsSinceEpoch & 0x7fffffff);
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '📲 [NOTIF] Scheduling notification id=$schedId at=${scheduledTime.toIso8601String()} title=$title',
         );
+      }
       await _notificationsPlugin.zonedSchedule(
         schedId,
         title,
@@ -298,14 +301,16 @@ class NotificationService {
   Future<void> sendTestNotificationForFavoritesOfToday(
     List<String> favoriteAnimeWithReleasesToday,
   ) async {
-    if (kDebugMode)
+    if (kDebugMode) {
       print(
         '📨 [NOTIF] sendTestNotificationForFavoritesOfToday called with ${favoriteAnimeWithReleasesToday.length} favorites',
       );
+    }
 
     if (favoriteAnimeWithReleasesToday.isEmpty) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('ℹ️  [NOTIF] Keine Favoriten mit heutigen Releases gefunden');
+      }
       return;
     }
 
@@ -313,44 +318,50 @@ class NotificationService {
       // Lade die Verzögerung aus den Einstellungen
       final delaySeconds =
           await AppSettingsService.getNotificationDelaySeconds();
-      if (kDebugMode)
+      if (kDebugMode) {
         print('⏱️ [NOTIF] Using notification delay: ${delaySeconds}s');
+      }
 
       // Sende für jedes Favorit eine Benachrichtigung
       for (int i = 0; i < favoriteAnimeWithReleasesToday.length; i++) {
         final title = favoriteAnimeWithReleasesToday[i];
 
-        if (kDebugMode)
+        if (kDebugMode) {
           print(
             '📤 [NOTIF] Processing notification ${i + 1}/${favoriteAnimeWithReleasesToday.length} for: $title',
           );
+        }
 
         // Wende die Verzögerung an
         if (delaySeconds > 0) {
-          if (kDebugMode)
+          if (kDebugMode) {
             print('⏳ [NOTIF] Waiting ${delaySeconds}s before sending...');
+          }
           await Future.delayed(Duration(seconds: delaySeconds));
         }
 
-        if (kDebugMode)
+        if (kDebugMode) {
           print('🔔 [NOTIF] Calling showNotification for: $title');
+        }
         await showNotification(
           title: '🔔 Test: $title',
           body:
               'Eine neue Episode von ${favoriteAnimeWithReleasesToday[i]} ist heute verfügbar!',
-          payload: 'favorite_${i}',
+          payload: 'favorite_$i',
         );
-        if (kDebugMode)
+        if (kDebugMode) {
           print('✅ [NOTIF] showNotification completed for: $title');
+        }
 
         // Kleine Verzögerung zwischen Benachrichtigungen (300ms)
         await Future.delayed(const Duration(milliseconds: 300));
       }
 
-      if (kDebugMode)
+      if (kDebugMode) {
         print(
           '✅ [NOTIF] All test notifications sent for ${favoriteAnimeWithReleasesToday.length} favorites',
         );
+      }
     } catch (e, stackTrace) {
       if (kDebugMode) {
         print('❌ [NOTIF] Error sending test notifications: $e');

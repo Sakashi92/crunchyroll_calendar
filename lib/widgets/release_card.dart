@@ -292,7 +292,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                     if (confirm == true) {
                                       ws.watchlist.removeEntry(id);
                                       await ws.saveWatchlist();
-                                      if (mounted) {
+                                      if (context.mounted) {
                                         UIUtils.showSnackBar(
                                           context,
                                           SnackBar(
@@ -303,7 +303,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                         );
                                       }
                                     } else {
-                                      if (mounted) {
+                                      if (context.mounted) {
                                         setState(() {
                                           _isProcessingWatchlist = false;
                                         });
@@ -354,7 +354,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                     ws.watchlist.addEntry(entry);
                                     await ws.saveWatchlist();
                                     cs.scheduleWatchlistEntryUpdate(ws, entry);
-                                    if (mounted) {
+                                    if (context.mounted) {
                                       UIUtils.showSnackBar(
                                         context,
                                         SnackBar(
@@ -378,7 +378,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                       } catch (_) {}
                                     }
                                   }
-                                  if (mounted) {
+                                  if (context.mounted) {
                                     setState(() {
                                       _isProcessingWatchlist = false;
                                       _isInWatchlist = !exists;
@@ -390,7 +390,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                       '❌ Error toggling watchlist from card: $e',
                                     );
                                   }
-                                  if (mounted) {
+                                  if (context.mounted) {
                                     setState(() {
                                       _isProcessingWatchlist = false;
                                     });

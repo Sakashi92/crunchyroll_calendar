@@ -232,7 +232,7 @@ class _SearchPageState extends State<SearchPage> {
     }
     return ListView.separated(
       itemCount: _history.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (context, index) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final s = _history[index];
         return ListTile(
@@ -252,7 +252,7 @@ class _SearchPageState extends State<SearchPage> {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: _suggestions.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      separatorBuilder: (context, index) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final s = _suggestions[index];
         return ListTile(
@@ -296,7 +296,8 @@ class _SearchPageState extends State<SearchPage> {
             : (_results.isNotEmpty
                   ? ListView.separated(
                       itemCount: _results.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
+                      separatorBuilder: (context, index) =>
+                          const Divider(height: 1),
                       itemBuilder: (context, index) {
                         final entry = _results[index];
                         final AnimeRelease r = entry['release'] as AnimeRelease;

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
+
 import '../models/anime_release.dart';
 import '../services/watchlist_service.dart';
 import '../services/crunchyroll_service.dart';

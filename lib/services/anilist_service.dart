@@ -31,7 +31,7 @@ class _AniListRateLimiter {
     if (!_running) {
       _processQueue();
     }
-    return completer.future as Future<T>;
+    return completer.future;
   }
 
   Future<void> _processQueue() async {
@@ -806,6 +806,7 @@ class AnilistService implements EpisodeProvider {
     return await searchAnime(query);
   }
 
+  @override
   Future<String?> getCrunchyrollUrl(int mediaId) async {
     try {
       // 1. Try AniList API first
@@ -834,7 +835,9 @@ class AnilistService implements EpisodeProvider {
             (l) => l['site']?.toString().toLowerCase() == 'crunchyroll',
             orElse: () => null,
           );
-          if (cr != null) return cr['url'] as String?;
+          if (cr != null) {
+            return cr['url'] as String?;
+          }
         }
 
         // 2. If not found, try ExternalSearchService with the title
@@ -845,7 +848,9 @@ class AnilistService implements EpisodeProvider {
         if (title != null) {
           final externalSearch = ExternalSearchService();
           final url = await externalSearch.findCrunchyrollUrl(title);
-          if (url != null) return url;
+          if (url != null) {
+            return url;
+          }
         }
       }
     } catch (_) {}

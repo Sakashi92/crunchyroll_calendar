@@ -101,13 +101,14 @@ class AppSettingsService {
 
   static Future<Color> getAccentColor() async {
     final prefs = await SharedPreferences.getInstance();
-    final colorValue = prefs.getInt(_accentColorKey) ?? Colors.orange.value;
+    final colorValue =
+        prefs.getInt(_accentColorKey) ?? Colors.orange.toARGB32();
     return Color(colorValue);
   }
 
   static Future<void> setAccentColor(Color color) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(_accentColorKey, color.value);
+    await prefs.setInt(_accentColorKey, color.toARGB32());
   }
 
   static Future<int> getNotificationDelaySeconds() async {
