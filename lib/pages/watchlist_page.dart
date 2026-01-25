@@ -677,6 +677,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
+          scrollable: true,
           title: Text('Bearbeiten: ${entry.title}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
