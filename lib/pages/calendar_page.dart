@@ -47,7 +47,7 @@ class _CalendarPageState extends State<CalendarPage>
       0.0; // pixels, positive = dragging right (show previous), negative = left (show next)
   bool _isDragging = false;
   bool _isSnapping = false;
-  late AnimationController _dragAnimationController;
+  AnimationController? _dragAnimationController;
   Animation<double>?
   _currentSettleAnimation; // Track current animation to remove listeners
   VoidCallback? _currentSettleListener; // Track the setState listener
@@ -253,7 +253,7 @@ class _CalendarPageState extends State<CalendarPage>
   @override
   void dispose() {
     _crunchyrollService.stopAutoUpdate();
-    _dragAnimationController.dispose();
+    _dragAnimationController?.dispose();
     super.dispose();
   }
 
@@ -1094,8 +1094,9 @@ class _CalendarPageState extends State<CalendarPage>
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onHorizontalDragStart: (_) {
-        if (_dragAnimationController.isAnimating) {
-          _dragAnimationController.stop();
+        if (_dragAnimationController != null &&
+            _dragAnimationController!.isAnimating) {
+          _dragAnimationController!.stop();
         }
         setState(() {
           _isDragging = true;
@@ -1105,8 +1106,9 @@ class _CalendarPageState extends State<CalendarPage>
         });
       },
       onHorizontalDragCancel: () {
-        if (_dragAnimationController.isAnimating) {
-          _dragAnimationController.stop();
+        if (_dragAnimationController != null &&
+            _dragAnimationController!.isAnimating) {
+          _dragAnimationController!.stop();
         }
         setState(() {
           _isDragging = false;
@@ -1185,12 +1187,14 @@ class _CalendarPageState extends State<CalendarPage>
           durationMs = 800;
         }
 
-        _dragAnimationController.duration = Duration(milliseconds: durationMs);
-        _dragAnimationController.reset();
+        if (_dragAnimationController == null) return;
+
+        _dragAnimationController!.duration = Duration(milliseconds: durationMs);
+        _dragAnimationController!.reset();
         final Animation<double> settle =
             Tween<double>(begin: clampedOffset, end: target).animate(
               CurvedAnimation(
-                parent: _dragAnimationController,
+                parent: _dragAnimationController!,
                 curve: Curves.easeOut,
               ),
             );
@@ -1245,7 +1249,7 @@ class _CalendarPageState extends State<CalendarPage>
           }
         };
         settle.addStatusListener(_currentStatusListener!);
-        _dragAnimationController.forward(from: 0.0);
+        _dragAnimationController!.forward(from: 0.0);
       },
       child: LayoutBuilder(
         builder: (context, constraints) {

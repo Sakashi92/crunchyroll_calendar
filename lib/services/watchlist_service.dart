@@ -13,6 +13,7 @@ import 'anilist_cache.dart';
 import 'kitsu_service.dart';
 import 'jikan_service.dart';
 import '../utils/title_utils.dart';
+import 'dart:async';
 import '../models/anime_metadata.dart';
 
 class WatchlistService {
@@ -20,6 +21,17 @@ class WatchlistService {
   final Watchlist watchlist;
 
   WatchlistService(this.watchlist);
+
+  Timer? _saveDebouncer;
+
+  /// Debounced version of [saveWatchlist].
+  /// Useful during batch updates like imports or auto-linking.
+  void saveWatchlistDebounced() {
+    _saveDebouncer?.cancel();
+    _saveDebouncer = Timer(const Duration(milliseconds: 500), () {
+      saveWatchlist();
+    });
+  }
 
   // Extrahiere das erste vollständig-balancierte JSON-Array aus `input`.
   // Behandelt verschachtelte Arrays und ignoriert Zeichen innerhalb von Strings.
@@ -97,6 +109,7 @@ class WatchlistService {
           e.animeId,
           e.title,
           anilistId: e.anilistId,
+          notify: false,
         );
         if (pred != null) {
           count++;
@@ -119,21 +132,40 @@ class WatchlistService {
     // ensure cache loaded
     await crunch.loadCacheOnStartup();
 
+    final entriesToProcess = watchlist.entries
+        .where((e) => e.predictionsEnabled)
+        .toList();
+
+    if (entriesToProcess.isEmpty) return 0;
+
     int count = 0;
-    for (final e in watchlist.entries) {
-      if (!e.predictionsEnabled) continue;
-      try {
-        final pred = await predictor.predictNextForSeries(
-          e.animeId,
-          e.title,
-          anilistId: e.anilistId,
-        );
-        if (pred != null) {
-          count++;
-        }
-      } catch (_) {
-        // ignore individual failures
-      }
+    const int concurrencyLimit = 3;
+
+    for (int i = 0; i < entriesToProcess.length; i += concurrencyLimit) {
+      final end = (i + concurrencyLimit < entriesToProcess.length)
+          ? i + concurrencyLimit
+          : entriesToProcess.length;
+      final chunk = entriesToProcess.sublist(i, end);
+
+      final results = await Future.wait(
+        chunk.map((e) async {
+          try {
+            final pred = await predictor.predictNextForSeries(
+              e.animeId,
+              e.title,
+              anilistId: e.anilistId,
+              notify: false,
+            );
+            return pred != null;
+          } catch (err) {
+            if (kDebugMode) {
+              print('❌ Error predicting for "${e.title}": $err');
+            }
+            return false;
+          }
+        }),
+      );
+      count += results.where((r) => r).length;
     }
 
     // Trigger UI notification after ALL predictions are done
@@ -594,56 +626,61 @@ class WatchlistService {
       int linkedCount = 0;
       final anilist = AnilistService();
 
-      for (final entry in candidates) {
-        // Double check if it was linked in the meantime
-        if (entry.anilistId != null) {
-          continue;
-        }
+      const int concurrencyLimit = 3;
+      for (int i = 0; i < candidates.length; i += concurrencyLimit) {
+        final end = (i + concurrencyLimit < candidates.length)
+            ? i + concurrencyLimit
+            : candidates.length;
+        final chunk = candidates.sublist(i, end);
 
-        try {
-          final match = await anilist.findBestMatch(entry.title);
+        await Future.wait(
+          chunk.map((entry) async {
+            if (entry.anilistId != null) return;
 
-          if (match != null) {
-            final oldId = entry.animeId;
-            entry.anilistId = match.id;
-            entry.airingStatus =
-                match.status; // Save status from auto-link match
+            try {
+              final match = await anilist.findBestMatch(entry.title);
 
-            // Sync Crunchyroll URL if available from AniList
-            if (match.hasCrunchyroll == true &&
-                match.bannerImage != null &&
-                match.bannerImage!.contains('crunchyroll.com')) {
-              final newUrl = match.bannerImage!;
-              if (newUrl != oldId) {
-                watchlist.renameEntry(oldId, newUrl);
+              if (match != null) {
+                final oldId = entry.animeId;
+                entry.anilistId = match.id;
+                entry.airingStatus =
+                    match.status; // Save status from auto-link match
+
+                // Sync Crunchyroll URL if available from AniList
+                if (match.hasCrunchyroll == true &&
+                    match.bannerImage != null &&
+                    match.bannerImage!.contains('crunchyroll.com')) {
+                  final newUrl = match.bannerImage!;
+                  if (newUrl != oldId) {
+                    watchlist.renameEntry(oldId, newUrl);
+                  }
+                }
+
+                // Save to cache so predictor can find it
+                // Use current animeId (might be updated)
+                final cacheKey = normalizeTitle(entry.animeId);
+                try {
+                  final cache = AnilistCache();
+                  await cache.save(cacheKey, match);
+                } catch (_) {}
+
+                // Update the entry in the central list
+                watchlist.updateEntry(entry);
+                linkedCount++;
+
+                // Use debounced save instead of periodic save to avoid collisions
+                saveWatchlistDebounced();
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('❌ Auto-Link failed for "${entry.title}": $e');
               }
             }
+          }),
+        );
 
-            // Save to cache so predictor can find it
-            // Use current animeId (might be updated)
-            final cacheKey = normalizeTitle(entry.animeId);
-            try {
-              final cache = AnilistCache();
-              await cache.save(cacheKey, match);
-            } catch (_) {}
-
-            // Update the entry in the central list
-            watchlist.updateEntry(entry);
-            linkedCount++;
-
-            // Save periodically every 5 updates to persist progress
-            if (linkedCount % 5 == 0) {
-              await saveWatchlist();
-            }
-
-            // Artificial delay to be gentle with API even with rate limiter
-            await Future.delayed(const Duration(milliseconds: 500));
-          }
-        } catch (e) {
-          if (kDebugMode) {
-            print('❌ Auto-Link failed for "${entry.title}": $e');
-          }
-        }
+        // Artificial delay between chunks to be gentle with API
+        await Future.delayed(const Duration(milliseconds: 1000));
       }
 
       if (linkedCount > 0) {
@@ -797,6 +834,7 @@ class WatchlistService {
 
       if (changed) {
         watchlist.updateEntry(entry);
+        saveWatchlistDebounced();
       }
     }
   }
@@ -812,10 +850,19 @@ class WatchlistService {
       );
     }
 
-    for (final entry in activeEntries) {
-      await refreshMetadataWithFallback(entry);
-      // Gentleness delay for APIs
-      await Future.delayed(const Duration(milliseconds: 1000));
+    const int concurrencyLimit = 2;
+    for (int i = 0; i < activeEntries.length; i += concurrencyLimit) {
+      final end = (i + concurrencyLimit < activeEntries.length)
+          ? i + concurrencyLimit
+          : activeEntries.length;
+      final chunk = activeEntries.sublist(i, end);
+
+      await Future.wait(
+        chunk.map((entry) => refreshMetadataWithFallback(entry)),
+      );
+
+      // Gentleness delay between chunks
+      await Future.delayed(const Duration(milliseconds: 1500));
     }
 
     await saveWatchlist();

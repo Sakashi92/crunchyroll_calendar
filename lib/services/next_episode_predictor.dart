@@ -26,6 +26,7 @@ class NextEpisodePredictor {
     String? seriesUrl,
     String? title, {
     int? anilistId,
+    bool notify = true,
   }) async {
     try {
       final now = DateTime.now();
@@ -167,7 +168,7 @@ class NextEpisodePredictor {
             );
 
             await crunchy.addPredictedRelease(predicted);
-            predictionsUpdated.value = true;
+            if (notify) predictionsUpdated.value = true;
             if (kDebugMode) {
               print(
                 '✅ [PREDICTOR] Predicted using AniList Schedule: $bestTitle -> ep $epParams @ $nextDate',
@@ -283,7 +284,7 @@ class NextEpisodePredictor {
       // add prediction to CrunchyrollService cache (method added below should exist)
       await crunchy.addPredictedRelease(predicted);
       // Signal UI to reload cached predictions
-      predictionsUpdated.value = true;
+      if (notify) predictionsUpdated.value = true;
       if (kDebugMode) {
         print(
           '✅ [PREDICTOR] Predicted next for $title -> ep $predictedEpisode @ $predictedDate',

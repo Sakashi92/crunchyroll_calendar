@@ -59,6 +59,7 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
       onPointerUp: (_) => _verticalDragDelta = 0.0,
       onPointerCancel: (_) => _verticalDragDelta = 0.0,
       child: TableCalendar<AnimeRelease>(
+        key: ValueKey(widget.calendarFormat),
         locale: 'de_DE',
         firstDay: DateTime.utc(2020, 1, 1),
         lastDay: DateTime.utc(2030, 12, 31),
