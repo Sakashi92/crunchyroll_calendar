@@ -11,8 +11,9 @@ import '../services/anilist_cache.dart';
 import '../services/next_episode_predictor.dart';
 import '../repositories/seen_repository.dart';
 import '../utils/title_utils.dart';
-import 'anime_details_dialog.dart';
+import '../widgets/anime_details_dialog.dart';
 import '../utils/ui_utils.dart';
+import '../repositories/custom_series_title_repository.dart';
 import 'anime_pattern_painter.dart';
 
 /// Widget für eine Release-Karte im Kalender
@@ -29,6 +30,7 @@ class ReleaseCard extends StatefulWidget {
 class _ReleaseCardState extends State<ReleaseCard> {
   bool _isProcessingWatchlist = false;
   bool _isInWatchlist = false;
+  String? _customTitle;
 
   @override
   void initState() {
@@ -37,19 +39,26 @@ class _ReleaseCardState extends State<ReleaseCard> {
     if (widget.watchlistService != null) {
       widget.watchlistService!.watchlist.addListener(_onWatchlistChanged);
     }
+    CustomSeriesTitleRepository().addListener(_onCustomTitlesChanged);
   }
 
   Future<void> _initWatchlistStatus() async {
     if (widget.watchlistService == null) {
+      // Even if not in watchlist, we want custom titles
+      _checkCustomTitle();
       return;
     }
     try {
-      final exists = widget.watchlistService!.watchlist.entries.any(
-        (e) => e.animeId == widget.release.seriesUrl,
-      );
+      final entry = widget.watchlistService!.watchlist.entries
+          .cast<WatchlistEntry?>()
+          .firstWhere(
+            (e) => e?.animeId == widget.release.seriesUrl,
+            orElse: () => null,
+          );
       if (mounted) {
         setState(() {
-          _isInWatchlist = exists;
+          _isInWatchlist = entry != null;
+          _checkCustomTitle(entry: entry);
         });
       }
     } catch (e) {
@@ -59,11 +68,45 @@ class _ReleaseCardState extends State<ReleaseCard> {
     }
   }
 
+  void _checkCustomTitle({WatchlistEntry? entry}) {
+    final repo = CustomSeriesTitleRepository();
+    final repoTitle = repo.getTitleSync(widget.release.seriesUrl);
+    final newCustomTitle = repoTitle ?? entry?.customTitle;
+
+    if (newCustomTitle != _customTitle) {
+      _customTitle = newCustomTitle;
+
+      // If custom title changed and current image is null or from Kitsu,
+      // we might want to refresh it.
+      if (_customTitle != null &&
+          (widget.release.imageUrl == null ||
+              widget.release.imageUrl!.isEmpty)) {
+        _refreshImageForCustomTitle();
+      }
+    }
+  }
+
+  Future<void> _refreshImageForCustomTitle() async {
+    if (_customTitle == null) return;
+    try {
+      final cs = CrunchyrollService();
+      final newImage = await cs.fetchImageForTitle(_customTitle!);
+      if (newImage.isNotEmpty && mounted) {
+        setState(() {
+          widget.release.imageUrl = newImage;
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error refreshing image for custom title: $e');
+    }
+  }
+
   @override
   void dispose() {
     if (widget.watchlistService != null) {
       widget.watchlistService!.watchlist.removeListener(_onWatchlistChanged);
     }
+    CustomSeriesTitleRepository().removeListener(_onCustomTitlesChanged);
     super.dispose();
   }
 
@@ -72,18 +115,30 @@ class _ReleaseCardState extends State<ReleaseCard> {
       return;
     }
     try {
-      final exists = widget.watchlistService!.watchlist.entries.any(
-        (e) => e.animeId == widget.release.seriesUrl,
-      );
+      final entry = widget.watchlistService!.watchlist.entries
+          .cast<WatchlistEntry?>()
+          .firstWhere(
+            (e) => e?.animeId == widget.release.seriesUrl,
+            orElse: () => null,
+          );
       if (mounted) {
         setState(() {
-          _isInWatchlist = exists;
+          _isInWatchlist = entry != null;
+          _checkCustomTitle(entry: entry);
         });
       }
     } catch (e) {
       if (kDebugMode) {
         print('❌ Error handling watchlist change: $e');
       }
+    }
+  }
+
+  void _onCustomTitlesChanged() {
+    if (mounted) {
+      setState(() {
+        _checkCustomTitle();
+      });
     }
   }
 
@@ -465,8 +520,8 @@ class _ReleaseCardState extends State<ReleaseCard> {
                 children: [
                   Text(
                     widget.release.isPredicted
-                        ? '${widget.release.title} (Vorhersage)'
-                        : widget.release.title,
+                        ? '$_displayTitle (Vorhersage)'
+                        : _displayTitle,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -579,4 +634,6 @@ class _ReleaseCardState extends State<ReleaseCard> {
       ),
     );
   }
+
+  String get _displayTitle => _customTitle ?? widget.release.title;
 }

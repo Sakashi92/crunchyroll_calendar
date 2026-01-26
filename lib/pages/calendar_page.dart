@@ -18,6 +18,7 @@ import '../services/app_settings_service.dart';
 import '../widgets/calendar_app_bar.dart';
 import '../widgets/calendar_display.dart';
 import '../widgets/calendar_release_list.dart';
+import '../repositories/custom_series_title_repository.dart';
 import 'settings_page.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -54,6 +55,7 @@ class _CalendarPageState extends State<CalendarPage>
   Function(AnimationStatus)?
   _currentStatusListener; // Track the status listener
   DateTime? _dragSessionStartDay;
+  Timer? _imageStateDebouncer;
   // Wenn während des Drags bereits ein Seitenwechsel ausgeführt wurde,
   // verhindern wir beim Drag-Ende ein zweites Commit.
   bool _committedDuringDrag = false;
@@ -100,12 +102,11 @@ class _CalendarPageState extends State<CalendarPage>
     // Registriere Callback wenn Bilder geladen wurden - UI aktualisieren
     _crunchyrollService.onImageLoaded = () {
       if (kDebugMode) print('🔔 CrunchyrollService.onImageLoaded triggered');
-      if (mounted) {
-        setState(() {
-          // Trigger rebuild um neue Bilder anzuzeigen
-        });
-      }
+      _debounceImageStateUpdate();
     };
+
+    // Load custom titles cache
+    CustomSeriesTitleRepository().loadCache();
 
     // Listen for externally persisted predictions (AniList forecast page)
     try {
@@ -220,6 +221,15 @@ class _CalendarPageState extends State<CalendarPage>
     );
   }
 
+  void _debounceImageStateUpdate() {
+    _imageStateDebouncer?.cancel();
+    _imageStateDebouncer = Timer(const Duration(milliseconds: 300), () {
+      if (mounted) {
+        setState(() {});
+      }
+    });
+  }
+
   Future<void> _loadAutoMinimizeSetting() async {
     try {
       final enabled = await AppSettingsService.getAutoMinimizeCalendar();
@@ -253,6 +263,7 @@ class _CalendarPageState extends State<CalendarPage>
   void dispose() {
     _crunchyrollService.stopAutoUpdate();
     _dragAnimationController?.dispose();
+    _imageStateDebouncer?.cancel();
     super.dispose();
   }
 

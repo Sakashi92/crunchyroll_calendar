@@ -18,6 +18,7 @@ class WatchlistEntry {
   bool? isCrunchyroll;
   bool predictionsEnabled;
   String? airingStatus; // Added field for airing status (e.g. FINISHED)
+  String? customTitle; // Added field for user-defined anime title
 
   WatchlistEntry({
     required this.animeId,
@@ -35,6 +36,7 @@ class WatchlistEntry {
     this.isCrunchyroll,
     this.predictionsEnabled = true,
     this.airingStatus,
+    this.customTitle,
   });
 
   WatchlistEntry copyWith({
@@ -53,6 +55,7 @@ class WatchlistEntry {
     bool? isCrunchyroll,
     bool? predictionsEnabled,
     String? airingStatus,
+    String? customTitle,
   }) {
     return WatchlistEntry(
       animeId: animeId ?? this.animeId,
@@ -70,6 +73,7 @@ class WatchlistEntry {
       isCrunchyroll: isCrunchyroll ?? this.isCrunchyroll,
       predictionsEnabled: predictionsEnabled ?? this.predictionsEnabled,
       airingStatus: airingStatus ?? this.airingStatus,
+      customTitle: customTitle ?? this.customTitle,
     );
   }
 }

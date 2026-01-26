@@ -17,11 +17,13 @@ import '../services/anilist_service.dart';
 import '../services/anilist_cache.dart';
 import '../utils/title_utils.dart';
 import '../widgets/anilist_search_dialog.dart';
+import '../widgets/anime_search_dialog.dart';
 import 'details_description_section.dart';
 import 'details_metadata_section.dart';
 import 'details_watchlist_button.dart';
 import 'details_header_image.dart';
 import '../services/external_search_service.dart';
+import '../repositories/custom_series_title_repository.dart';
 
 /// Dialog Widget für Anime-Details mit asynchronem Laden der Beschreibung
 class AnimeDetailsDialog extends StatefulWidget {
@@ -66,6 +68,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   bool _isProcessingWatchlist = false;
   int? _knownMaxEpisode;
   bool _hideTotalCount = false;
+  String? _customTitle;
 
   @override
   void initState() {
@@ -115,7 +118,13 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     final ws = widget.watchlistService;
     if (ws == null) return;
     final id = widget.release.seriesUrl;
-    _isInWatchlist = ws.watchlist.entries.any((e) => e.animeId == id);
+    final entry = ws.watchlist.entries.cast<WatchlistEntry?>().firstWhere(
+      (e) => e?.animeId == id,
+      orElse: () => null,
+    );
+    _isInWatchlist = entry != null;
+    _customTitle =
+        CustomSeriesTitleRepository().getTitleSync(id) ?? entry?.customTitle;
   }
 
   // Favorite feature removed; no-op placeholder kept for API stability if needed.
@@ -131,7 +140,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
       final provider = await EpisodeProviderFactory.getProvider();
       final meta = await provider.fetchSeriesMetadata(
         widget.release.seriesUrl,
-        widget.release.title,
+        _customTitle ?? widget.release.title,
       );
       if (meta != null) {
         // Do NOT use provider images here; always prefer Kitsu for covers
@@ -150,7 +159,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     try {
       if (widget.release.imageUrl == null || widget.release.imageUrl!.isEmpty) {
         final kitImage = await widget.crunchyrollService.fetchImageForTitle(
-          widget.release.title,
+          _customTitle ?? widget.release.title,
         );
         if (kitImage.isNotEmpty) {
           widget.release.imageUrl = kitImage;
@@ -246,14 +255,14 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
         }
         final externalSearch = ExternalSearchService();
         urlString = await externalSearch.findCrunchyrollUrl(
-          widget.release.title,
+          _customTitle ?? widget.release.title,
         );
       }
 
       // 3. Fallback: If still missing, offer manual search or use dummy link
       if (urlString == null) {
         final manualUrl = ExternalSearchService().getManualSearchUrl(
-          widget.release.title,
+          _customTitle ?? widget.release.title,
         );
 
         if (mounted) {
@@ -364,13 +373,14 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DetailsMetadataSection(
-                        title: release.title,
+                        title: _customTitle ?? release.title,
                         episodeInfo: release.episodeInfo,
                         knownMaxEpisode: _knownMaxEpisode,
                         timeString: release.timeString,
                         showEpisodeBadge: widget.showEpisodeBadge,
                         showTimeBadge: widget.showTimeBadge,
                         hideTotalCount: _hideTotalCount,
+                        onRename: _handleRename,
                       ),
                       const SizedBox(height: 16),
                       DetailsDescriptionSection(
@@ -447,7 +457,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           builder: (ctx) => AlertDialog(
             title: const Text('Eintrag entfernen'),
             content: Text(
-              'Möchtest du "${widget.release.title}" wirklich aus der Watchlist entfernen?',
+              'Möchtest du "${_customTitle ?? widget.release.title}" wirklich aus der Watchlist entfernen?',
             ),
             actions: [
               TextButton(
@@ -569,6 +579,82 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
         setState(() {
           _isProcessingWatchlist = false;
         });
+      }
+    }
+  }
+
+  Future<void> _handleRename() async {
+    final currentTitle = _customTitle ?? widget.release.title;
+
+    final result = await showDialog<dynamic>(
+      context: context,
+      builder: (ctx) => AnimeSearchDialog(
+        initialQuery: currentTitle,
+        title: 'Anime umbenennen',
+      ),
+    );
+
+    if (result != null && mounted) {
+      String? newTitle;
+      if (result is AnimeMetadata) {
+        newTitle =
+            result.siteUrl; // In results, siteUrl contains the display title
+      } else if (result is String) {
+        newTitle = result.isEmpty ? null : result;
+      }
+
+      setState(() {
+        _isProcessingWatchlist = true;
+      });
+
+      try {
+        final id = widget.release.seriesUrl;
+        final updatedTitle = (newTitle == null || newTitle.isEmpty)
+            ? null
+            : newTitle;
+
+        // Save globally
+        await CustomSeriesTitleRepository().setTitle(id, updatedTitle);
+
+        // Save in watchlist if exists
+        final ws = widget.watchlistService;
+        if (ws != null) {
+          final entryIndex = ws.watchlist.entries.indexWhere(
+            (e) => e.animeId == id,
+          );
+          if (entryIndex != -1) {
+            final entry = ws.watchlist.entries[entryIndex];
+            entry.customTitle = updatedTitle;
+            ws.watchlist.updateEntry(entry);
+            await ws.saveWatchlist();
+
+            // Trigger metadata refresh with new title
+            await ws.refreshMetadataWithFallback(entry);
+          }
+        }
+
+        setState(() {
+          _customTitle = updatedTitle;
+          _isLoadingDescription = true;
+        });
+
+        // Force reload description/image in current dialog
+        await _loadDescription();
+
+        if (mounted) {
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(content: Text('Name aktualisiert')),
+          );
+        }
+      } catch (e) {
+        if (kDebugMode) print('❌ Error renaming anime: $e');
+      } finally {
+        if (mounted) {
+          setState(() {
+            _isProcessingWatchlist = false;
+          });
+        }
       }
     }
   }

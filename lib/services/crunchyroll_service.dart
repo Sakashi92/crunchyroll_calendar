@@ -12,6 +12,7 @@ import '../repositories/notification_repository.dart';
 import '../models/notification_log.dart';
 import '../utils/episode_parser.dart';
 import '../models/watchlist.dart';
+import '../repositories/custom_series_title_repository.dart';
 import 'episode_provider.dart';
 import '../models/anime_metadata.dart';
 import 'prediction_notifier.dart';
@@ -717,8 +718,14 @@ class CrunchyrollService implements EpisodeProvider {
 
     for (var release in releases) {
       if ((release.imageUrl == null || release.imageUrl!.isEmpty)) {
+        // Zuerst prüfen ob es einen benutzerdefinierten Titel gibt
+        final customTitle = CustomSeriesTitleRepository().getTitleSync(
+          release.seriesUrl,
+        );
+        final searchTitle = customTitle ?? release.title;
+
         // Suche im Image-Cache nach einer passenden URL
-        final cachedUrl = _findCachedImageUrl(release.title);
+        final cachedUrl = _findCachedImageUrl(searchTitle);
         if (cachedUrl != null && cachedUrl.isNotEmpty) {
           release.imageUrl = cachedUrl;
           appliedCount++;
@@ -1166,6 +1173,12 @@ class CrunchyrollService implements EpisodeProvider {
     try {
       // Try to find a cached release that matches
       if (_cachedReleases.isEmpty) await _loadFromCache();
+
+      final customTitle = await CustomSeriesTitleRepository().getTitle(
+        seriesUrl ?? '',
+      );
+      final effectiveTitle = customTitle ?? title;
+
       AnimeRelease? found;
       if (seriesUrl != null) {
         try {
@@ -1181,8 +1194,8 @@ class CrunchyrollService implements EpisodeProvider {
         try {
           found = _cachedReleases.firstWhere(
             (r) =>
-                norm(r.title).contains(norm(title)) ||
-                norm(title).contains(norm(r.title)),
+                norm(r.title).contains(norm(effectiveTitle!)) ||
+                norm(effectiveTitle).contains(norm(r.title)),
           );
         } catch (_) {
           found = null;
@@ -1941,16 +1954,23 @@ class CrunchyrollService implements EpisodeProvider {
     // Lade Bilder nur von Kitsu
     for (var release in newReleasesToProcess) {
       try {
-        final imageUrl = await _fetchImageFromKitsu(release.title);
+        final customTitle = CustomSeriesTitleRepository().getTitleSync(
+          release.seriesUrl,
+        );
+        final searchTitle = customTitle ?? release.title;
+
+        final imageUrl = await _fetchImageFromKitsu(searchTitle);
         if (imageUrl.isNotEmpty) {
           release.imageUrl = imageUrl;
           if (kDebugMode) {
-            print('✓ Kitsu: Found cover for ${release.title}');
+            print(
+              '✓ Kitsu: Found cover for $searchTitle (original: ${release.title})',
+            );
           }
           onImageLoaded?.call();
         } else {
           if (kDebugMode) {
-            print('✗ Kitsu: No cover found for ${release.title}');
+            print('✗ Kitsu: No cover found for $searchTitle');
           }
         }
       } catch (e) {

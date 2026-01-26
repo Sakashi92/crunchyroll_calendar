@@ -8,6 +8,7 @@ class DetailsMetadataSection extends StatelessWidget {
   final bool showEpisodeBadge;
   final bool showTimeBadge;
   final bool hideTotalCount;
+  final VoidCallback? onRename;
 
   const DetailsMetadataSection({
     super.key,
@@ -18,6 +19,7 @@ class DetailsMetadataSection extends StatelessWidget {
     this.showEpisodeBadge = true,
     this.showTimeBadge = true,
     this.hideTotalCount = false,
+    this.onRename,
   });
 
   @override
@@ -27,11 +29,28 @@ class DetailsMetadataSection extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          title,
-          style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (onRename != null)
+              IconButton(
+                icon: const Icon(Icons.edit, size: 20),
+                onPressed: onRename,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Umbenennen',
+              ),
+          ],
         ),
         const SizedBox(height: 10),
         Row(

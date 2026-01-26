@@ -186,6 +186,7 @@ class WatchlistService {
             'isCrunchyroll': e.isCrunchyroll,
             'predictionsEnabled': e.predictionsEnabled,
             'airingStatus': e.airingStatus,
+            'customTitle': e.customTitle,
           },
         )
         .toList();
@@ -455,7 +456,10 @@ class WatchlistService {
 
     // 1. Try AniList (most comprehensive)
     try {
-      meta = await anilist.fetchSeriesMetadata(entry.animeId, entry.title);
+      meta = await anilist.fetchSeriesMetadata(
+        entry.animeId,
+        entry.customTitle ?? entry.title,
+      );
     } catch (e) {
       if (kDebugMode) {
         print('⚠️ [SYNC] AniList failed for "${entry.title}": $e');
@@ -465,7 +469,10 @@ class WatchlistService {
     // 2. Try Kitsu fallback
     if (meta == null || meta.status == null) {
       try {
-        meta = await kitsu.fetchSeriesMetadata(entry.animeId, entry.title);
+        meta = await kitsu.fetchSeriesMetadata(
+          entry.animeId,
+          entry.customTitle ?? entry.title,
+        );
       } catch (e) {
         if (kDebugMode) {
           print('⚠️ [SYNC] Kitsu failed for "${entry.title}": $e');
@@ -476,7 +483,10 @@ class WatchlistService {
     // 3. Try Jikan/MAL fallback
     if (meta == null || meta.status == null) {
       try {
-        meta = await jikan.fetchSeriesMetadata(entry.animeId, entry.title);
+        meta = await jikan.fetchSeriesMetadata(
+          entry.animeId,
+          entry.customTitle ?? entry.title,
+        );
       } catch (e) {
         if (kDebugMode) {
           print('⚠️ [SYNC] Jikan failed for "${entry.title}": $e');

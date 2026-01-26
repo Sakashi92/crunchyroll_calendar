@@ -93,6 +93,7 @@ class WatchlistImporter {
         isCrunchyroll: e['isCrunchyroll'] as bool?,
         predictionsEnabled: (e['predictionsEnabled'] as bool?) ?? true,
         airingStatus: e['airingStatus'] as String?,
+        customTitle: e['customTitle'] as String?,
       );
     }).toList();
   }
