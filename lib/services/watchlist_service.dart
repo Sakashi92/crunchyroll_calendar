@@ -496,42 +496,43 @@ class WatchlistService {
       // Update total episodes if missing or auto-sync is on
       // Update total episodes if missing or auto-sync is on
       if (entry.totalEpisodes == 0 || entry.autoSyncTotal) {
-        // Logik-Änderung: Wenn im Simulcast-Kalender, dann nimm die Anzahl der releasten Folgen
-        // anstatt der geplanten Gesamtanzahl.
-        bool updatedFromCalendar = false;
-        if (cr.isTitleInCalendar(entry.title)) {
-          final releases = await cr.getReleasesForSeriesCached(
-            entry.animeId,
-            entry.title,
-          );
-          int maxEp = 0;
-          for (final r in releases) {
-            // Ignore predicted releases
-            if (r.isPredicted) continue;
+        // Logik-Änderung: Wir holen uns erst die Anzahl der releasten Folgen aus dem Kalender (maxEp).
+        // ABER wir überschreiben den Total-Wert nur, wenn maxEp > meta.totalEpisodes ist,
+        // oder wenn meta.totalEpisodes gar nicht verfügbar ist.
+        // Das fixt das Problem, dass bei Simulcasts mit 12 Folgen anfangs "1" steht,
+        // weil erst 1 Folge released ist.
 
-            final num = int.tryParse(r.episodeNumber) ?? 0;
-            if (num > maxEp) maxEp = num;
-          }
+        // Logik-Änderung: Wir holen uns die höchste Episodennummer direkt via Service.
+        // Der Service durchsucht alle Monate und beherrscht fuzzy matching.
+        final int maxEp =
+            await cr.getMaxEpisodeForSeries(entry.animeId, entry.title) ?? 0;
 
-          if (maxEp > 0) {
-            if (entry.totalEpisodes != maxEp) {
-              entry.totalEpisodes = maxEp;
-              changed = true;
-              if (kDebugMode) {
-                print(
-                  '✓ [SYNC] Updated "${entry.title}" episodes to $maxEp (from calendar releases)',
-                );
-              }
-            }
-            updatedFromCalendar = true;
-          }
+        // Determine the best source of truth for "Total Episodes"
+        int? metaTotal = meta.totalEpisodes;
+
+        // Use the MAX of (Metadata, Calendar, CURRENT_TOTAL)
+        // We only take the maximum to avoid accidental regressions to a lower count
+        // unless the current count is 0.
+        int currentTotal = entry.totalEpisodes;
+        int targetTotal = currentTotal;
+
+        if (metaTotal != null && metaTotal > targetTotal) {
+          targetTotal = metaTotal;
+        }
+        if (maxEp > targetTotal) {
+          targetTotal = maxEp;
         }
 
-        if (!updatedFromCalendar &&
-            meta.totalEpisodes != null &&
-            entry.totalEpisodes != meta.totalEpisodes) {
-          entry.totalEpisodes = meta.totalEpisodes!;
+        // Only update if we have a valid total > 0 and it has INCREASED
+        // (or it was 0 before)
+        if (targetTotal > 0 && entry.totalEpisodes != targetTotal) {
+          entry.totalEpisodes = targetTotal;
           changed = true;
+          if (kDebugMode) {
+            print(
+              '✓ [SYNC] Updated "${entry.title}" episodes to $targetTotal (Max of Meta: $metaTotal, Cal: $maxEp, Current: $currentTotal)',
+            );
+          }
         }
       }
 

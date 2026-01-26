@@ -1105,7 +1105,7 @@ class CrunchyrollService implements EpisodeProvider {
   @override
   Future<int?> getMaxEpisodeForSeries(String? seriesUrl, String? title) async {
     try {
-      // Ensure some cached releases exist
+      // 1. First attempt: Quick check using current cache
       if (_cachedReleases.isEmpty) {
         if (kDebugMode) {
           print('ℹ️ [CrunchyrollService] Cache empty, fetching week releases');
@@ -1113,117 +1113,48 @@ class CrunchyrollService implements EpisodeProvider {
         await getReleasesForWeek(DateTime.now());
       }
 
-      String normalize(String? s) => s == null
-          ? ''
-          : s.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]+'), ' ').trim();
+      int result = await _calculateMaxFromCache(seriesUrl, title);
 
-      // First try exact seriesUrl match
-      List<AnimeRelease> matches = [];
-      if (seriesUrl != null) {
-        matches = _cachedReleases
-            .where(
-              (r) =>
-                  r.seriesUrl.isNotEmpty &&
-                  r.seriesUrl == seriesUrl &&
-                  !r.isPredicted,
-            )
-            .toList();
+      // 2. Proactive check: If result is low (0 or 1), try a full month refresh
+      // This helps if the cache was only partially populated (e.g. current week only)
+      if (result <= 1) {
         if (kDebugMode) {
           print(
-            'ℹ️ [CrunchyrollService] getMaxEpisodeForSeries: found ${matches.length} matches by seriesUrl=$seriesUrl',
-          );
-        }
-      }
-
-      // If none, try normalized/fuzzy title matching
-      if (matches.isEmpty && title != null) {
-        final normTitle = normalize(title);
-        matches = _cachedReleases
-            .where((r) {
-              final rt = normalize(r.title);
-              if (rt.isEmpty || normTitle.isEmpty) {
-                return false;
-              }
-              return rt == normTitle ||
-                  rt.contains(normTitle) ||
-                  normTitle.contains(rt);
-            })
-            .where((r) => !r.isPredicted)
-            .toList();
-        if (kDebugMode) {
-          print(
-            'ℹ️ [CrunchyrollService] getMaxEpisodeForSeries: found ${matches.length} matches by title="$title"',
-          );
-        }
-      }
-
-      // If still none, try a broader refresh (month) and retry once
-      if (matches.isEmpty) {
-        if (kDebugMode) {
-          print(
-            'ℹ️ [CrunchyrollService] No matches in cache, forcing month refresh',
+            'ℹ️ [CrunchyrollService] Low result ($result), forcing data refresh for more releases...',
           );
         }
         await forceRefresh(forMonth: DateTime.now());
-        final normTitle = normalize(title);
-        matches = _cachedReleases
-            .where((r) {
-              if (seriesUrl != null &&
-                  r.seriesUrl.isNotEmpty &&
-                  r.seriesUrl == seriesUrl) {
-                return true;
-              }
-              final rt = normalize(r.title);
-              if (rt.isEmpty || normTitle.isEmpty) {
-                return false;
-              }
-              return rt == normTitle ||
-                  rt.contains(normTitle) ||
-                  normTitle.contains(rt);
-            })
-            .where((r) => !r.isPredicted)
-            .toList();
-        if (kDebugMode) {
-          print(
-            'ℹ️ [CrunchyrollService] After refresh: found ${matches.length} matches',
-          );
-        }
+        result = await _calculateMaxFromCache(seriesUrl, title);
       }
 
-      if (matches.isEmpty) {
-        if (kDebugMode) {
-          print(
-            '⚠️ [CrunchyrollService] getMaxEpisodeForSeries: no matches for seriesUrl=$seriesUrl title=$title',
-          );
-        }
-        return null;
-      }
-
-      int maxEp = 0;
-      for (final r in matches) {
-        final parsed = parseEpisodeNumber(r.episodeNumber);
-        if (kDebugMode) {
-          print(
-            '   - candidate: "${r.title}" ep="${r.episodeNumber}" parsed=$parsed',
-          );
-        }
-        if (parsed != null && parsed > maxEp) {
-          maxEp = parsed;
-        }
-      }
-
-      if (kDebugMode) {
-        print(
-          '✅ [CrunchyrollService] getMaxEpisodeForSeries -> maxEp=$maxEp for title=$title',
-        );
-      }
-      return maxEp > 0 ? maxEp : null;
+      return result > 0 ? result : null;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error getting max episode for series: $e');
+        print('❌ Error in getMaxEpisodeForSeries: $e');
       }
       return null;
     }
+  }
+
+  /// Hilfsmethode zur Berechnung der Max-Folge aus dem aktuell geladenen Cache
+  Future<int> _calculateMaxFromCache(String? seriesUrl, String? title) async {
+    final allMatches = await getReleasesForSeriesCached(seriesUrl, title);
+    // Filter out predicted releases - we only want REAL episodes for the count
+    final actualMatches = allMatches.where((r) => !r.isPredicted).toList();
+
+    int maxEp = 0;
+    for (final r in actualMatches) {
+      final parsed = parseEpisodeNumber(r.episodeNumber);
+      if (kDebugMode) {
+        print(
+          '   - candidate: "${r.title}" ep="${r.episodeNumber}" parsed=$parsed',
+        );
+      }
+      if (parsed != null && parsed > maxEp) {
+        maxEp = parsed;
+      }
+    }
+    return maxEp;
   }
 
   /// Provide metadata fallback from Crunchyroll cached releases.
@@ -1860,11 +1791,14 @@ class CrunchyrollService implements EpisodeProvider {
                 // Extrahiere Episode-Nummer
                 var episodeNumber = '1';
                 final episodeMatch = RegExp(
-                  r'[Ff]olge[n]?\s*(\d+)|[Ee]pisode[sn]?\s*(\d+)',
+                  r'[Ff]olge[n]?\s*(\d+)|[Ee]pisode[sn]?\s*(\d+)|^(\d+)$',
                 ).firstMatch(episodeInfo);
                 if (episodeMatch != null) {
                   episodeNumber =
-                      episodeMatch.group(1) ?? episodeMatch.group(2) ?? '1';
+                      episodeMatch.group(1) ??
+                      episodeMatch.group(2) ??
+                      episodeMatch.group(3) ??
+                      '1';
                 }
 
                 // Parse Zeit
@@ -2769,15 +2703,10 @@ class CrunchyrollService implements EpisodeProvider {
     if (title.isEmpty) return false;
     final normalized = normalizeTitle(title);
 
-    // Check known releases in cache
-    final cutoff = DateTime.now().subtract(const Duration(days: 30));
-
+    // Look in ALL cached releases we know about
     for (final r in _cachedReleases) {
-      if (r.releaseTime.isBefore(cutoff)) continue;
-
       final rNorm = normalizeTitle(r.title);
       if (rNorm == normalized) return true;
-      // Partial match fallback strategies
       if (rNorm.contains(normalized) && normalized.length > 5) return true;
       if (normalized.contains(rNorm) && rNorm.length > 5) return true;
     }

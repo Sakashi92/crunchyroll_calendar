@@ -1,8 +1,0 @@
-﻿Analyzing crunchyroll_calendar...                               
-
-   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:859:42 - use_build_context_synchronously
-   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:874:42 - use_build_context_synchronously
-   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:887:42 - use_build_context_synchronously
-   info - Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check - lib\pages\watchlist_page.dart:896:29 - use_build_context_synchronously
-   info - Don't invoke 'print' in production code - lib\repositories\notification_repository.dart:400:9 - avoid_print
-
