@@ -717,14 +717,27 @@ class CrunchyrollService implements EpisodeProvider {
     var alreadyHaveCount = 0;
 
     for (var release in releases) {
-      if ((release.imageUrl == null || release.imageUrl!.isEmpty)) {
-        // Zuerst prüfen ob es einen benutzerdefinierten Titel gibt
-        final customTitle = CustomSeriesTitleRepository().getTitleSync(
-          release.seriesUrl,
-        );
-        final searchTitle = customTitle ?? release.title;
+      // Zuerst prüfen ob es einen benutzerdefinierten Titel gibt
+      final customTitle = CustomSeriesTitleRepository().getTitleSync(
+        release.seriesUrl,
+      );
+      final searchTitle = customTitle ?? release.title;
 
-        // Suche im Image-Cache nach einer passenden URL
+      // Wenn wir ein Bild haben, aber ein Custom-Titel existiert,
+      // prüfen wir, ob wir ein passendes Bild für den Custom-Titel im Cache haben.
+      // Falls ja, überschreiben wir das Bild (damit Rename-Bilder sofort greifen).
+      if (customTitle != null) {
+        final cachedUrl = _findCachedImageUrl(customTitle);
+        if (cachedUrl != null && cachedUrl.isNotEmpty) {
+          release.imageUrl = cachedUrl;
+          appliedCount++;
+          continue;
+        }
+      }
+
+      // Standard-Fall: Nur laden wenn noch kein Bild vorhanden
+      if ((release.imageUrl == null || release.imageUrl!.isEmpty)) {
+        // Suche im Image-Cache nach einer passenden URL (jetzt mit searchTitle = customTitle || release.title)
         final cachedUrl = _findCachedImageUrl(searchTitle);
         if (cachedUrl != null && cachedUrl.isNotEmpty) {
           release.imageUrl = cachedUrl;

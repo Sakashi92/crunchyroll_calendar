@@ -157,7 +157,11 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
 
     // Ensure we have a cover image — fetch from Kitsu only
     try {
-      if (widget.release.imageUrl == null || widget.release.imageUrl!.isEmpty) {
+      // Wenn ein Custom-Titel existiert, versuchen wir IMMER das Bild zu aktualisieren,
+      // damit Umbenennungen sofort ein neues Cover laden.
+      if (_customTitle != null ||
+          (widget.release.imageUrl == null ||
+              widget.release.imageUrl!.isEmpty)) {
         final kitImage = await widget.crunchyrollService.fetchImageForTitle(
           _customTitle ?? widget.release.title,
         );

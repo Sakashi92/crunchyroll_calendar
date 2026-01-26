@@ -16,6 +16,11 @@ class CustomSeriesTitleRepository extends ChangeNotifier {
   Map<String, String> _titles = {};
   bool _initialized = false;
 
+  Future<void> reload() async {
+    _initialized = false;
+    await _init();
+  }
+
   Future<void> _init() async {
     if (_initialized) return;
     try {

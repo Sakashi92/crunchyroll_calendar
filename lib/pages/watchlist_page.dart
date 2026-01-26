@@ -1,11 +1,7 @@
-import 'dart:convert';
-import 'dart:io';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:file_picker/file_picker.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/anime_release.dart';
 import '../services/crunchyroll_service.dart';
@@ -232,7 +228,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
     // Filter by search text
     if (_searchController.text.isNotEmpty) {
       final q = _searchController.text.toLowerCase();
-      temp = temp.where((e) => e.title.toLowerCase().contains(q)).toList();
+      temp = temp.where((e) {
+        final title = (e.customTitle ?? e.title).toLowerCase();
+        return title.contains(q);
+      }).toList();
     }
 
     if (_sortMode == SortMode.addedAtDesc) {
@@ -243,7 +242,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
       });
     } else if (_sortMode == SortMode.alphabet) {
       temp.sort(
-        (a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()),
+        (a, b) => (a.customTitle ?? a.title).toLowerCase().compareTo(
+          (b.customTitle ?? b.title).toLowerCase(),
+        ),
       );
     } else if (_sortMode == SortMode.status) {
       temp.sort((a, b) => a.status.index.compareTo(b.status.index));
@@ -700,7 +701,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           scrollable: true,
-          title: Text('Bearbeiten: ${entry.title}'),
+          title: Text('Bearbeiten: ${entry.customTitle ?? entry.title}'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -974,291 +975,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
     );
   }
 
-  void _exportJson() async {
-    if (watchlist.entries.isEmpty) {
-      UIUtils.showSnackBar(
-        context,
-        const SnackBar(
-          content: Text('⚠️ Keine Einträge zum Exportieren'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    try {
-      final jsonString = await widget.service.exportToJson();
-
-      final timestamp = DateTime.now()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .split('.')[0];
-      final suggestedFileName = 'crunchyroll_watchlist_$timestamp.json';
-      final bytes = utf8.encode(jsonString);
-
-      String? chosenPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Watchlist exportieren',
-        fileName: suggestedFileName,
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        bytes: bytes,
-      );
-
-      if (chosenPath == null) return; // user cancelled
-
-      // On some platforms (Android), saveFile might return a path that needs cleanup
-      if (chosenPath.startsWith('file://')) {
-        chosenPath = Uri.parse(chosenPath).toFilePath();
-      }
-
-      // Manually write the bytes at the path to ensure it is saved on Windows
-      final file = File(chosenPath);
-      await file.writeAsBytes(bytes);
-
-      // Get the actual filename and directory from the chosen path
-      final actualFileName = file.path
-          .split(Platform.isWindows ? '\\' : '/')
-          .last;
-      final actualPath = file.parent.path;
-
-      if (mounted) {
-        final result = await showDialog<String>(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: CircleAvatar(
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.primary.withValues(alpha: 0.1),
-              child: Icon(
-                Icons.check,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            title: const Text('Export erfolgreich'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '${watchlist.entries.length} Einträge wurden erfolgreich exportiert.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'Speicherort:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Text(
-                    actualPath,
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Dateiname:',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  actualFileName,
-                  style: const TextStyle(fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context, 'close'),
-                child: const Text('Schließen'),
-              ),
-              FilledButton.icon(
-                onPressed: () => Navigator.pop(context, 'share'),
-                icon: const Icon(Icons.share, size: 18),
-                label: const Text('Teilen'),
-              ),
-            ],
-          ),
-        );
-
-        if (result == 'share') {
-          try {
-            // Slight delay to ensure file system has flushed the file
-            await Future.delayed(const Duration(milliseconds: 300));
-
-            if (await file.exists()) {
-              await Share.shareXFiles(
-                [XFile(file.path)],
-                subject: 'Meine Crunchyroll Watchlist',
-                text: 'Schau dir meine Crunchyroll Watchlist an!',
-              );
-            } else {
-              throw Exception('Datei nicht gefunden unter: ${file.path}');
-            }
-          } catch (e) {
-            if (kDebugMode) {
-              print('Share error: $e');
-            }
-            if (mounted) {
-              UIUtils.showSnackBar(
-                context,
-                SnackBar(content: Text('❌ Fehler beim Teilen: $e')),
-              );
-            }
-          }
-        }
-      }
-    } catch (e) {
-      if (kDebugMode) {
-        print('Export error: $e');
-      }
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          SnackBar(
-            content: Text('❌ Fehler beim Exportieren: $e'),
-            duration: const Duration(seconds: 3),
-            backgroundColor: Colors.red.shade700,
-          ),
-        );
-      }
-    }
-  }
-
-  void _importJson() async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        dialogTitle: 'Watchlist-Datei auswählen',
-      );
-
-      if (result == null || result.files.isEmpty) return; // cancelled
-
-      final filePath = result.files.single.path;
-      if (filePath == null) throw Exception('Kein Dateipfad erhalten');
-
-      if (mounted) {
-        showDialog(
-          context: context,
-          barrierDismissible: false,
-          builder: (context) => const Center(
-            child: Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text('Importiere Watchlist...'),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-
-      final importedCount = await widget.service.importFromJsonFilePath(
-        filePath,
-      );
-
-      if (mounted) Navigator.pop(context); // close loading
-
-      if (importedCount > 0) {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.check_circle, color: Colors.green),
-                  SizedBox(width: 8),
-                  Text('Import erfolgreich'),
-                ],
-              ),
-              content: Text(
-                importedCount == 1
-                    ? '1 neuer Eintrag wurde importiert'
-                    : '$importedCount neue Einträge wurden importiert',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          showDialog(
-            context: context,
-            builder: (context) => AlertDialog(
-              title: const Row(
-                children: [
-                  Icon(Icons.info, color: Colors.orange),
-                  SizedBox(width: 8),
-                  Text('Keine neuen Einträge'),
-                ],
-              ),
-              content: const Text(
-                'Die Datei wurde eingelesen, jedoch wurden keine neuen Einträge hinzugefügt.',
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('OK'),
-                ),
-              ],
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      // close loading dialog if open
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
-      if (kDebugMode) {
-        print('Import error: $e');
-      }
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.error, color: Colors.red),
-                SizedBox(width: 8),
-                Text('Import fehlgeschlagen'),
-              ],
-            ),
-            content: Text(
-              'Fehler beim Importieren:\n\n$e',
-              style: const TextStyle(fontSize: 13),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1344,39 +1060,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
               ),
             ],
           ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert),
-            tooltip: 'Optionen',
-            onSelected: (value) {
-              if (value == 'export') {
-                _exportJson();
-              } else if (value == 'import') {
-                _importJson();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'export',
-                child: Row(
-                  children: [
-                    Icon(Icons.upload_file),
-                    SizedBox(width: 12),
-                    Text('Exportieren'),
-                  ],
-                ),
-              ),
-              const PopupMenuItem(
-                value: 'import',
-                child: Row(
-                  children: [
-                    Icon(Icons.download),
-                    SizedBox(width: 12),
-                    Text('Importieren'),
-                  ],
-                ),
-              ),
-            ],
-          ),
         ],
       ),
       body: ListView.builder(
@@ -1458,7 +1141,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 ),
                                 if (entry.status == WatchStatus.watching &&
                                     CrunchyrollService().isTitleInCalendar(
-                                      entry.title,
+                                      entry.customTitle ?? entry.title,
                                     ))
                                   IconButton(
                                     icon: Icon(
@@ -1496,7 +1179,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         await cs
                                             .removePredictedReleasesForSeries(
                                               entry.animeId,
-                                              entry.title,
+                                              entry.customTitle ?? entry.title,
                                             );
                                         if (context.mounted) {
                                           UIUtils.showSnackBar(
@@ -1529,7 +1212,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                           final predicted = await predictor
                                               .predictNextForSeries(
                                                 entry.animeId,
-                                                entry.title,
+                                                entry.customTitle ??
+                                                    entry.title,
                                                 anilistId: entry.anilistId,
                                               );
 
@@ -1623,7 +1307,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               children: [
                                 Expanded(
                                   child: Text(
-                                    entry.title,
+                                    entry.customTitle ?? entry.title,
                                     style: Theme.of(
                                       context,
                                     ).textTheme.titleMedium,
@@ -1656,7 +1340,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                             'Eintrag entfernen',
                                           ),
                                           content: Text(
-                                            'Möchtest du "${entry.title}" wirklich aus der Watchlist entfernen?',
+                                            'Möchtest du "${entry.customTitle ?? entry.title}" wirklich aus der Watchlist entfernen?',
                                           ),
                                           actions: [
                                             TextButton(
@@ -1686,7 +1370,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         await crunch
                                             .removePredictedReleasesForSeries(
                                               entry.animeId,
-                                              entry.title,
+                                              entry.customTitle ?? entry.title,
                                             );
                                         if (context.mounted) {
                                           UIUtils.showSnackBar(
@@ -1749,7 +1433,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               ),
                             ],
                             if (CrunchyrollService().isTitleInCalendar(
-                              entry.title,
+                              entry.customTitle ?? entry.title,
                             )) ...[
                               const SizedBox(height: 4),
                               Row(

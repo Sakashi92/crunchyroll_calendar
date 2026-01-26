@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/background_service.dart';
 import '../services/battery_optimization_service.dart';
@@ -14,6 +17,8 @@ import '../services/permission_service.dart';
 import '../repositories/notification_repository.dart';
 import '../models/notification_log.dart';
 import '../services/app_settings_service.dart';
+import '../services/backup_service.dart';
+import '../widgets/import_selection_dialog.dart';
 import '../utils/ui_utils.dart';
 
 /// Einstellungs-Seite
@@ -708,6 +713,28 @@ class _SettingsPageState extends State<SettingsPage> {
           if (kDebugMode) _buildWorkmanagerTestTile(),
           if (kDebugMode) _buildBackgroundScraperTestTile(),
           if (kDebugMode) const Divider(),
+          _buildSectionHeader('Datensicherung'),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Daten exportieren'),
+              subtitle: const Text(
+                'Erstelle ein Backup deiner Einstellungen und Watchlist',
+              ),
+              onTap: () => _handleExport(),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.download_for_offline),
+              title: const Text('Daten importieren'),
+              subtitle: const Text('Stelle Daten aus einem Backup wieder her'),
+              onTap: () => _handleImport(),
+            ),
+          ),
+          const Divider(),
           _buildSectionHeader('Info'),
           _buildInfoTile(),
         ],
@@ -1476,6 +1503,150 @@ class _SettingsPageState extends State<SettingsPage> {
           backgroundColor: color,
         ),
       );
+    }
+  }
+
+  Future<void> _handleExport() async {
+    try {
+      final jsonString = await BackupService().generateBackupJson();
+      final bytes = utf8.encode(jsonString);
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
+      final suggestedFileName = 'crunchyroll_calendar_backup_$timestamp.json';
+
+      String? chosenPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Backup speichern',
+        fileName: suggestedFileName,
+        type: FileType.custom,
+        allowedExtensions: ['json'],
+        bytes: bytes,
+      );
+
+      if (chosenPath == null) return;
+
+      if (chosenPath.startsWith('file://')) {
+        chosenPath = Uri.parse(chosenPath).toFilePath();
+      }
+
+      final file = File(chosenPath);
+      await file.writeAsBytes(bytes);
+
+      if (mounted) {
+        final actualFileName = file.path
+            .split(Platform.isWindows ? '\\' : '/')
+            .last;
+        final actualPath = file.parent.path;
+
+        await showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            icon: CircleAvatar(
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.primary.withOpacity(0.1),
+              child: Icon(
+                Icons.check,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+            ),
+            title: const Text('Backup erfolgreich'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Deine Daten wurden erfolgreich gesichert.',
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Dateiname:',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  actualFileName,
+                  style: const TextStyle(fontSize: 13),
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Schließen'),
+              ),
+              FilledButton.icon(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await Share.shareXFiles([
+                    XFile(file.path),
+                  ], subject: 'Crunchyroll Kalender Backup');
+                },
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Teilen'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('Export fehlgeschlagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _handleImport() async {
+    try {
+      final backup = await BackupService().pickAndParseBackup();
+      if (backup == null) return;
+
+      if (!mounted) return;
+      final selectedCategories = await showDialog<List<String>>(
+        context: context,
+        builder: (context) => ImportSelectionDialog(backupData: backup),
+      );
+
+      if (selectedCategories == null || selectedCategories.isEmpty) return;
+
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          const SnackBar(content: Text('Import wird ausgeführt...')),
+        );
+      }
+
+      await BackupService().importData(backup, selectedCategories);
+
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text('Import erfolgreich! App wird neu geladen.'),
+          ),
+        );
+        // Reload all settings
+        await _loadSettings();
+        widget.onSettingsChanged?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('Import fehlgeschlagen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 }
