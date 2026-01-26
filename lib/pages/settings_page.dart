@@ -1538,7 +1538,6 @@ class _SettingsPageState extends State<SettingsPage> {
         final actualFileName = file.path
             .split(Platform.isWindows ? '\\' : '/')
             .last;
-        final actualPath = file.parent.path;
 
         await showDialog(
           context: context,

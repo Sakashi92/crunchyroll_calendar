@@ -33,8 +33,9 @@ class CustomSeriesTitleRepository extends ChangeNotifier {
       _initialized = true;
       notifyListeners();
     } catch (e) {
-      if (kDebugMode)
+      if (kDebugMode) {
         print('❌ Error initializing CustomSeriesTitleRepository: $e');
+      }
     }
   }
 
