@@ -3,7 +3,8 @@ class AnimeRelease {
   final String episodeNumber;
   final String episodeTitle;
   final DateTime releaseTime;
-  String? imageUrl; // Nicht final, damit AniList-Bilder nachgeladen werden können
+  String?
+  imageUrl; // Nicht final, damit AniList-Bilder nachgeladen werden können
   String? description; // Plot/Beschreibung des Anime
   final String seriesUrl;
   final String episodeUrl;
@@ -24,10 +25,11 @@ class AnimeRelease {
   });
 
   String get episodeInfo => 'Folge $episodeNumber';
-  
+
   String get timeString {
-    final hour = releaseTime.hour.toString().padLeft(2, '0');
-    final minute = releaseTime.minute.toString().padLeft(2, '0');
+    final localTime = releaseTime.toLocal();
+    final hour = localTime.hour.toString().padLeft(2, '0');
+    final minute = localTime.minute.toString().padLeft(2, '0');
     return '$hour:$minute';
   }
 

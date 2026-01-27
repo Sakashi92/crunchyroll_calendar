@@ -485,6 +485,11 @@ class _CalendarPageState extends State<CalendarPage>
       });
       finalByDay = filtered;
 
+      // Sort releases by time
+      for (final list in finalByDay.values) {
+        list.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
+      }
+
       setState(() {
         _releases = finalByDay;
       });
@@ -629,6 +634,10 @@ class _CalendarPageState extends State<CalendarPage>
               }
             }
           }
+          // Sort releases by time after adding adjacent months
+          for (final list in _releases.values) {
+            list.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
+          }
         });
       }
 
@@ -756,6 +765,11 @@ class _CalendarPageState extends State<CalendarPage>
         finalByDay = deduped;
       }
 
+      // Sort releases by time
+      for (final list in finalByDay.values) {
+        list.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
+      }
+
       setState(() {
         _releases = finalByDay;
       });
@@ -821,7 +835,7 @@ class _CalendarPageState extends State<CalendarPage>
       );
       // Wenn der Tag des Releases NACH dem Horizont liegt -> ausblenden
       return !releaseDay.isAfter(horizonMidnight);
-    }).toList();
+    }).toList()..sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
   }
 
   /// Lädt alle gecachten Monate beim Start um Punkte überall anzuzeigen
@@ -904,6 +918,11 @@ class _CalendarPageState extends State<CalendarPage>
             }
           }
         }
+      }
+
+      // Sort releases by time
+      for (final list in _releases.values) {
+        list.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
       }
 
       // Trigger UI Update um Punkte anzuzeigen

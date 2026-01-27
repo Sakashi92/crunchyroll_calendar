@@ -141,6 +141,7 @@ class NotificationService {
             showWhen: true,
             enableVibration: true,
             onlyAlertOnce: false,
+            groupKey: 'com.crunchyroll.calendar.UPDATES',
           );
 
       const DarwinNotificationDetails iosDetails = DarwinNotificationDetails(

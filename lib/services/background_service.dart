@@ -603,6 +603,9 @@ Future<bool> _executeBackgroundScraper() async {
 
       await notificationRepo.logNotification(notificationWithHash);
 
+      // Add delay to prevent notification throttling by OS
+      await Future.delayed(const Duration(milliseconds: 500));
+
       notificationCount++;
 
       if (kDebugMode) {
