@@ -48,6 +48,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _hideDuplicateReleases = true;
   String _episodeProvider = 'anilist';
   bool _predictionEnabled = false;
+  bool _preferCrunchyrollEpisodeCount = false;
 
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
@@ -74,6 +75,8 @@ class _SettingsPageState extends State<SettingsPage> {
         await AppSettingsService.getHideDuplicateReleases();
     final episodeProvider = await AppSettingsService.getEpisodeProviderName();
     final predictionEnabled = await AppSettingsService.getPredictionEnabled();
+    final preferCrunchyrollEpisodeCount =
+        await AppSettingsService.getPreferCrunchyrollEpisodeCount();
 
     final permissions = await PermissionService().checkAllPermissions();
 
@@ -89,6 +92,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _hideDuplicateReleases = hideDuplicateReleases;
       _episodeProvider = episodeProvider;
       _predictionEnabled = predictionEnabled;
+      _preferCrunchyrollEpisodeCount = preferCrunchyrollEpisodeCount;
 
       _permissions = permissions;
       _isLoading = false;
@@ -231,6 +235,14 @@ class _SettingsPageState extends State<SettingsPage> {
         ),
       );
     }
+  }
+
+  Future<void> _savePreferCrunchyrollEpisodeCount(bool enabled) async {
+    await AppSettingsService.setPreferCrunchyrollEpisodeCount(enabled);
+    setState(() {
+      _preferCrunchyrollEpisodeCount = enabled;
+    });
+    widget.onSettingsChanged?.call();
   }
 
   Future<void> _savePredictionEnabled(bool enabled) async {
@@ -606,6 +618,17 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               value: _hideDuplicateReleases,
               onChanged: (v) => _saveHideDuplicateReleases(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SwitchListTile(
+              title: const Text('Aktuelle Episodenanzahl bevorzugen'),
+              subtitle: const Text(
+                'Zeigt nur die Anzahl der bereits veröffentlichten Folgen an (Kalender), statt der geplanten Gesamtanzahl (Info-Datenbank)',
+              ),
+              value: _preferCrunchyrollEpisodeCount,
+              onChanged: (v) => _savePreferCrunchyrollEpisodeCount(v),
             ),
           ),
           Padding(

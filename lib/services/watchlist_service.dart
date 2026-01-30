@@ -14,6 +14,7 @@ import 'kitsu_service.dart';
 import 'jikan_service.dart';
 import '../utils/title_utils.dart';
 import 'dart:async';
+import 'app_settings_service.dart';
 
 import '../models/anime_metadata.dart';
 import '../utils/watchlist_importer.dart';
@@ -520,27 +521,39 @@ class WatchlistService {
         // Determine the best source of truth for "Total Episodes"
         int? metaTotal = meta.totalEpisodes;
 
-        // Use the MAX of (Metadata, Calendar, CURRENT_TOTAL)
-        // We only take the maximum to avoid accidental regressions to a lower count
-        // unless the current count is 0.
+        final bool preferCrCount =
+            await AppSettingsService.getPreferCrunchyrollEpisodeCount();
+
         int currentTotal = entry.totalEpisodes;
         int targetTotal = currentTotal;
 
-        if (metaTotal != null && metaTotal > targetTotal) {
-          targetTotal = metaTotal;
-        }
-        if (maxEp > targetTotal) {
-          targetTotal = maxEp;
+        if (preferCrCount) {
+          // If enabled, we strictly prefer the Crunchyroll count (maxEp)
+          // UNLESS maxEp is 0 (no data), then we might fallback or keep current
+          if (maxEp > 0) {
+            targetTotal = maxEp;
+          } else if (metaTotal != null && metaTotal > 0 && currentTotal == 0) {
+            // Fallback to meta only if we have NOTHING and CR is empty
+            targetTotal = metaTotal;
+          }
+        } else {
+          // New behavior: If "Prefer CR count" is OFF, we TRUST the Metadata count.
+          // The user explicitly requested to "read out generally all max episodes per meta".
+          if (metaTotal != null && metaTotal > 0) {
+            targetTotal = metaTotal;
+          } else if (maxEp > 0 && maxEp > targetTotal) {
+            // Fallback to calendar if meta is empty but calendar has something
+            targetTotal = maxEp;
+          }
         }
 
-        // Only update if we have a valid total > 0 and it has INCREASED
-        // (or it was 0 before)
+        // Only update if changed (handling the case where we might reduce the count if preferCrCount is on)
         if (targetTotal > 0 && entry.totalEpisodes != targetTotal) {
           entry.totalEpisodes = targetTotal;
           changed = true;
           if (kDebugMode) {
             print(
-              '✓ [SYNC] Updated "${entry.title}" episodes to $targetTotal (Max of Meta: $metaTotal, Cal: $maxEp, Current: $currentTotal)',
+              '✓ [SYNC] Updated "${entry.title}" episodes to $targetTotal (Mode: ${preferCrCount ? 'CR-Only' : 'Max-All'}, Meta: $metaTotal, Cal: $maxEp)',
             );
           }
         }
@@ -653,6 +666,28 @@ class WatchlistService {
       await Future.delayed(const Duration(milliseconds: 1500));
     }
 
+    await saveWatchlist();
+  }
+
+  /// Refreshes metadata for the provided list of entries.
+  Future<void> refreshEntries(List<WatchlistEntry> entries) async {
+    if (kDebugMode) {
+      print('🔄 [WATCHLIST-SYNC] Batch refresh for ${entries.length} entries');
+    }
+    const int concurrencyLimit = 1;
+    for (int i = 0; i < entries.length; i += concurrencyLimit) {
+      final end = (i + concurrencyLimit < entries.length)
+          ? i + concurrencyLimit
+          : entries.length;
+      final chunk = entries.sublist(i, end); // sublist is safe here
+
+      await Future.wait(
+        chunk.map((entry) => refreshMetadataWithFallback(entry)),
+      );
+
+      // Gentleness delay between chunks (1.5s per request/chunk)
+      await Future.delayed(const Duration(milliseconds: 1500));
+    }
     await saveWatchlist();
   }
 }

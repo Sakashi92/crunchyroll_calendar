@@ -18,6 +18,8 @@ class AppSettingsService {
   static const String _watchlistSortModeKey = 'watchlist_sort_mode';
   static const String _episodeProviderKey = 'episode_provider';
   static const String _predictionEnabledKey = 'enable_next_episode_prediction';
+  static const String _preferCrunchyrollEpisodeCountKey =
+      'prefer_crunchyroll_episode_count';
 
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -224,5 +226,15 @@ class AppSettingsService {
   static Future<void> setPredictionEnabled(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_predictionEnabledKey, enabled);
+  }
+
+  static Future<bool> getPreferCrunchyrollEpisodeCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_preferCrunchyrollEpisodeCountKey) ?? false;
+  }
+
+  static Future<void> setPreferCrunchyrollEpisodeCount(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_preferCrunchyrollEpisodeCountKey, enabled);
   }
 }

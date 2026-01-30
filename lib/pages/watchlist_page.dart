@@ -1022,6 +1022,11 @@ class _WatchlistPageState extends State<WatchlistPage> {
               tooltip: 'Händisch hinzufügen',
               onPressed: _addAnime,
             ),
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            tooltip: 'Aktualisieren',
+            onPressed: () => _refreshList(),
+          ),
           // AniList forecast removed — calendar icon intentionally omitted
           // Sort button
           PopupMenuButton<SortMode>(
@@ -1513,6 +1518,49 @@ class _WatchlistPageState extends State<WatchlistPage> {
         },
       ),
     );
+  }
+
+  Future<void> _refreshList() async {
+    if (watchlist.entries.isEmpty) return;
+
+    if (mounted) {
+      UIUtils.showSnackBar(
+        context,
+        const SnackBar(
+          content: Text('Aktualisiere Watchlist-Informationen...'),
+          duration: Duration(seconds: 1),
+        ),
+      );
+    }
+
+    final entriesToRefresh = watchlist.entries
+        .where((e) => e.status != WatchStatus.completed)
+        .toList();
+
+    if (entriesToRefresh.isEmpty) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text('Keine aktiven Einträge zum Aktualisieren.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    await widget.service.refreshEntries(entriesToRefresh);
+
+    if (mounted) {
+      setState(() {
+        _displayEntries = List.from(watchlist.entries);
+        _applySort();
+      });
+      UIUtils.showSnackBar(
+        context,
+        const SnackBar(content: Text('Watchlist aktualisiert')),
+      );
+    }
   }
 
   Widget _buildCoverImage(WatchlistEntry entry) {

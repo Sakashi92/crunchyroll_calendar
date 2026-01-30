@@ -44,6 +44,9 @@ class BackupService {
           'enable_next_episode_prediction',
         ),
         'watchlist_sort_mode': prefs.getInt('watchlist_sort_mode'),
+        'prefer_crunchyroll_episode_count': prefs.getBool(
+          'prefer_crunchyroll_episode_count',
+        ),
       };
 
       // 2. Watchlist
