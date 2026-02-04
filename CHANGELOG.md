@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
-## [0.9.3.1] - 2026-02-04
+## [0.9.4] - 2026-02-04
 - **Fix**: Android In-App Update Problem behoben (FileProvider Berechtigung hinzugefügt).
 - **Feat**: Automatischer Update-Check beim App-Start.
 
