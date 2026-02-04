@@ -48,7 +48,7 @@ flutter {
 
 dependencies {
     // Core Library Desugaring für Java 8+ Features (z.B. java.time in flutter_local_notifications)
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
 // Setze explizit Source/Target für alle JavaCompile Tasks auf Java 17

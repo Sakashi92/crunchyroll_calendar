@@ -47,4 +47,4 @@ Technische Details zur Installation und zum Build findest du in der [DEVELOPER.m
 Dieses Projekt wurde unter maßgeblicher Unterstützung von **Künstlicher Intelligenz (LLMs)** entwickelt. Dies dient der Transparenz und zeigt das Potenzial moderner KI-gestützter Softwareentwicklung.
 
 ## 📄 Lizenz
-Dieses Projekt ist unter der MIT-Lizenz lizenziert.
+Dieses Projekt ist unter der GNU General Public License v3.0 (GPL-3.0) lizenziert. Dies stellt sicher, dass der Code offen bleibt und Derivate unter derselben Lizenz veröffentlicht werden müssen.
