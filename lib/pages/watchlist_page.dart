@@ -945,15 +945,27 @@ class _WatchlistPageState extends State<WatchlistPage> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           scrollable: true,
+          titlePadding: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
           ),
-          title: Text(
-            entry.customTitle ?? entry.title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            textAlign: TextAlign.center,
+          title: Container(
+            decoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(16),
+              ),
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            child: Text(
+              entry.customTitle ?? entry.title,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+            ),
           ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1060,34 +1072,60 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       Row(
                         children: [
                           Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Gesamtfolgen',
-                                  style: TextStyle(fontWeight: FontWeight.w500),
-                                ),
-                                if (autoSync)
-                                  Text(
-                                    'Auto-Sync aktiv',
+                            child: InkWell(
+                              onTap: autoSync
+                                  ? () => setState(() => autoSync = false)
+                                  : null,
+                              borderRadius: BorderRadius.circular(4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Text(
+                                    'Gesamtfolgen',
                                     style: TextStyle(
-                                      fontSize: 10,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
+                                      fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                              ],
+                                  if (autoSync)
+                                    Text(
+                                      'Auto-Sync aktiv',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                           ),
-                          if (autoSync)
+                          if (autoSync) ...[
+                            // Show count but reduced prominence
+                            InkWell(
+                              onTap: () => setState(() => autoSync = false),
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12.0,
+                                ),
+                                child: Text(
+                                  '$total',
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: Theme.of(context).disabledColor,
+                                  ),
+                                ),
+                              ),
+                            ),
                             IconButton(
                               onPressed: () => setState(() => autoSync = false),
                               icon: const Icon(Icons.sync),
                               color: Theme.of(context).colorScheme.primary,
                               tooltip: 'Auto-Sync deaktivieren',
-                            )
-                          else ...[
+                            ),
+                          ] else ...[
                             IconButton.filledTonal(
                               onPressed: () {
                                 if (total > 0) setState(() => total--);
@@ -1143,7 +1181,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               TextButton.icon(
                                 onPressed: () async {
                                   setState(() => autoSync = true);
-                                  // Logic for auto-sync fetch
                                   try {
                                     final crunch = CrunchyrollService();
                                     final known = await crunch
@@ -1211,7 +1248,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       }
                     }
 
-                    // Fallback to title search if no ID or no link found by ID
+                    // Fallback to title search
                     final match = await AnilistService().findBestMatch(
                       entry.title,
                     );
@@ -1246,7 +1283,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                             content: Text('Kein Link automatisch gefunden.'),
                           ),
                         );
-                        // Open manual search
                         final manualUrl = externalSearch.getManualSearchUrl(
                           entry.title,
                         );
@@ -1282,7 +1318,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 if (status != WatchStatus.watching) {
                   finalNotifications = false;
                   finalPredictions = false;
-                  // Clean up predictions from calendar if status changed to inactive
                   final cs = CrunchyrollService();
                   cs.removePredictedReleasesForSeries(
                     entry.animeId,
@@ -1303,7 +1338,6 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 watchlist.updateEntry(newEntry);
                 widget.service.saveWatchlist();
 
-                // If status is watching, trigger an immediate sync to re-evaluate deactivation logic
                 if (newEntry.status == WatchStatus.watching) {
                   unawaited(
                     widget.service.refreshMetadataWithFallback(newEntry),
