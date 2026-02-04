@@ -1456,24 +1456,12 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                               final dateStr =
                                                   '${d.day}.${d.month}.${d.year} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
-                                              // Auto-enable general notifications if found
-                                              if (!entry.notificationsEnabled) {
-                                                setState(() {
-                                                  entry.notificationsEnabled =
-                                                      true;
-                                                });
-                                                widget.service.watchlist
-                                                    .updateEntry(entry);
-                                                await widget.service
-                                                    .saveWatchlist();
-                                              }
-
                                               if (context.mounted) {
                                                 UIUtils.showSnackBar(
                                                   context,
                                                   SnackBar(
                                                     content: Text(
-                                                      'Gefunden: $dateStr (Benachrichtigung aktiv)',
+                                                      'Gefunden: $dateStr',
                                                     ),
                                                     backgroundColor:
                                                         Colors.green,
