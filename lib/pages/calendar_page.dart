@@ -1026,7 +1026,6 @@ class _CalendarPageState extends State<CalendarPage>
         imagesLoaded: _imagesLoaded,
         imagesToLoad: _imagesToLoad,
         onOpenSettings: _openSettings,
-        onRefresh: _forceRefresh,
       ),
       body: RefreshIndicator(
         onRefresh: _forceRefresh,

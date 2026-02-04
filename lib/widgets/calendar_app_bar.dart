@@ -14,7 +14,6 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
   final int imagesLoaded;
   final int imagesToLoad;
   final VoidCallback onOpenSettings;
-  final VoidCallback onRefresh;
 
   const CalendarAppBar({
     super.key,
@@ -24,7 +23,6 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.imagesLoaded,
     required this.imagesToLoad,
     required this.onOpenSettings,
-    required this.onRefresh,
   });
 
   @override
