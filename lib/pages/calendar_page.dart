@@ -345,6 +345,8 @@ class _CalendarPageState extends State<CalendarPage>
   double _cumulativeScrollDelta = 0.0;
   // threshold (pixels) read from settings before auto-minimizing
   double _autoMinimizeScrollThreshold = 200.0;
+  // Whether the scroll threshold has been surpassed (for transparent pill background)
+  bool _hasScrolledPastThreshold = false;
 
   @override
   void dispose() {
@@ -1084,95 +1086,149 @@ class _CalendarPageState extends State<CalendarPage>
           setState(() {
             _isCalendarMinimized = !_isCalendarMinimized;
             _cumulativeScrollDelta = 0.0;
-            // Scroll to top if expanding? Maybe not needed as expanding shows calendar
+            if (!_isCalendarMinimized) {
+              _hasScrolledPastThreshold = false;
+            }
           });
         },
       ),
       body: RefreshIndicator(
         onRefresh: _forceRefresh,
-        child: Column(
-          children: [
-            AnimatedSize(
-              duration: const Duration(milliseconds: 450),
-              curve: Curves.easeInOut,
-              alignment: Alignment.topCenter,
-              child: () {
-                final orientation = MediaQuery.of(context).orientation;
-                final isLandscape = orientation == Orientation.landscape;
+        child: () {
+          final orientation = MediaQuery.of(context).orientation;
+          final isLandscape = orientation == Orientation.landscape;
 
-                // Hide body calendar if minimized in landscape (it's in the AppBar)
-                if (isLandscape && _isCalendarMinimized) {
-                  return const SizedBox.shrink();
+          // 1. Landscape & Minimized: Pill is in AppBar. Body is full list.
+          if (isLandscape && _isCalendarMinimized) {
+            return NotificationListener<ScrollNotification>(
+              onNotification: (notification) =>
+                  false, // No auto-expand needed here?
+              child: _buildReleaseSwipeView(),
+            );
+          }
+
+          final effectiveFormat = isLandscape
+              ? CalendarFormat.week
+              : _calendarFormat;
+
+          Widget calendar = CalendarDisplay(
+            focusedDay: _focusedDay,
+            selectedDay: _selectedDay,
+            calendarFormat: effectiveFormat,
+            isCalendarMinimized: _isCalendarMinimized,
+            isScrolledPastThreshold: _hasScrolledPastThreshold,
+            eventLoader: _getReleasesForDay,
+            onDaySelected: (selectedDay, focusedDay) {
+              if (!isSameDay(_selectedDay, selectedDay)) {
+                // ... logic same as before ...
+                final previous = _selectedDay ?? _focusedDay;
+                final diff = selectedDay.difference(previous).inDays;
+                if (diff > 0) {
+                  _lastSwipeDirection = -1;
+                } else if (diff < 0) {
+                  _lastSwipeDirection = 1;
                 }
 
-                final effectiveFormat = isLandscape
-                    ? CalendarFormat.week
-                    : _calendarFormat;
+                setState(() {
+                  _selectedDay = selectedDay;
+                  _focusedDay = focusedDay;
+                  _isLoadingReleases = true;
+                });
+                _loadReleases();
+              }
+            },
+            onFormatChanged: (format) {
+              if (_calendarFormat != format) {
+                setState(() => _calendarFormat = format);
+                _saveCalendarFormat(format);
+              }
+            },
+            onPageChanged: (focusedDay) {
+              setState(() => _focusedDay = focusedDay);
+              _loadReleases();
+            },
+            onExpand: () {
+              setState(() {
+                _isCalendarMinimized = false;
+                _cumulativeScrollDelta = 0.0;
+                _hasScrolledPastThreshold = false;
+              });
+            },
+            onCycleFormat: ({required bool up}) => _cycleCalendarFormat(up: up),
+          );
 
-                Widget calendar = CalendarDisplay(
-                  focusedDay: _focusedDay,
-                  selectedDay: _selectedDay,
-                  calendarFormat: effectiveFormat,
-                  isCalendarMinimized: _isCalendarMinimized,
-                  eventLoader: _getReleasesForDay,
-                  onDaySelected: (selectedDay, focusedDay) {
-                    if (!isSameDay(_selectedDay, selectedDay)) {
-                      final previous = _selectedDay ?? _focusedDay;
-                      final diff = selectedDay.difference(previous).inDays;
-                      if (diff > 0) {
-                        _lastSwipeDirection = -1;
-                      } else if (diff < 0) {
-                        _lastSwipeDirection = 1;
-                      }
-
-                      setState(() {
-                        _selectedDay = selectedDay;
-                        _focusedDay = focusedDay;
-                        _isLoadingReleases = true;
-                      });
-                      _loadReleases();
-                    }
-                  },
-                  onFormatChanged: (format) {
-                    if (_calendarFormat != format) {
-                      setState(() => _calendarFormat = format);
-                      _saveCalendarFormat(format);
-                    }
-                  },
-                  onPageChanged: (focusedDay) {
-                    setState(() => _focusedDay = focusedDay);
-                    _loadReleases();
-                  },
-                  onExpand: () {
-                    setState(() {
-                      _isCalendarMinimized = false;
-                      _cumulativeScrollDelta = 0.0;
-                    });
-                  },
-                  onCycleFormat: ({required bool up}) =>
-                      _cycleCalendarFormat(up: up),
-                );
-
-                return Center(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: isLandscape ? 700 : 500,
-                      ),
-                      child: calendar,
-                    ),
+          Widget calendarContainer = AnimatedSize(
+            duration: const Duration(milliseconds: 450),
+            curve: Curves.easeInOut,
+            alignment: Alignment.topCenter,
+            child: Center(
+              child: Padding(
+                padding: EdgeInsets.only(
+                  left: isLandscape ? 16 : 20,
+                  right: isLandscape ? 16 : 20,
+                  top: isLandscape ? 8 : 2,
+                  bottom: isLandscape ? 8 : 8,
+                ),
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: isLandscape ? 700 : 500,
                   ),
-                );
-              }(),
+                  child: calendar,
+                ),
+              ),
             ),
-            const Divider(height: 1),
-            Expanded(
-              child: NotificationListener<ScrollNotification>(
+          );
+
+          // 1. Landscape: Standard Layout (Hidden if minimized, Column if Expanded)
+          if (isLandscape) {
+            if (_isCalendarMinimized) {
+              return NotificationListener<ScrollNotification>(
+                onNotification: (notification) => false,
+                child: _buildReleaseSwipeView(),
+              );
+            }
+            return Column(
+              children: [
+                calendarContainer,
+                const Divider(height: 1),
+                Expanded(
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (notification) {
+                      // ... auto minimize logic ...
+                      if (notification is ScrollUpdateNotification) {
+                        if (_autoMinimizeEnabled &&
+                            notification.metrics.axis == Axis.vertical &&
+                            (notification.scrollDelta ?? 0) != 0) {
+                          if (_isCalendarMinimized) {
+                            _cumulativeScrollDelta = 0.0;
+                          } else {
+                            _cumulativeScrollDelta +=
+                                (notification.scrollDelta ?? 0).abs();
+                            if (_cumulativeScrollDelta >=
+                                _autoMinimizeScrollThreshold) {
+                              _cumulativeScrollDelta = 0.0;
+                              setState(() => _isCalendarMinimized = true);
+                            }
+                          }
+                        }
+                      }
+                      return false;
+                    },
+                    child: _buildReleaseSwipeView(),
+                  ),
+                ),
+              ],
+            );
+          }
+
+          // 2. Portrait: Ghost Header Layout (Stack)
+          // Layer 0: Swipe View with Invisible Calendar as Header
+          // Layer 1: Visible Calendar on Top
+          return Stack(
+            children: [
+              NotificationListener<ScrollNotification>(
                 onNotification: (notification) {
+                  // Auto-minimize logic same as above
                   if (notification is ScrollUpdateNotification) {
                     if (_autoMinimizeEnabled &&
                         notification.metrics.axis == Axis.vertical &&
@@ -1185,23 +1241,40 @@ class _CalendarPageState extends State<CalendarPage>
                         if (_cumulativeScrollDelta >=
                             _autoMinimizeScrollThreshold) {
                           _cumulativeScrollDelta = 0.0;
-                          setState(() => _isCalendarMinimized = true);
+                          setState(() {
+                            _isCalendarMinimized = true;
+                            _hasScrolledPastThreshold = true;
+                          });
                         }
                       }
                     }
                   }
                   return false;
                 },
-                child: _buildReleaseSwipeView(),
+                child: _buildReleaseSwipeView(
+                  // Pass the "Ghost" calendar
+                  header: IgnorePointer(
+                    child: Opacity(opacity: 0, child: calendarContainer),
+                  ),
+                ),
               ),
-            ),
-          ],
-        ),
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: SafeArea(child: calendarContainer),
+              ),
+            ],
+          );
+        }(),
       ),
     );
   }
 
-  Widget _buildReleaseSwipeView() {
+  Widget _buildReleaseSwipeView({
+    EdgeInsetsGeometry? contentPadding,
+    Widget? header,
+  }) {
     final dayKey = ValueKey((_selectedDay ?? _focusedDay).toIso8601String());
 
     return GestureDetector(
@@ -1376,6 +1449,8 @@ class _CalendarPageState extends State<CalendarPage>
             releases: currentReleases,
             isLoading: _isLoadingReleases,
             watchlistService: widget.watchlistService,
+            contentPadding: contentPadding,
+            header: header,
           );
 
           if (!_isDragging && _dragOffset == 0.0) {
@@ -1430,6 +1505,8 @@ class _CalendarPageState extends State<CalendarPage>
             releases: adjacentReleases,
             isLoading: false, // Don't show loader in preview
             watchlistService: widget.watchlistService,
+            contentPadding: contentPadding,
+            header: header,
           );
 
           return Stack(

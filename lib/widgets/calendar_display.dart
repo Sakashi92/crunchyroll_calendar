@@ -8,6 +8,7 @@ class CalendarDisplay extends StatefulWidget {
   final DateTime? selectedDay;
   final CalendarFormat calendarFormat;
   final bool isCalendarMinimized;
+  final bool isScrolledPastThreshold;
   final List<AnimeRelease> Function(DateTime) eventLoader;
   final void Function(DateTime, DateTime) onDaySelected;
   final void Function(CalendarFormat) onFormatChanged;
@@ -21,6 +22,7 @@ class CalendarDisplay extends StatefulWidget {
     this.selectedDay,
     required this.calendarFormat,
     required this.isCalendarMinimized,
+    this.isScrolledPastThreshold = false,
     required this.eventLoader,
     required this.onDaySelected,
     required this.onFormatChanged,
@@ -43,6 +45,14 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
       return _buildMinimizedHeader(context);
     }
 
+    final theme = Theme.of(context);
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
+    // In portrait mode, make background transparent when scroll threshold is passed
+    final bool useTransparentBackground =
+        !isLandscape && widget.isScrolledPastThreshold;
+
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: (_) => _verticalDragDelta = 0.0,
@@ -58,102 +68,141 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
       },
       onPointerUp: (_) => _verticalDragDelta = 0.0,
       onPointerCancel: (_) => _verticalDragDelta = 0.0,
-      child: TableCalendar<AnimeRelease>(
-        key: ValueKey(widget.calendarFormat),
-        locale: 'de_DE',
-        firstDay: DateTime.utc(2020, 1, 1),
-        lastDay: DateTime.utc(2030, 12, 31),
-        focusedDay: widget.focusedDay,
-        calendarFormat: widget.calendarFormat,
-        startingDayOfWeek: StartingDayOfWeek.monday,
-        selectedDayPredicate: (day) => isSameDay(widget.selectedDay, day),
-        onDaySelected: widget.onDaySelected,
-        onFormatChanged: widget.onFormatChanged,
-        onPageChanged: widget.onPageChanged,
-        eventLoader: widget.eventLoader,
-        calendarStyle: CalendarStyle(
-          todayDecoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.5),
-            shape: BoxShape.circle,
-          ),
-          selectedDecoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary,
-            shape: BoxShape.circle,
-          ),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeInOut,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: useTransparentBackground
+              ? Colors.transparent
+              : theme.colorScheme.surfaceContainer,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: useTransparentBackground
+              ? null
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
-        headerStyle: const HeaderStyle(
-          formatButtonVisible: false,
-          titleCentered: true,
-          formatButtonShowsNext: false,
-        ),
-        calendarBuilders: CalendarBuilders<AnimeRelease>(
-          markerBuilder: (context, date, events) {
-            if (events.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            final color = Theme.of(context).colorScheme.primary;
-            final hasPrediction = events.any((e) => e.isPredicted);
+        child: TableCalendar<AnimeRelease>(
+          key: ValueKey(widget.calendarFormat),
+          locale: 'de_DE',
+          firstDay: DateTime.utc(2020, 1, 1),
+          lastDay: DateTime.utc(2030, 12, 31),
+          focusedDay: widget.focusedDay,
+          calendarFormat: widget.calendarFormat,
+          startingDayOfWeek: StartingDayOfWeek.monday,
+          selectedDayPredicate: (day) => isSameDay(widget.selectedDay, day),
+          onDaySelected: widget.onDaySelected,
+          onFormatChanged: widget.onFormatChanged,
+          onPageChanged: widget.onPageChanged,
+          eventLoader: widget.eventLoader,
+          calendarStyle: CalendarStyle(
+            // Make today/selected circles larger and shift 1px up
+            cellMargin: const EdgeInsets.only(
+              left: 5,
+              right: 5,
+              top: 6,
+              bottom: 4,
+            ),
+            todayDecoration: BoxDecoration(
+              color: Theme.of(
+                context,
+              ).colorScheme.primary.withValues(alpha: 0.5),
+              shape: BoxShape.circle,
+            ),
+            selectedDecoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              shape: BoxShape.circle,
+            ),
+          ),
+          headerStyle: const HeaderStyle(
+            formatButtonVisible: false,
+            titleCentered: true,
+            formatButtonShowsNext: false,
+          ),
+          daysOfWeekStyle: DaysOfWeekStyle(
+            weekdayStyle: TextStyle(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              fontWeight: FontWeight.w600,
+            ),
+            weekendStyle: TextStyle(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          calendarBuilders: CalendarBuilders<AnimeRelease>(
+            markerBuilder: (context, date, events) {
+              if (events.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              final color = Theme.of(context).colorScheme.primary;
+              final hasPrediction = events.any((e) => e.isPredicted);
 
-            return Stack(
-              children: [
-                Align(
-                  alignment: Alignment.bottomCenter,
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Container(
-                      width: 22,
-                      height: 3,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                ),
-                if (hasPrediction)
+              return Stack(
+                children: [
                   Align(
-                    alignment: Alignment.bottomRight,
+                    alignment: Alignment.bottomCenter,
                     child: Padding(
-                      padding: const EdgeInsets.only(bottom: 6, right: 6),
+                      padding: const EdgeInsets.only(bottom: 10),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 4,
-                          vertical: 1,
-                        ),
+                        width: 22,
+                        height: 3,
                         decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.primary,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(
-                            color: Theme.of(context).colorScheme.surface,
-                            width: 1.0,
-                          ),
-                        ),
-                        child: Text(
-                          'V',
-                          style: TextStyle(
-                            color:
-                                Theme.of(
-                                      context,
-                                    ).colorScheme.primary.computeLuminance() >
-                                    0.5
-                                ? Colors.black
-                                : Colors.white,
-                            fontSize: 8,
-                            fontWeight: FontWeight.bold,
-                          ),
+                          color: color,
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                     ),
                   ),
-              ],
-            );
+                  if (hasPrediction)
+                    Align(
+                      alignment: Alignment.bottomRight,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 6, right: 6),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 4,
+                            vertical: 1,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Theme.of(context).colorScheme.primary,
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(
+                              color: Theme.of(context).colorScheme.surface,
+                              width: 1.0,
+                            ),
+                          ),
+                          child: Text(
+                            'V',
+                            style: TextStyle(
+                              color:
+                                  Theme.of(
+                                        context,
+                                      ).colorScheme.primary.computeLuminance() >
+                                      0.5
+                                  ? Colors.black
+                                  : Colors.white,
+                              fontSize: 8,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                ],
+              );
+            },
+          ),
+          availableCalendarFormats: const {
+            CalendarFormat.month: 'Monat',
+            CalendarFormat.twoWeeks: '2 Wochen',
+            CalendarFormat.week: 'Woche',
           },
         ),
-        availableCalendarFormats: const {
-          CalendarFormat.month: 'Monat',
-          CalendarFormat.twoWeeks: '2 Wochen',
-          CalendarFormat.week: 'Woche',
-        },
       ),
     );
   }
