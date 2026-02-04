@@ -1364,8 +1364,6 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   void _startUpdate(String url) {
-    bool downloadStarted = false;
-
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -1440,7 +1438,7 @@ class _SettingsPageState extends State<SettingsPage> {
     return const ListTile(
       leading: Icon(Icons.info_outline),
       title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.8.9-Fix2\nBilder werden von Kitsu.app geladen'),
+      subtitle: Text('Version 0.9.0\nBilder werden von Kitsu.app geladen'),
       isThreeLine: true,
     );
   }
