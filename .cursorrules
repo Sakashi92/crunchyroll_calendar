@@ -1,0 +1,19 @@
+# Crunchyroll Calendar - AI Project Rules
+
+You are an AI assistant working on the Crunchyroll Calendar Flutter project.
+To maintain project stability and follow the release process, you MUST follow these rules:
+
+## 📜 Core Instructions
+1. **Read AI_GUIDE.md**: Always read the `AI_GUIDE.md` file in the root directory before making any changes to versions, scraper logic, or documentation.
+2. **Versioning**: When changing versions, update ALL locations specified in `AI_GUIDE.md` (pubspec.yaml, SettingsPage, CHANGELOG.md, README.md).
+3. **Scraper Safety**: Be extremely careful with `lib/services/crunchyroll_service.dart`. Do not change the CSS selectors (like `:nth-child`) unless the scraping is confirmed broken.
+4. **Deduplication**: Never remove the `_deduplicateReleases` logic. It is critical to prevent duplicate episodes.
+5. **Documentation**: Keep `README.md` clean and user-friendly. Move technical details to `DEVELOPER.md`.
+
+## 🛠 Tech Stack Notes
+- **Framework**: Flutter (Stable channel)
+- **Local DB**: sqflite & shared_preferences
+- **Automation**: GitHub Actions (triggered by `v*` tags)
+- **Update System**: Uses `GitHubUpdateService` (GitHub API + ota_update)
+
+Failure to follow the versioning checklist in `AI_GUIDE.md` will lead to broken updates and CI/CD failures.
