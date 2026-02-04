@@ -20,6 +20,8 @@ import '../services/app_settings_service.dart';
 import '../services/backup_service.dart';
 import '../widgets/import_selection_dialog.dart';
 import '../utils/ui_utils.dart';
+import '../services/github_update_service.dart';
+import 'package:ota_update/ota_update.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
@@ -759,6 +761,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const Divider(),
           _buildSectionHeader('Info'),
+          _buildUpdateCheckTile(),
           _buildInfoTile(),
         ],
       ),
@@ -1273,6 +1276,163 @@ class _SettingsPageState extends State<SettingsPage> {
           }
         },
       ),
+    );
+  }
+
+  Widget _buildUpdateCheckTile() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ListTile(
+        leading: const Icon(Icons.system_update),
+        title: const Text('Auf Updates prüfen'),
+        subtitle: const Text('Prüft GitHub auf eine neuere Version der App'),
+        onTap: () => _checkForUpdates(manual: true),
+      ),
+    );
+  }
+
+  Future<void> _checkForUpdates({bool manual = false}) async {
+    final updateService = GitHubUpdateService();
+
+    if (manual) {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    final updateInfo = await updateService.checkForUpdate();
+
+    if (manual && mounted) {
+      Navigator.pop(context); // Lade-Dialog schließen
+    }
+
+    if (updateInfo != null) {
+      if (mounted) {
+        _showUpdateDialog(updateInfo);
+      }
+    } else if (manual && mounted) {
+      UIUtils.showSnackBar(
+        context,
+        const SnackBar(
+          content: Text('App ist bereits auf dem neuesten Stand.'),
+        ),
+      );
+    }
+  }
+
+  void _showUpdateDialog(Map<String, dynamic> updateInfo) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Update verfügbar: v${updateInfo['version']}'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Eine neue Version der App wurde auf GitHub gefunden.',
+              ),
+              if (updateInfo['body'] != null) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Änderungen:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                Text(updateInfo['body']),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Später'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startUpdate(updateInfo['url']);
+            },
+            child: const Text('Jetzt aktualisieren'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _startUpdate(String url) {
+    bool downloadStarted = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return StreamBuilder<OtaEvent>(
+              stream: GitHubUpdateService().executeUpdate(url),
+              builder: (context, snapshot) {
+                String message = 'Update wird vorbereitet...';
+                double? progress;
+
+                if (snapshot.hasData) {
+                  switch (snapshot.data!.status) {
+                    case OtaStatus.DOWNLOADING:
+                      message = 'Downloade Update...';
+                      progress =
+                          double.tryParse(snapshot.data!.value ?? '0') ?? 0;
+                      progress = progress / 100;
+                      break;
+                    case OtaStatus.INSTALLING:
+                      message = 'Starte Installation...';
+                      break;
+                    case OtaStatus.ALREADY_RUNNING_ERROR:
+                      message = 'Update läuft bereits.';
+                      break;
+                    case OtaStatus.PERMISSION_NOT_GRANTED_ERROR:
+                      message = 'Keine Berechtigung zur Installation.';
+                      break;
+                    case OtaStatus.INTERNAL_ERROR:
+                      message = 'Interner Fehler beim Update.';
+                      break;
+                    default:
+                      message = 'Status: ${snapshot.data!.status}';
+                      break;
+                  }
+                }
+
+                return AlertDialog(
+                  title: const Text('Update wird installiert'),
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(message),
+                      const SizedBox(height: 16),
+                      LinearProgressIndicator(value: progress),
+                      if (progress != null) ...[
+                        const SizedBox(height: 8),
+                        Text('${(progress * 100).toStringAsFixed(0)}%'),
+                      ],
+                    ],
+                  ),
+                  actions: [
+                    if (snapshot.hasError ||
+                        (snapshot.hasData &&
+                            snapshot.data!.status.toString().contains('ERROR')))
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: const Text('Schließen'),
+                      ),
+                  ],
+                );
+              },
+            );
+          },
+        );
+      },
     );
   }
 
