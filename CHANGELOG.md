@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.2] - 2026-02-04
+- **Fix**: Android Build-Fehler behoben (OTA Update benötigt neuere Library Desugaring Version).
+- **Lizenz**: Wechsel zur GNU GPL v3.0 Lizenz.
+
 ## [0.9.1] - 2026-02-04
 - **CI/CD**: Anpassung der APK-Benennung auf GitHub (`cr_calendar_v0.9.1.apk`).
 
