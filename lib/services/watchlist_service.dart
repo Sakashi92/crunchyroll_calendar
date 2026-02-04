@@ -384,20 +384,14 @@ class WatchlistService {
               final match = await anilist.findBestMatch(entry.title);
 
               if (match != null) {
-                final oldId = entry.animeId;
+                // final oldId = entry.animeId; // Unused
+
                 entry.anilistId = match.id;
                 entry.airingStatus =
                     match.status; // Save status from auto-link match
 
-                // Sync Crunchyroll URL if available from AniList
-                if (match.hasCrunchyroll == true &&
-                    match.bannerImage != null &&
-                    match.bannerImage!.contains('crunchyroll.com')) {
-                  final newUrl = match.bannerImage!;
-                  if (newUrl != oldId) {
-                    watchlist.renameEntry(oldId, newUrl);
-                  }
-                }
+                // Sync Crunchyroll URL logic REMOVED to prevent ID mismatch with Calendar
+                // We trust the internal ID (Calendar URL) as the source of truth.
 
                 // Save to cache so predictor can find it
                 // Use current animeId (might be updated)

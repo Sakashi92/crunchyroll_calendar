@@ -1061,19 +1061,7 @@ class CrunchyrollService implements EpisodeProvider {
 
         if (maxEp > entry.totalEpisodes && entry.autoSyncTotal) {
           // Create a new WatchlistEntry with the updated totalEpisodes (immutable field)
-          final newEntry = WatchlistEntry(
-            animeId: entry.animeId,
-            title: entry.title,
-            imageUrl: entry.imageUrl,
-            episodesWatched: entry.episodesWatched,
-            totalEpisodes: maxEp,
-            status: entry.status,
-            notificationsEnabled: entry.notificationsEnabled,
-            autoSyncTotal: entry.autoSyncTotal,
-            note: entry.note,
-            anilistId: entry.anilistId,
-            rating: entry.rating,
-          );
+          final newEntry = entry.copyWith(totalEpisodes: maxEp);
           // Replace the entry in the watchlist
           watchlistService.watchlist.updateEntry(newEntry);
           updated = true;
@@ -1301,19 +1289,7 @@ class CrunchyrollService implements EpisodeProvider {
         if (known != null &&
             known > entry.totalEpisodes &&
             entry.autoSyncTotal) {
-          final newEntry = WatchlistEntry(
-            animeId: entry.animeId,
-            title: entry.title,
-            imageUrl: entry.imageUrl,
-            episodesWatched: entry.episodesWatched,
-            totalEpisodes: known,
-            status: entry.status,
-            notificationsEnabled: entry.notificationsEnabled,
-            autoSyncTotal: entry.autoSyncTotal,
-            note: entry.note,
-            anilistId: entry.anilistId,
-            rating: entry.rating,
-          );
+          final newEntry = entry.copyWith(totalEpisodes: known);
           watchlistService.watchlist.updateEntry(newEntry);
           await watchlistService.saveWatchlist();
 

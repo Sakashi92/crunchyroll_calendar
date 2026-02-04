@@ -3,13 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/anime_release.dart';
 import '../services/watchlist_service.dart';
 import '../services/crunchyroll_service.dart';
-import '../services/anilist_service.dart';
-import '../services/anilist_cache.dart';
-import '../services/next_episode_predictor.dart';
-import '../models/watchlist.dart';
-import '../utils/title_utils.dart';
 import '../pages/search_page.dart';
-import '../utils/ui_utils.dart';
 import '../pages/watchlist_page.dart';
 import 'anime_details_dialog.dart';
 
@@ -116,75 +110,8 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
             release: r,
             crunchyrollService: CrunchyrollService(),
             watchlistService: watchlistService,
-            onAddToWatchlist: (release) async {
-              await _addToWatchlist(ctx, release);
-            },
           ),
         );
-      }
-    }
-  }
-
-  Future<void> _addToWatchlist(
-    BuildContext context,
-    AnimeRelease release,
-  ) async {
-    final ws = watchlistService;
-    if (ws == null) {
-      return;
-    }
-    final cs = CrunchyrollService();
-    final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
-    final knownMax = await cs.getMaxEpisodeFromCache(
-      release.seriesUrl,
-      release.title,
-    );
-    final total = (knownMax != null && knownMax > parsedCurrent)
-        ? knownMax
-        : parsedCurrent;
-
-    int? autoId;
-    try {
-      final best = await AnilistService().findBestMatch(release.title);
-      if (best != null) {
-        autoId = best.id;
-        final cache = AnilistCache();
-        final key = normalizeTitle(release.seriesUrl);
-        await cache.save(key, best);
-      }
-    } catch (_) {}
-
-    final entry = WatchlistEntry(
-      animeId: release.seriesUrl,
-      title: release.title,
-      imageUrl: release.imageUrl,
-      episodesWatched: 0,
-      totalEpisodes: total,
-      anilistId: autoId,
-      addedAt: DateTime.now(),
-    );
-    ws.watchlist.addEntry(entry);
-    await ws.saveWatchlist();
-    cs.scheduleWatchlistEntryUpdate(ws, entry);
-
-    if (context.mounted) {
-      UIUtils.showSnackBar(
-        context,
-        SnackBar(
-          content: Text(
-            'Zur Watchlist hinzugefügt: ${release.title}${autoId != null ? " (Verknüpft)" : ""}',
-          ),
-        ),
-      );
-
-      if (autoId != null) {
-        try {
-          final predictor = NextEpisodePredictor(cs, AnilistService());
-          await predictor.predictNextForSeries(entry.animeId, entry.title);
-        } catch (_) {}
-      }
-      if (context.mounted) {
-        Navigator.of(context).pop();
       }
     }
   }

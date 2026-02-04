@@ -16,6 +16,7 @@ import '../models/anime_metadata.dart';
 import '../services/anilist_service.dart';
 import '../services/next_episode_predictor.dart';
 import '../services/external_search_service.dart';
+import '../repositories/custom_series_title_repository.dart';
 
 // Sorting modes for the watchlist
 enum SortMode { addedAtDesc, alphabet, status }
@@ -569,6 +570,12 @@ class _WatchlistPageState extends State<WatchlistPage> {
       totalEpisodes = meta.totalEpisodes!;
     }
 
+    // Fetch custom title if previously set
+    String? storedCustomTitle;
+    try {
+      storedCustomTitle = await CustomSeriesTitleRepository().getTitle(id);
+    } catch (_) {}
+
     final entry = WatchlistEntry(
       animeId: id,
       title: title,
@@ -579,6 +586,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
       addedAt: DateTime.now(),
       anilistId: meta.id, // Store Anilist/MAL ID for metadata lookups
       notificationsEnabled: false,
+      customTitle: storedCustomTitle,
       isCrunchyroll:
           (meta.hasCrunchyroll == true) ||
           (meta.siteUrl?.contains('crunchyroll.com') == true) ||
@@ -607,6 +615,216 @@ class _WatchlistPageState extends State<WatchlistPage> {
         SnackBar(content: Text('"$title" zur Watchlist hinzugefügt')),
       );
     }
+  }
+
+  /// Shows a dialog to link an unlinked watchlist entry to Anilist
+  /// and enable predictions after linking.
+  Future<void> _showLinkingDialog(WatchlistEntry entry) async {
+    final searchController = TextEditingController(
+      text: entry.customTitle ?? entry.title,
+    );
+    List<AnimeMetadata> searchResults = [];
+    bool isSearching = false;
+    bool hasSearched = false;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          Future<void> performSearch() async {
+            if (searchController.text.trim().isEmpty) return;
+
+            setState(() {
+              isSearching = true;
+              hasSearched = true;
+              searchResults = [];
+            });
+
+            try {
+              final results = await AnilistService().searchSeries(
+                searchController.text,
+              );
+              if (context.mounted) {
+                setState(() {
+                  searchResults = results;
+                  isSearching = false;
+                });
+              }
+            } catch (e) {
+              if (kDebugMode) {
+                print('Link search error: $e');
+              }
+              if (context.mounted) {
+                setState(() {
+                  isSearching = false;
+                });
+              }
+            }
+          }
+
+          // Auto-search when dialog opens
+          if (!hasSearched && searchController.text.isNotEmpty) {
+            Future.microtask(performSearch);
+          }
+
+          return Dialog(
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 16.0,
+              vertical: 24.0,
+            ),
+            child: Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxWidth: 600),
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'Anilist verknüpfen',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Verknüpfe "${entry.customTitle ?? entry.title}" mit Anilist für Vorhersagen.',
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodyMedium?.copyWith(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: searchController,
+                    decoration: InputDecoration(
+                      labelText: 'Anilist durchsuchen',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: const Icon(Icons.search),
+                        onPressed: performSearch,
+                      ),
+                    ),
+                    onSubmitted: (_) => performSearch(),
+                    autofocus: true,
+                  ),
+                  const SizedBox(height: 16),
+                  if (isSearching)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    )
+                  else if (hasSearched && searchResults.isEmpty)
+                    const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(32.0),
+                        child: Text('Keine Ergebnisse gefunden.'),
+                      ),
+                    )
+                  else if (searchResults.isNotEmpty)
+                    Flexible(
+                      child: ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: searchResults.length,
+                        separatorBuilder: (context, index) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final meta = searchResults[index];
+                          final parts = <String>[];
+                          if (meta.totalEpisodes != null) {
+                            parts.add('${meta.totalEpisodes} Folgen');
+                          }
+                          if (meta.startDate != null) {
+                            parts.add('${meta.startDate!.year}');
+                          }
+                          if (meta.status != null) {
+                            parts.add(meta.status!);
+                          }
+
+                          return ListTile(
+                            leading: meta.imageUrl != null
+                                ? ClipRRect(
+                                    borderRadius: BorderRadius.circular(4),
+                                    child: CachedNetworkImage(
+                                      imageUrl: meta.imageUrl!,
+                                      width: 50,
+                                      height: 75,
+                                      fit: BoxFit.cover,
+                                      placeholder: (ctx, url) => Container(
+                                        width: 50,
+                                        height: 75,
+                                        color: Colors.grey.shade300,
+                                      ),
+                                      errorWidget: (ctx, url, err) => Container(
+                                        width: 50,
+                                        height: 75,
+                                        color: Colors.grey.shade300,
+                                        child: const Icon(Icons.error),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    width: 50,
+                                    height: 75,
+                                    color: Colors.grey.shade300,
+                                    child: const Icon(Icons.movie),
+                                  ),
+                            title: Text(meta.siteUrl ?? 'Unbekannt'),
+                            subtitle: Text(parts.join(' • ')),
+                            onTap: () async {
+                              // Link the entry
+                              entry.anilistId = meta.id;
+                              entry.predictionsEnabled = true;
+                              widget.service.watchlist.updateEntry(entry);
+                              await widget.service.saveWatchlist();
+
+                              // Trigger prediction search
+                              final cs = CrunchyrollService();
+                              final predictor = NextEpisodePredictor(
+                                cs,
+                                AnilistService(),
+                              );
+                              unawaited(
+                                predictor.predictNextForSeries(
+                                  entry.animeId,
+                                  entry.title,
+                                  anilistId: meta.id,
+                                ),
+                              );
+
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                              if (this.context.mounted) {
+                                this.setState(() {});
+                                UIUtils.showSnackBar(
+                                  this.context,
+                                  SnackBar(
+                                    content: Text(
+                                      'Verknüpft mit "${meta.siteUrl ?? 'Anilist'}" - Suche Vorhersage...',
+                                    ),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              }
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('Abbrechen'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _toggleNotifications(WatchlistEntry entry, bool enabled) async {
@@ -940,19 +1158,14 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   );
                 }
 
-                final newEntry = WatchlistEntry(
+                final newEntry = entry.copyWith(
                   animeId: currentId,
-                  title: entry.title,
-                  imageUrl: entry.imageUrl,
                   episodesWatched: episodes,
                   totalEpisodes: total,
                   status: status,
                   notificationsEnabled: finalNotifications,
                   autoSyncTotal: autoSync,
                   note: noteController.text,
-                  rating: entry.rating,
-                  anilistId: entry.anilistId,
-                  addedAt: entry.addedAt,
                   predictionsEnabled: finalPredictions,
                 );
                 watchlist.updateEntry(newEntry);
@@ -1145,19 +1358,24 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   ),
                                 ),
                                 if (entry.status == WatchStatus.watching &&
-                                    CrunchyrollService().isTitleInCalendar(
-                                      entry.customTitle ?? entry.title,
-                                    ))
+                                    (CrunchyrollService().isTitleInCalendar(
+                                          entry.title,
+                                        ) ||
+                                        _isCrunchyrollItem(entry)))
                                   IconButton(
                                     icon: Icon(
                                       entry.predictionsEnabled
                                           ? Icons.auto_awesome
                                           : Icons.auto_awesome_outlined,
-                                      color: entry.predictionsEnabled
-                                          ? Theme.of(
-                                              context,
-                                            ).colorScheme.primary
-                                          : Colors.grey,
+                                      // Linked: primary/grey based on enabled state
+                                      // Unlinked: always grey (not yet linked)
+                                      color: entry.anilistId == null
+                                          ? Colors.grey.shade400
+                                          : (entry.predictionsEnabled
+                                                ? Theme.of(
+                                                    context,
+                                                  ).colorScheme.primary
+                                                : Colors.grey),
                                       size: 20,
                                     ),
                                     visualDensity: VisualDensity.compact,
@@ -1165,10 +1383,18 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                       tapTargetSize:
                                           MaterialTapTargetSize.shrinkWrap,
                                     ),
-                                    tooltip: entry.predictionsEnabled
-                                        ? 'Vorhersage deaktivieren'
-                                        : 'Vorhersage aktivieren',
+                                    tooltip: entry.anilistId == null
+                                        ? 'Anilist verknüpfen für Vorhersage'
+                                        : (entry.predictionsEnabled
+                                              ? 'Vorhersage deaktivieren'
+                                              : 'Vorhersage aktivieren'),
                                     onPressed: () async {
+                                      // If not linked, show linking dialog
+                                      if (entry.anilistId == null) {
+                                        await _showLinkingDialog(entry);
+                                        return;
+                                      }
+                                      // Otherwise toggle predictions
                                       final wasEnabled =
                                           entry.predictionsEnabled;
                                       setState(() {
@@ -1184,7 +1410,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         await cs
                                             .removePredictedReleasesForSeries(
                                               entry.animeId,
-                                              entry.customTitle ?? entry.title,
+                                              entry.title,
                                             );
                                         if (context.mounted) {
                                           UIUtils.showSnackBar(
@@ -1217,8 +1443,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                           final predicted = await predictor
                                               .predictNextForSeries(
                                                 entry.animeId,
-                                                entry.customTitle ??
-                                                    entry.title,
+                                                entry.title,
                                                 anilistId: entry.anilistId,
                                               );
 
@@ -1375,7 +1600,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                         await crunch
                                             .removePredictedReleasesForSeries(
                                               entry.animeId,
-                                              entry.customTitle ?? entry.title,
+                                              entry.title,
                                             );
                                         if (context.mounted) {
                                           UIUtils.showSnackBar(

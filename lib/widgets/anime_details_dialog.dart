@@ -32,7 +32,6 @@ class AnimeDetailsDialog extends StatefulWidget {
   final int? totalEpisodes;
   final bool showEpisodeBadge;
   final bool showTimeBadge;
-  final void Function(AnimeRelease release)? onAddToWatchlist;
   final WatchlistService? watchlistService;
   final bool showManualLink;
   final bool isCrunchyroll;
@@ -44,7 +43,6 @@ class AnimeDetailsDialog extends StatefulWidget {
     this.totalEpisodes,
     this.showEpisodeBadge = true,
     this.showTimeBadge = true,
-    this.onAddToWatchlist,
     this.watchlistService,
     this.showManualLink = false,
     this.isCrunchyroll = true,
@@ -525,6 +523,11 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           }
         } catch (_) {}
 
+        String? storedCustomTitle;
+        try {
+          storedCustomTitle = await CustomSeriesTitleRepository().getTitle(id);
+        } catch (_) {}
+
         final entry = WatchlistEntry(
           animeId: id,
           title: widget.release.title,
@@ -532,6 +535,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           episodesWatched: 0,
           totalEpisodes: total,
           anilistId: autoId,
+          customTitle: storedCustomTitle,
           addedAt: DateTime.now(),
         );
         ws.watchlist.addEntry(entry);
@@ -685,40 +689,12 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           );
           if (entryIndex != -1) {
             final entry = ws.watchlist.entries[entryIndex];
-            final oldId = entry.animeId;
+            // final oldId = entry.animeId; // Unused
+
             entry.anilistId = result.id;
 
-            // NEW: Automatically update Crunchyroll URL if AniList provides one
-            String? updatedUrl;
-            if (result.hasCrunchyroll == true &&
-                result.bannerImage != null &&
-                result.bannerImage!.contains('crunchyroll.com')) {
-              updatedUrl = result.bannerImage;
-              if (updatedUrl != oldId) {
-                ws.watchlist.renameEntry(oldId, updatedUrl!);
-                if (kDebugMode) {
-                  print(
-                    '🔗 Sync: Updated Crunchyroll URL from AniList: $updatedUrl',
-                  );
-                }
-              }
-            }
-
-            ws.watchlist.updateEntry(entry);
-            await ws.saveWatchlist();
-
-            if (mounted && updatedUrl != null && updatedUrl != oldId) {
-              UIUtils.showSnackBar(
-                context,
-                SnackBar(
-                  content: Text(
-                    'Crunchyroll-Link wurde automatisch aktualisiert! ✅',
-                  ),
-                  backgroundColor: Colors.green,
-                  duration: const Duration(seconds: 3),
-                ),
-              );
-            }
+            // NEW: Automatically update Crunchyroll URL logic REMOVED.
+            // We keep the original ID to ensure the link to the Calendar (Red Heart) remains valid.
           }
         } catch (e) {
           if (kDebugMode) print('❌ Link: Failed to update watchlist entry: $e');

@@ -168,81 +168,6 @@ class _ReleaseCardState extends State<ReleaseCard> {
           release: widget.release,
           crunchyrollService: CrunchyrollService(),
           watchlistService: widget.watchlistService,
-          onAddToWatchlist: (release) async {
-            final ws = widget.watchlistService;
-            if (ws == null) {
-              return;
-            }
-            setState(() {
-              _isProcessingWatchlist = true;
-            });
-            try {
-              final cs = CrunchyrollService();
-              final parsedCurrent = int.tryParse(release.episodeNumber) ?? 0;
-              final knownMax = await cs.getMaxEpisodeFromCache(
-                release.seriesUrl,
-                release.title,
-              );
-              final total = (knownMax != null && knownMax > parsedCurrent)
-                  ? knownMax
-                  : parsedCurrent;
-
-              int? autoId;
-              try {
-                final best = await AnilistService().findBestMatch(
-                  release.title,
-                );
-                if (best != null) {
-                  autoId = best.id;
-                  final cache = AnilistCache();
-                  final key = normalizeTitle(release.seriesUrl);
-                  await cache.save(key, best);
-                }
-              } catch (_) {}
-
-              final entry = WatchlistEntry(
-                animeId: release.seriesUrl,
-                title: release.title,
-                imageUrl: release.imageUrl,
-                episodesWatched: 0,
-                totalEpisodes: total,
-                anilistId: autoId,
-                addedAt: DateTime.now(),
-              );
-              ws.watchlist.addEntry(entry);
-              await ws.saveWatchlist();
-              cs.scheduleWatchlistEntryUpdate(ws, entry);
-
-              if (autoId != null) {
-                try {
-                  final predictor = NextEpisodePredictor(cs, AnilistService());
-                  await predictor.predictNextForSeries(
-                    entry.animeId,
-                    entry.title,
-                  );
-                } catch (_) {}
-              }
-
-              if (mounted) {
-                setState(() {
-                  _isInWatchlist = true;
-                });
-              }
-            } catch (e) {
-              if (kDebugMode) {
-                print('❌ Error adding to watchlist: $e');
-              }
-            } finally {
-              if (mounted) {
-                setState(() {
-                  _isProcessingWatchlist = false;
-                });
-              }
-            }
-            if (context.mounted) {
-              Navigator.of(context).pop();
-            }
-          },
         );
       },
     );
@@ -397,6 +322,14 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                       }
                                     } catch (_) {}
 
+                                    // Fetch custom title if set
+                                    String? storedCustomTitle;
+                                    try {
+                                      storedCustomTitle =
+                                          await CustomSeriesTitleRepository()
+                                              .getTitle(id);
+                                    } catch (_) {}
+
                                     final entry = WatchlistEntry(
                                       animeId: id,
                                       title: widget.release.title,
@@ -404,6 +337,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                                       episodesWatched: 0,
                                       totalEpisodes: total,
                                       anilistId: autoId,
+                                      customTitle: storedCustomTitle,
                                       addedAt: DateTime.now(),
                                     );
                                     ws.watchlist.addEntry(entry);
