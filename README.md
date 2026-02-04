@@ -10,7 +10,7 @@ Ein inoffizieller Anime-Veröffentlichungskalender für Crunchyroll. Behalte all
 
 Die aktuellste Version der App findest du immer hier:
 
-👉 **[Klicke hier zum Download der APK (v0.9.2)](https://github.com/Sakashi92/crunchyroll_calendar/releases/latest)**
+👉 [**Hier die neueste Version (v0.9.3.1) herunterladen**](https://github.com/Sakashi92/crunchyroll_calendar/releases/latest/download/cr_calendar_v0.9.3.1.apk)
 
 ---
 

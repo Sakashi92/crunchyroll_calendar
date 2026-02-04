@@ -2,6 +2,14 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.3.1] - 2026-02-04
+- **Fix**: Android In-App Update Problem behoben (FileProvider Berechtigung hinzugefügt).
+- **Feat**: Automatischer Update-Check beim App-Start.
+
+## [0.9.3] - 2026-02-04
+- **Feat**: Dynamische Versionsanzeige in den Einstellungen.
+- **Doku**: Build-Status Badge in README.md hinzugefügt.
+
 ## [0.9.2] - 2026-02-04
 - **Fix**: Android Build-Fehler behoben (OTA Update benötigt neuere Library Desugaring Version).
 - **Lizenz**: Wechsel zur GNU GPL v3.0 Lizenz.
