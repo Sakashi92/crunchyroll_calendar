@@ -1,4 +1,4 @@
-import 'package:http/http.dart' as http;
+﻿import 'package:http/http.dart' as http;
 import 'package:html/parser.dart' as html_parser;
 //import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -36,7 +36,7 @@ class CrunchyrollService implements EpisodeProvider {
   static const String _lastUpdateKey = 'last_update_time_v4';
   static const String _imageCacheKey = 'cached_anime_images'; // Bild-URL Cache
   static const String _releasesHashKey =
-      'releases_hash_v4'; // Hash für Änderungserkennung
+      'releases_hash_v4'; // Hash f├╝r ├änderungserkennung
   static const String _processedAnimeTitlesKey =
       'processed_anime_titles_v4'; // Verarbeitete Anime-Titel
   Duration _updateInterval = const Duration(minutes: 5);
@@ -48,39 +48,39 @@ class CrunchyrollService implements EpisodeProvider {
   Set<String> _processedAnimeTitles =
       {}; // Anime-Titel die bereits verarbeitet wurden
 
-  // Warteschlange für sequenzielle Bildladung
+  // Warteschlange f├╝r sequenzielle Bildladung
   bool _isLoadingImages = false;
   final List<(List<AnimeRelease>, DateTime)> _imageLoadingQueue = [];
 
-  // Callback für Bilder-Ladestatus
+  // Callback f├╝r Bilder-Ladestatus
   Function(bool isLoading, int loaded, int total)? onImageLoadingChanged;
 
   // Callback wenn ein Bild geladen wurde - UI sollte sich aktualisieren
   Function()? onImageLoaded;
 
-  /// Löscht den Bild-Cache (Memory und SharedPreferences)
-  /// Damit Bilder in neuer Qualität neu geladen werden können
+  /// L├Âscht den Bild-Cache (Memory und SharedPreferences)
+  /// Damit Bilder in neuer Qualit├ñt neu geladen werden k├Ânnen
   @override
   Future<void> clearImageCache() async {
     if (kDebugMode) {
-      print('🗑️ Clearing image cache...');
+      print('­ƒùæ´©Å Clearing image cache...');
     }
 
-    // Lösche In-Memory Cache
+    // L├Âsche In-Memory Cache
     _imageCache.clear();
     _processedAnimeTitles.clear();
 
-    // Lösche auch imageUrl von allen gecachten Releases
+    // L├Âsche auch imageUrl von allen gecachten Releases
     for (var release in _cachedReleases) {
       release.imageUrl = null;
     }
 
-    // Lösche aus SharedPreferences
+    // L├Âsche aus SharedPreferences
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('cached_anime_images');
     await prefs.remove('processed_anime_titles_v4');
 
-    // Lösche auch alle Monats-Caches um imageUrls zu entfernen
+    // L├Âsche auch alle Monats-Caches um imageUrls zu entfernen
     final keys = prefs.getKeys();
     for (final key in keys) {
       if (key.startsWith('cached_anime_releases_month_')) {
@@ -90,7 +90,7 @@ class CrunchyrollService implements EpisodeProvider {
 
     if (kDebugMode) {
       print(
-        '✓ Image cache cleared - ${_imageCache.length} images, ${_processedAnimeTitles.length} processed titles',
+        'Ô£ô Image cache cleared - ${_imageCache.length} images, ${_processedAnimeTitles.length} processed titles',
       );
     }
   }
@@ -114,7 +114,7 @@ class CrunchyrollService implements EpisodeProvider {
       _cachedReleases.clear();
 
       if (kDebugMode) {
-        print('✓ Cleared all releases cache (monthly + in-memory)');
+        print('Ô£ô Cleared all releases cache (monthly + in-memory)');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -123,7 +123,7 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Berechnet ein Datum X Monate zurück (mit Jahr-Überlauf)
+  /// Berechnet ein Datum X Monate zur├╝ck (mit Jahr-├£berlauf)
   /// Mit day=2 damit auch der exakte Monat-Grenzfall blockiert wird
   DateTime _getMonthsAgo(int months) {
     int year = DateTime.now().year;
@@ -132,7 +132,7 @@ class CrunchyrollService implements EpisodeProvider {
       year--;
       month += 12;
     }
-    return DateTime(year, month, 2); // Tag 2 statt 1 für Grenzfall-Handling
+    return DateTime(year, month, 2); // Tag 2 statt 1 f├╝r Grenzfall-Handling
   }
 
   @override
@@ -146,37 +146,37 @@ class CrunchyrollService implements EpisodeProvider {
       ).subtract(const Duration(days: 30));
       final twoMonthsAgo = _getMonthsAgo(2);
 
-      // Prüfe ZUERST ob der Monat älter als 2 Monate ist - dann ist er "eingefroren"
+      // Pr├╝fe ZUERST ob der Monat ├ñlter als 2 Monate ist - dann ist er "eingefroren"
       final monthStart = DateTime(startDate.year, startDate.month, 1);
       if (monthStart.isBefore(twoMonthsAgo)) {
         if (kDebugMode) {
           print(
-            '⛔ Month ${monthStart.month}/${monthStart.year} is frozen (older than 2 months) - loading only from cache',
+            'Ôøö Month ${monthStart.month}/${monthStart.year} is frozen (older than 2 months) - loading only from cache',
           );
         }
-        // Gebe Daten nur aus Cache zurück, scrapt nicht neu
+        // Gebe Daten nur aus Cache zur├╝ck, scrapt nicht neu
         final cachedMonthData = await _loadMonthFromCache(startDate);
         if (cachedMonthData.isNotEmpty) {
           if (kDebugMode) {
             print(
-              '✓ Loaded ${cachedMonthData.length} releases from frozen month cache',
+              'Ô£ô Loaded ${cachedMonthData.length} releases from frozen month cache',
             );
           }
           // Lade auch fehlende Bilder nach (aber nicht warten)
           _queueImageLoading(cachedMonthData, DateTime.now());
         } else {
           if (kDebugMode) {
-            print('⚠ No cached data available for frozen month');
+            print('ÔÜá No cached data available for frozen month');
           }
         }
         return cachedMonthData;
       }
 
-      // Wenn der angeforderte Monat älter als 30 Tage ist, lade ihn aus Cache oder nachträglich
+      // Wenn der angeforderte Monat ├ñlter als 30 Tage ist, lade ihn aus Cache oder nachtr├ñglich
       if (monthStart.isBefore(thirtyDaysAgo)) {
         if (kDebugMode) {
           print(
-            'ℹ Month is older than 30 days - loading from cache or on-demand: ${monthStart.month}/${monthStart.year}',
+            'Ôä╣ Month is older than 30 days - loading from cache or on-demand: ${monthStart.month}/${monthStart.year}',
           );
         }
 
@@ -185,7 +185,7 @@ class CrunchyrollService implements EpisodeProvider {
         if (cachedMonthData.isNotEmpty) {
           if (kDebugMode) {
             print(
-              '✓ Loaded ${cachedMonthData.length} releases from cache for ${monthStart.month}/${monthStart.year}',
+              'Ô£ô Loaded ${cachedMonthData.length} releases from cache for ${monthStart.month}/${monthStart.year}',
             );
           }
           // Lade auch fehlende Bilder nach (aber nicht warten)
@@ -195,7 +195,7 @@ class CrunchyrollService implements EpisodeProvider {
         // Ansonsten scrapen
         if (kDebugMode) {
           print(
-            '⏳ Scraping specific month: ${monthStart.month}/${monthStart.year}',
+            'ÔÅ│ Scraping specific month: ${monthStart.month}/${monthStart.year}',
           );
         }
         final scrapedData = await _scrapeSpecificMonth(startDate);
@@ -203,23 +203,23 @@ class CrunchyrollService implements EpisodeProvider {
         if (scrapedData.isEmpty) {
           if (kDebugMode) {
             print(
-              '⚠ No anime found for ${monthStart.month}/${monthStart.year}',
+              'ÔÜá No anime found for ${monthStart.month}/${monthStart.year}',
             );
           }
         } else {
           if (kDebugMode) {
             print(
-              '✓ Scraped ${scrapedData.length} releases for ${monthStart.month}/${monthStart.year}',
+              'Ô£ô Scraped ${scrapedData.length} releases for ${monthStart.month}/${monthStart.year}',
             );
           }
         }
 
-        // In Cache speichern für zukünftige Abrufe (auch wenn leer)
+        // In Cache speichern f├╝r zuk├╝nftige Abrufe (auch wenn leer)
         await _saveMonthToCache(startDate, scrapedData);
         return scrapedData;
       }
 
-      // Für aktuelle Monatsdaten: Cache mit Änderungserkennung
+      // F├╝r aktuelle Monatsdaten: Cache mit ├änderungserkennung
       if (kDebugMode) {
         print('Loading current month data');
       }
@@ -232,7 +232,7 @@ class CrunchyrollService implements EpisodeProvider {
           startDate.month == now.month &&
           startDate.year == now.year) {
         if (kDebugMode) {
-          print('ℹ Loading past days in current month - cache-first approach');
+          print('Ôä╣ Loading past days in current month - cache-first approach');
         }
 
         // Versuche zuerst aus Cache zu laden
@@ -240,7 +240,7 @@ class CrunchyrollService implements EpisodeProvider {
         if (cachedMonthData.isNotEmpty) {
           if (kDebugMode) {
             print(
-              '✓ Using cached data for past days in current month (${cachedMonthData.length} releases)',
+              'Ô£ô Using cached data for past days in current month (${cachedMonthData.length} releases)',
             );
           }
           // Lade auch fehlende Bilder nach (aber nicht warten)
@@ -250,7 +250,7 @@ class CrunchyrollService implements EpisodeProvider {
 
         // Kein Cache vorhanden - scrapen
         if (kDebugMode) {
-          print('⏳ No cache for past days - scraping current month');
+          print('ÔÅ│ No cache for past days - scraping current month');
         }
         final newReleases = await _scrapeCalendarCurrentMonth();
         await _saveMonthToCache(startDate, newReleases);
@@ -258,12 +258,12 @@ class CrunchyrollService implements EpisodeProvider {
         return newReleases;
       }
 
-      // Für zukünftige Tage im aktuellen Monat: Normale Update-Logik
+      // F├╝r zuk├╝nftige Tage im aktuellen Monat: Normale Update-Logik
       // Versuche zuerst aus Cache zu laden
       if (await _isMonthCacheValid(startDate)) {
         final cachedMonthData = await _loadMonthFromCache(startDate);
         if (kDebugMode) {
-          print('✓ Using cached data for current month');
+          print('Ô£ô Using cached data for current month');
         }
         // Lade auch fehlende Bilder nach (aber nicht warten)
         _queueImageLoading(cachedMonthData, DateTime.now());
@@ -276,15 +276,15 @@ class CrunchyrollService implements EpisodeProvider {
       }
       final newReleases = await _scrapeCalendarCurrentMonth();
 
-      // Prüfe ob sich zukünftige Daten geändert haben
+      // Pr├╝fe ob sich zuk├╝nftige Daten ge├ñndert haben
       if (await _hasChanges(newReleases)) {
         if (kDebugMode) {
-          print('✓ Changes detected in future releases - updating cache');
+          print('Ô£ô Changes detected in future releases - updating cache');
         }
       } else {
         if (kDebugMode) {
           print(
-            'ℹ No changes in future releases - but saving all month data to cache',
+            'Ôä╣ No changes in future releases - but saving all month data to cache',
           );
         }
       }
@@ -295,7 +295,7 @@ class CrunchyrollService implements EpisodeProvider {
       // Wende gecachte Bilder an
       _applyCachedImagesToReleases(newReleases);
 
-      // Lade fehlende Bilder nach (aber nicht warten - Queue übernimmt das)
+      // Lade fehlende Bilder nach (aber nicht warten - Queue ├╝bernimmt das)
       _queueImageLoading(newReleases, DateTime.now());
 
       return newReleases;
@@ -309,7 +309,7 @@ class CrunchyrollService implements EpisodeProvider {
         if (kDebugMode) {
           print('Returning cached data as fallback');
         }
-        // Lade auch fehlende Bilder für Cache-Fallback (aber nicht warten)
+        // Lade auch fehlende Bilder f├╝r Cache-Fallback (aber nicht warten)
         _queueImageLoading(cachedMonthData, DateTime.now());
         return cachedMonthData;
       }
@@ -338,25 +338,25 @@ class CrunchyrollService implements EpisodeProvider {
       final monthToRefresh = forMonth ?? now;
       final monthStart = DateTime(monthToRefresh.year, monthToRefresh.month, 1);
 
-      // Prüfe ob der Monat älter als 2 Monate ist - dann ist er "eingefroren"
+      // Pr├╝fe ob der Monat ├ñlter als 2 Monate ist - dann ist er "eingefroren"
       if (monthStart.isBefore(twoMonthsAgo)) {
         if (kDebugMode) {
           print(
-            '⛔ Refresh blocked: Month ${monthStart.month}/${monthStart.year} is older than 2 months (frozen)',
+            'Ôøö Refresh blocked: Month ${monthStart.month}/${monthStart.year} is older than 2 months (frozen)',
           );
         }
-        // Gebe Daten nur aus Cache zurück, scrapt nicht neu
+        // Gebe Daten nur aus Cache zur├╝ck, scrapt nicht neu
         final cachedData = await _loadMonthFromCache(monthToRefresh);
         if (cachedData.isNotEmpty) {
           if (kDebugMode) {
             print(
-              '✓ Returning cached data for frozen month (${cachedData.length} releases)',
+              'Ô£ô Returning cached data for frozen month (${cachedData.length} releases)',
             );
           }
           return cachedData;
         }
         if (kDebugMode) {
-          print('⚠ No cached data available for frozen month');
+          print('ÔÜá No cached data available for frozen month');
         }
         return [];
       }
@@ -364,7 +364,7 @@ class CrunchyrollService implements EpisodeProvider {
       // Bestimme ob es ein alter oder aktueller Monat ist
       List<AnimeRelease> newReleases;
       if (monthStart.isBefore(thirtyDaysAgo)) {
-        // Alter Monat (aber nicht älter als 2 Monate): Scrape spezifischen Monat
+        // Alter Monat (aber nicht ├ñlter als 2 Monate): Scrape spezifischen Monat
         if (kDebugMode) {
           print(
             'Force refresh for old month: ${monthStart.month}/${monthStart.year}',
@@ -379,9 +379,8 @@ class CrunchyrollService implements EpisodeProvider {
           print('Force refresh for current month');
         }
         newReleases = await _scrapeCalendarCurrentMonth();
-        // Speichere in globalem Cache UND monatsspezifischem Cache
+        // Speichere in globalem Cache
         await _saveToCache(newReleases);
-        await _saveMonthToCache(now, newReleases);
       }
 
       // Wende gecachte Bilder auf neu gescrapte Releases an
@@ -404,12 +403,12 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Lädt die Einstellungen und aktualisiert interne Variablen
+  /// L├ñdt die Einstellungen und aktualisiert interne Variablen
   Future<void> loadSettings() async {
     _updateInterval = await AppSettingsService.getUpdateInterval();
     if (kDebugMode) {
       print(
-        '⚙️ Settings loaded: Update interval = ${_updateInterval.inMinutes} minutes',
+        'ÔÜÖ´©Å Settings loaded: Update interval = ${_updateInterval.inMinutes} minutes',
       );
     }
   }
@@ -467,13 +466,13 @@ class CrunchyrollService implements EpisodeProvider {
     _isLoadingImages = false;
   }
 
-  /// Lädt alle gecachten Daten beim Start
-  /// Einschließlich Bild-Cache und verarbeitete Anime-Titel
+  /// L├ñdt alle gecachten Daten beim Start
+  /// Einschlie├ƒlich Bild-Cache und verarbeitete Anime-Titel
   /// Dies sollte BEVOR getReleasesForWeek aufgerufen wird geschehen
   @override
   Future<void> loadCacheOnStartup() async {
     if (kDebugMode) {
-      print('🚀 Loading cache on startup...');
+      print('­ƒÜÇ Loading cache on startup...');
     }
     await _loadFromCache();
 
@@ -482,7 +481,7 @@ class CrunchyrollService implements EpisodeProvider {
 
     if (kDebugMode) {
       print(
-        '✓ Cache loaded - processed titles: ${_processedAnimeTitles.length}, image URLs: ${_imageCache.length}',
+        'Ô£ô Cache loaded - processed titles: ${_processedAnimeTitles.length}, image URLs: ${_imageCache.length}',
       );
     }
   }
@@ -514,7 +513,7 @@ class CrunchyrollService implements EpisodeProvider {
           changedInMemory = true;
           if (kDebugMode) {
             print(
-              '🧹 Purged ${beforeCount - _cachedReleases.length} distant predictions from memory',
+              '­ƒº╣ Purged ${beforeCount - _cachedReleases.length} distant predictions from memory',
             );
           }
         }
@@ -546,7 +545,7 @@ class CrunchyrollService implements EpisodeProvider {
           );
           if (kDebugMode) {
             print(
-              '🧹 Purged ${existing.length - filtered.length} distant predictions from month cache ${monthDate.month}/${monthDate.year}',
+              '­ƒº╣ Purged ${existing.length - filtered.length} distant predictions from month cache ${monthDate.month}/${monthDate.year}',
             );
           }
         }
@@ -588,7 +587,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       } else {
         if (kDebugMode) {
-          print('⚠ No image cache found in SharedPreferences');
+          print('ÔÜá No image cache found in SharedPreferences');
         }
       }
 
@@ -635,8 +634,8 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Generiert einen Hash der Releases für Änderungserkennung
-  /// Berücksichtigt nur zukünftige Releases (ab morgen)
+  /// Generiert einen Hash der Releases f├╝r ├änderungserkennung
+  /// Ber├╝cksichtigt nur zuk├╝nftige Releases (ab morgen)
   String _generateReleasesHash(List<AnimeRelease> releases) {
     final now = DateTime.now();
     final tomorrow = DateTime(
@@ -645,12 +644,12 @@ class CrunchyrollService implements EpisodeProvider {
       now.day,
     ).add(const Duration(days: 1));
 
-    // Filtere nur zukünftige Releases (ab morgen)
+    // Filtere nur zuk├╝nftige Releases (ab morgen)
     final futureReleases = releases.where((r) {
       return r.releaseTime.isAfter(tomorrow);
     }).toList();
 
-    // Sortiere für konsistente Hash-Generierung
+    // Sortiere f├╝r konsistente Hash-Generierung
     futureReleases.sort((a, b) => a.releaseTime.compareTo(b.releaseTime));
 
     // Erstelle Hash aus den wichtigen Feldern
@@ -661,12 +660,12 @@ class CrunchyrollService implements EpisodeProvider {
       );
     }
 
-    // Einfacher Hash: Länge + erstes und letztes zeichen
+    // Einfacher Hash: L├ñnge + erstes und letztes zeichen
     final str = buffer.toString();
     return '${str.length}_${str.hashCode}';
   }
 
-  /// Prüft ob sich die Releases geändert haben
+  /// Pr├╝ft ob sich die Releases ge├ñndert haben
   /// Vergleicht Hashes und ignoriert vergangene Releases
   Future<bool> _hasChanges(List<AnimeRelease> newReleases) async {
     // Lade alte Hash falls noch nicht im Speicher
@@ -675,10 +674,10 @@ class CrunchyrollService implements EpisodeProvider {
       _currentReleasesHash = prefs.getString(_releasesHashKey);
     }
 
-    // Wenn kein Cache Hash existiert, ist das eine Änderung
+    // Wenn kein Cache Hash existiert, ist das eine ├änderung
     if (_currentReleasesHash == null) {
       if (kDebugMode) {
-        print('ℹ No previous hash found - treating as new data');
+        print('Ôä╣ No previous hash found - treating as new data');
       }
       return true;
     }
@@ -691,11 +690,11 @@ class CrunchyrollService implements EpisodeProvider {
 
     if (hasChanged) {
       if (kDebugMode) {
-        print('✓ Hash changed: "$_currentReleasesHash" -> "$newHash"');
+        print('Ô£ô Hash changed: "$_currentReleasesHash" -> "$newHash"');
       }
     } else {
       if (kDebugMode) {
-        print('✓ Hash unchanged: "$newHash"');
+        print('Ô£ô Hash unchanged: "$newHash"');
       }
     }
 
@@ -709,7 +708,7 @@ class CrunchyrollService implements EpisodeProvider {
   }) {
     if (kDebugMode) {
       print(
-        '🔍 Applying cached images to ${releases.length} releases (imageCache has ${_imageCache.length} entries)',
+        '­ƒöì Applying cached images to ${releases.length} releases (imageCache has ${_imageCache.length} entries)',
       );
     }
 
@@ -718,15 +717,15 @@ class CrunchyrollService implements EpisodeProvider {
     var alreadyHaveCount = 0;
 
     for (var release in releases) {
-      // Zuerst prüfen ob es einen benutzerdefinierten Titel gibt
+      // Zuerst pr├╝fen ob es einen benutzerdefinierten Titel gibt
       final customTitle = CustomSeriesTitleRepository().getTitleSync(
         release.seriesUrl,
       );
       final searchTitle = customTitle ?? release.title;
 
       // Wenn wir ein Bild haben, aber ein Custom-Titel existiert,
-      // prüfen wir, ob wir ein passendes Bild für den Custom-Titel im Cache haben.
-      // Falls ja, überschreiben wir das Bild (damit Rename-Bilder sofort greifen).
+      // pr├╝fen wir, ob wir ein passendes Bild f├╝r den Custom-Titel im Cache haben.
+      // Falls ja, ├╝berschreiben wir das Bild (damit Rename-Bilder sofort greifen).
       if (customTitle != null) {
         final cachedUrl = _findCachedImageUrl(customTitle);
         if (cachedUrl != null && cachedUrl.isNotEmpty) {
@@ -753,13 +752,13 @@ class CrunchyrollService implements EpisodeProvider {
 
     if (kDebugMode) {
       print(
-        '📊 Results: $appliedCount applied, $alreadyHaveCount already had, $notFoundCount not found',
+        '­ƒôè Results: $appliedCount applied, $alreadyHaveCount already had, $notFoundCount not found',
       );
     }
 
     if (appliedCount > 0) {
       if (kDebugMode) {
-        print('✓ Applied $appliedCount cached image URLs to releases');
+        print('Ô£ô Applied $appliedCount cached image URLs to releases');
       }
       // Benachrichtige UI dass Bilder aus Cache angewendet wurden
       if (notifyUI) {
@@ -768,17 +767,17 @@ class CrunchyrollService implements EpisodeProvider {
     }
     if (notFoundCount > 0) {
       if (kDebugMode) {
-        print('⚠ $notFoundCount releases still need image URLs');
+        print('ÔÜá $notFoundCount releases still need image URLs');
       }
     }
   }
 
-  /// Findet eine gecachte Bild-URL für einen Anime-Titel
+  /// Findet eine gecachte Bild-URL f├╝r einen Anime-Titel
   String? _findCachedImageUrl(String title) {
     // Versuche exakten Match (nur wenn nicht leer)
     if (_imageCache.containsKey(title) && _imageCache[title]!.isNotEmpty) {
       if (kDebugMode) {
-        print('  📦 Cache exact match: $title');
+        print('  ­ƒôª Cache exact match: $title');
       }
       return _imageCache[title];
     }
@@ -793,7 +792,7 @@ class CrunchyrollService implements EpisodeProvider {
     if (_imageCache.containsKey(cleanedName) &&
         _imageCache[cleanedName]!.isNotEmpty) {
       if (kDebugMode) {
-        print('  📦 Cache cleaned match: $title -> $cleanedName');
+        print('  ­ƒôª Cache cleaned match: $title -> $cleanedName');
       }
       return _imageCache[cleanedName];
     }
@@ -803,13 +802,13 @@ class CrunchyrollService implements EpisodeProvider {
     for (final entry in _imageCache.entries) {
       if (entry.key.toLowerCase() == cleanedLower && entry.value.isNotEmpty) {
         if (kDebugMode) {
-          print('  📦 Cache case-insensitive match: $title -> ${entry.key}');
+          print('  ­ƒôª Cache case-insensitive match: $title -> ${entry.key}');
         }
         return entry.value;
       }
     }
 
-    // Versuche Partial Match - Cache-Key enthält den bereinigten Namen oder umgekehrt
+    // Versuche Partial Match - Cache-Key enth├ñlt den bereinigten Namen oder umgekehrt
     for (final entry in _imageCache.entries) {
       final keyLower = entry.key.toLowerCase();
       if ((keyLower.contains(cleanedLower) ||
@@ -817,33 +816,33 @@ class CrunchyrollService implements EpisodeProvider {
           entry.value.isNotEmpty &&
           keyLower.length > 3) {
         if (kDebugMode) {
-          print('  📦 Cache partial match: $title -> ${entry.key}');
+          print('  ­ƒôª Cache partial match: $title -> ${entry.key}');
         }
         return entry.value;
       }
     }
 
-    // Versuche erste 3 Wörter
+    // Versuche erste 3 W├Ârter
     final words = cleanedName.split(' ');
     if (words.length > 3) {
       final shortName = words.take(3).join(' ').toLowerCase();
       for (final entry in _imageCache.entries) {
         if (entry.key.toLowerCase() == shortName && entry.value.isNotEmpty) {
           if (kDebugMode) {
-            print('  📦 Cache 3-word match: $title -> ${entry.key}');
+            print('  ­ƒôª Cache 3-word match: $title -> ${entry.key}');
           }
           return entry.value;
         }
       }
     }
 
-    // Versuche erste 2 Wörter
+    // Versuche erste 2 W├Ârter
     if (words.length > 2) {
       final shortName = words.take(2).join(' ').toLowerCase();
       for (final entry in _imageCache.entries) {
         if (entry.key.toLowerCase() == shortName && entry.value.isNotEmpty) {
           if (kDebugMode) {
-            print('  📦 Cache 2-word match: $title -> ${entry.key}');
+            print('  ­ƒôª Cache 2-word match: $title -> ${entry.key}');
           }
           return entry.value;
         }
@@ -852,7 +851,7 @@ class CrunchyrollService implements EpisodeProvider {
 
     // Kein Match gefunden - zeige Debug-Info
     if (kDebugMode) {
-      print('  ❌ No cache match for: $title (cleaned: $cleanedName)');
+      print('  ÔØî No cache match for: $title (cleaned: $cleanedName)');
     }
     if (_imageCache.isNotEmpty) {
       // Zeige erste 3 Cache-Keys zum Vergleich
@@ -865,7 +864,7 @@ class CrunchyrollService implements EpisodeProvider {
     return null;
   }
 
-  /// Bereinigt einen Anime-Namen für die Suche
+  /// Bereinigt einen Anime-Namen f├╝r die Suche
   String _cleanAnimeName(String animeName) {
     return animeName
         .replaceAll(RegExp(r'Staffel \d+'), '')
@@ -873,9 +872,9 @@ class CrunchyrollService implements EpisodeProvider {
         .replaceAll(RegExp(r'\(English\)'), '')
         .replaceAll(RegExp(r'\(Deutsch\)'), '')
         .replaceAll(RegExp(r'\(German Dub\)'), '')
-        .replaceAll(RegExp(r'\(Español.*?\)'), '')
+        .replaceAll(RegExp(r'\(Espa├▒ol.*?\)'), '')
         .replaceAll(RegExp(r'\(Portuguese.*?\)'), '')
-        .replaceAll(RegExp(r'\(中文.*?\)'), '') // Chinesisch
+        .replaceAll(RegExp(r'\(õ©¡µûç.*?\)'), '') // Chinesisch
         .replaceAll(RegExp(r'Part \d+'), '')
         .replaceAll(RegExp(r'Teil \d+'), '')
         .replaceAll(RegExp(r'Cour \d+'), '')
@@ -885,7 +884,7 @@ class CrunchyrollService implements EpisodeProvider {
         .trim();
   }
 
-  /// Normalisiert Namen für Vergleichs-Suchen: reinige, entferne Sonderzeichen, lower-case
+  /// Normalisiert Namen f├╝r Vergleichs-Suchen: reinige, entferne Sonderzeichen, lower-case
   String _normalizeForSearch(String name) {
     var s = _cleanAnimeName(name);
     s = s.replaceAll(
@@ -897,7 +896,7 @@ class CrunchyrollService implements EpisodeProvider {
     return s;
   }
 
-  /// Levenshtein-Distanz (iterative) - verwendet zur fuzzy-Übereinstimmung
+  /// Levenshtein-Distanz (iterative) - verwendet zur fuzzy-├£bereinstimmung
   int _levenshteinDistance(String a, String b) {
     if (a == b) {
       return 0;
@@ -934,13 +933,13 @@ class CrunchyrollService implements EpisodeProvider {
   Future<void> _saveToCache(List<AnimeRelease> releases) async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Cache.
-      // Das verhindert kurzzeitiges Leeren der UI, falls Background-Scraper fehlschlägt.
+      // Wenn das Scrapergebnis leer ist, ├╝berschreibe nicht den existierenden Cache.
+      // Das verhindert kurzzeitiges Leeren der UI, falls Background-Scraper fehlschl├ñgt.
       final existing = prefs.getString(_cacheKey);
       if (releases.isEmpty && existing != null && existing.isNotEmpty) {
         if (kDebugMode) {
           print(
-            '⚠ Skipping saveToCache because releases is empty and existing cache present',
+            'ÔÜá Skipping saveToCache because releases is empty and existing cache present',
           );
         }
         return;
@@ -974,13 +973,9 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      final deduplicated = _deduplicateReleases([
-        ...releases,
-        ...keptPredicted,
-      ]);
-      _cachedReleases = deduplicated;
+      final merged = [...releases, ...keptPredicted];
 
-      final jsonList = deduplicated.map((r) => r.toJson()).toList();
+      final jsonList = merged.map((r) => r.toJson()).toList();
       await prefs.setString(_cacheKey, json.encode(jsonList));
       await prefs.setString(_lastUpdateKey, DateTime.now().toIso8601String());
 
@@ -993,10 +988,11 @@ class CrunchyrollService implements EpisodeProvider {
         json.encode(_processedAnimeTitles.toList()),
       );
 
-      // Speichere Hash der Releases für Änderungserkennung
+      // Speichere Hash der Releases f├╝r ├änderungserkennung
       final newHash = _generateReleasesHash(releases);
       await prefs.setString(_releasesHashKey, newHash);
 
+      _cachedReleases = merged;
       _currentReleasesHash = newHash;
       if (kDebugMode) {
         print('Saved ${releases.length} releases to cache');
@@ -1014,8 +1010,8 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Synchronisiert die Watchlist-Einträge mit den gecachten Releases.
-  /// Aktualisiert `totalEpisodes` wenn eine höhere Folge bekannt ist und loggt neue Folgen in NotificationRepository.
+  /// Synchronisiert die Watchlist-Eintr├ñge mit den gecachten Releases.
+  /// Aktualisiert `totalEpisodes` wenn eine h├Âhere Folge bekannt ist und loggt neue Folgen in NotificationRepository.
   Future<void> syncWatchlistWithReleases(
     WatchlistService watchlistService,
     NotificationRepository notificationRepo,
@@ -1087,7 +1083,7 @@ class CrunchyrollService implements EpisodeProvider {
             } else {
               if (kDebugMode) {
                 print(
-                  '⏭️ Sync: notification duplicate for ${entry.title} ep ${log.episodeNumber}',
+                  'ÔÅ¡´©Å Sync: notification duplicate for ${entry.title} ep ${log.episodeNumber}',
                 );
               }
             }
@@ -1098,29 +1094,29 @@ class CrunchyrollService implements EpisodeProvider {
       if (updated) {
         await watchlistService.saveWatchlist();
         if (kDebugMode) {
-          print('✓ Watchlist totals updated from releases');
+          print('Ô£ô Watchlist totals updated from releases');
         }
       } else {
         if (kDebugMode) {
-          print('✓ No watchlist updates needed');
+          print('Ô£ô No watchlist updates needed');
         }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error syncing watchlist with releases: $e');
+        print('ÔØî Error syncing watchlist with releases: $e');
       }
     }
   }
 
-  /// Liefert die höchste gefundene Episodennummer für eine Serie aus dem Cache
-  /// Versucht zuerst nach `seriesUrl` zu matchen, fällt zurück auf `title`.
+  /// Liefert die h├Âchste gefundene Episodennummer f├╝r eine Serie aus dem Cache
+  /// Versucht zuerst nach `seriesUrl` zu matchen, f├ñllt zur├╝ck auf `title`.
   @override
   Future<int?> getMaxEpisodeForSeries(String? seriesUrl, String? title) async {
     try {
       // 1. First attempt: Quick check using current cache
       if (_cachedReleases.isEmpty) {
         if (kDebugMode) {
-          print('ℹ️ [CrunchyrollService] Cache empty, fetching week releases');
+          print('Ôä╣´©Å [CrunchyrollService] Cache empty, fetching week releases');
         }
         await getReleasesForWeek(DateTime.now());
       }
@@ -1132,7 +1128,7 @@ class CrunchyrollService implements EpisodeProvider {
       if (result <= 1) {
         if (kDebugMode) {
           print(
-            'ℹ️ [CrunchyrollService] Low result ($result), forcing data refresh for more releases...',
+            'Ôä╣´©Å [CrunchyrollService] Low result ($result), forcing data refresh for more releases...',
           );
         }
         await forceRefresh(forMonth: DateTime.now());
@@ -1142,7 +1138,7 @@ class CrunchyrollService implements EpisodeProvider {
       return result > 0 ? result : null;
     } catch (e) {
       if (kDebugMode) {
-        print('❌ Error in getMaxEpisodeForSeries: $e');
+        print('ÔØî Error in getMaxEpisodeForSeries: $e');
       }
       return null;
     }
@@ -1223,8 +1219,8 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Schnell: Liefert die höchste gefundene Episodennummer aus dem LOCALEN Cache (kein Network)
-  /// Lädt bei Bedarf den persistenten Cache aus SharedPreferences, aber macht KEINE Scrape/Network-Calls.
+  /// Schnell: Liefert die h├Âchste gefundene Episodennummer aus dem LOCALEN Cache (kein Network)
+  /// L├ñdt bei Bedarf den persistenten Cache aus SharedPreferences, aber macht KEINE Scrape/Network-Calls.
   Future<int?> getMaxEpisodeFromCache(String? seriesUrl, String? title) async {
     try {
       if (_cachedReleases.isEmpty) {
@@ -1276,7 +1272,7 @@ class CrunchyrollService implements EpisodeProvider {
       }
       return maxEp > 0 ? maxEp : null;
     } catch (e) {
-      if (kDebugMode) print('❌ Error in getMaxEpisodeFromCache: $e');
+      if (kDebugMode) print('ÔØî Error in getMaxEpisodeFromCache: $e');
       return null;
     }
   }
@@ -1329,25 +1325,25 @@ class CrunchyrollService implements EpisodeProvider {
           } catch (e) {
             if (kDebugMode) {
               print(
-                '❌ scheduleWatchlistEntryUpdate: failed to log notification: $e',
+                'ÔØî scheduleWatchlistEntryUpdate: failed to log notification: $e',
               );
             }
           }
         }
       } catch (e) {
         if (kDebugMode) {
-          print('❌ scheduleWatchlistEntryUpdate error: $e');
+          print('ÔØî scheduleWatchlistEntryUpdate error: $e');
         }
       }
     });
   }
 
-  /// Generiert einen eindeutigen Cache-Key für einen Monat
+  /// Generiert einen eindeutigen Cache-Key f├╝r einen Monat
   String _getMonthCacheKey(DateTime dateInMonth) {
     return 'cached_anime_releases_month_${dateInMonth.year}_${dateInMonth.month.toString().padLeft(2, '0')}_v4';
   }
 
-  /// Generiert einen eindeutigen Update-Key für einen Monat
+  /// Generiert einen eindeutigen Update-Key f├╝r einen Monat
   String _getMonthUpdateKey(DateTime dateInMonth) {
     return 'last_update_month_${dateInMonth.year}_${dateInMonth.month.toString().padLeft(2, '0')}_v4';
   }
@@ -1366,14 +1362,14 @@ class CrunchyrollService implements EpisodeProvider {
       final filteredReleases = releases.toList();
       // If caller requests to preserve predictions, merge predicted entries
       if (preservePredictions) {
-        // Wenn das Scrapergebnis leer ist, überschreibe nicht den existierenden Monats-Cache.
+        // Wenn das Scrapergebnis leer ist, ├╝berschreibe nicht den existierenden Monats-Cache.
         final existingRaw = prefs.getString(cacheKey);
         if (filteredReleases.isEmpty &&
             existingRaw != null &&
             existingRaw.isNotEmpty) {
           if (kDebugMode) {
             print(
-              '⚠ Skipping saveMonthToCache because releases is empty and existing month cache present',
+              'ÔÜá Skipping saveMonthToCache because releases is empty and existing month cache present',
             );
           }
           return;
@@ -1406,28 +1402,24 @@ class CrunchyrollService implements EpisodeProvider {
           }
         }
 
-        final merged = _deduplicateReleases([
-          ...filteredReleases,
-          ...keptPredicted,
-        ]);
+        final merged = [...filteredReleases, ...keptPredicted];
         final jsonList = merged.map((r) => r.toJson()).toList();
         await prefs.setString(cacheKey, json.encode(jsonList));
         await prefs.setString(updateKey, DateTime.now().toIso8601String());
 
         if (kDebugMode) {
           print(
-            '✓ Saved ${merged.length} deduplicated releases to month cache for ${dateInMonth.month}/${dateInMonth.year} (preserving predictions)',
+            'Ô£ô Saved ${filteredReleases.length} releases to month cache for ${dateInMonth.month}/${dateInMonth.year} (preserving predictions)',
           );
         }
       } else {
         // Overwrite month cache explicitly (used when removing predicted entries)
-        final deduplicated = _deduplicateReleases(filteredReleases);
-        final jsonList = deduplicated.map((r) => r.toJson()).toList();
+        final jsonList = filteredReleases.map((r) => r.toJson()).toList();
         await prefs.setString(cacheKey, json.encode(jsonList));
         await prefs.setString(updateKey, DateTime.now().toIso8601String());
         if (kDebugMode) {
           print(
-            '✓ Overwrote month cache with ${deduplicated.length} deduplicated releases for ${dateInMonth.month}/${dateInMonth.year} (predictions removed)',
+            'Ô£ô Overwrote month cache for ${dateInMonth.month}/${dateInMonth.year} (predictions removed)',
           );
         }
       }
@@ -1436,7 +1428,7 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Lädt Releases eines Monats aus Cache
+  /// L├ñdt Releases eines Monats aus Cache
   Future<List<AnimeRelease>> _loadMonthFromCache(DateTime dateInMonth) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1463,7 +1455,7 @@ class CrunchyrollService implements EpisodeProvider {
             .map((item) => AnimeRelease.fromJson(item))
             .toList();
 
-        // Zähle wie viele Releases noch keine imageUrl haben
+        // Z├ñhle wie viele Releases noch keine imageUrl haben
         final missingImagesBefore = releases
             .where((r) => r.imageUrl == null || r.imageUrl!.isEmpty)
             .length;
@@ -1471,7 +1463,7 @@ class CrunchyrollService implements EpisodeProvider {
         // Wende gecachte Bilder an
         _applyCachedImagesToReleases(releases);
 
-        // Zähle wie viele Releases jetzt noch keine imageUrl haben
+        // Z├ñhle wie viele Releases jetzt noch keine imageUrl haben
         final missingImagesAfter = releases
             .where((r) => r.imageUrl == null || r.imageUrl!.isEmpty)
             .length;
@@ -1480,7 +1472,7 @@ class CrunchyrollService implements EpisodeProvider {
         if (missingImagesBefore > missingImagesAfter) {
           if (kDebugMode) {
             print(
-              '💾 Saving ${missingImagesBefore - missingImagesAfter} newly applied image URLs to month cache',
+              '­ƒÆ¥ Saving ${missingImagesBefore - missingImagesAfter} newly applied image URLs to month cache',
             );
           }
           await _saveMonthToCache(dateInMonth, releases);
@@ -1496,7 +1488,7 @@ class CrunchyrollService implements EpisodeProvider {
     return [];
   }
 
-  /// Prüft ob der Cache für einen Monat noch aktuell ist (5 Minuten)
+  /// Pr├╝ft ob der Cache f├╝r einen Monat noch aktuell ist (5 Minuten)
   Future<bool> _isMonthCacheValid(DateTime dateInMonth) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -1580,16 +1572,8 @@ class CrunchyrollService implements EpisodeProvider {
 
         currentWeekStart = currentWeekStart.add(const Duration(days: 7));
 
-        if (kDebugMode) {
-          print(
-            'Next week start: $currentWeekStart (Month: ${currentWeekStart.month}, Target: ${now.month})',
-          );
-        }
-
         // Verhindere Endlosschleife
         if (currentWeekStart.isAfter(monthEnd.add(const Duration(days: 7)))) {
-          if (kDebugMode)
-            print('Safety break: already past month end + 7 days');
           break;
         }
       }
@@ -1601,8 +1585,8 @@ class CrunchyrollService implements EpisodeProvider {
       }
 
       // WICHTIG: Zeige ALLE Releases des aktuellen Monats (auch die in der Vergangenheit)
-      // Die _generateReleasesHash() und _hasChanges() kümmern sich um zukünftige
-      // Die UI wird alle anzeigen können
+      // Die _generateReleasesHash() und _hasChanges() k├╝mmern sich um zuk├╝nftige
+      // Die UI wird alle anzeigen k├Ânnen
 
       // Lade fehlende Bilder im Hintergrund (Queue)
       _queueImageLoading(allReleases, now);
@@ -1615,7 +1599,7 @@ class CrunchyrollService implements EpisodeProvider {
     return allReleases;
   }
 
-  /// Scraped einen spezifischen Monat on-demand (für vergangene Monate)
+  /// Scraped einen spezifischen Monat on-demand (f├╝r vergangene Monate)
   /// Diese Daten werden NICHT gecacht, nur beim Abruf geladen
   Future<List<AnimeRelease>> _scrapeSpecificMonth(DateTime dateInMonth) async {
     final List<AnimeRelease> allReleases = [];
@@ -1694,7 +1678,7 @@ class CrunchyrollService implements EpisodeProvider {
     return allReleases;
   }
 
-  /// Alte _scrapeCalendar - für force refresh
+  /// Alte _scrapeCalendar - f├╝r force refresh
   Future<List<AnimeRelease>> _scrapeCalendar() async {
     return _scrapeCalendarCurrentMonth();
   }
@@ -1703,7 +1687,7 @@ class CrunchyrollService implements EpisodeProvider {
     final List<AnimeRelease> weekReleases = [];
 
     try {
-      // Formatiere Datum für URL: YYYY-MM-DD
+      // Formatiere Datum f├╝r URL: YYYY-MM-DD
       final dateStr =
           '${weekStart.year}-${weekStart.month.toString().padLeft(2, '0')}-${weekStart.day.toString().padLeft(2, '0')}';
       final weekUrl = '$calendarUrl&date=$dateStr';
@@ -1777,7 +1761,7 @@ class CrunchyrollService implements EpisodeProvider {
                 final text = link.text
                     .trim()
                     .replaceAll('\n', '')
-                    .replaceAll('Verfügbar', '')
+                    .replaceAll('Verf├╝gbar', '')
                     .trim();
                 episodeInfos.add(text);
               }
@@ -1800,7 +1784,7 @@ class CrunchyrollService implements EpisodeProvider {
                     : '';
                 final timeStr = i < times.length ? times[i] : '';
 
-                // Prüfe auf Premiere
+                // Pr├╝fe auf Premiere
                 final isPremiere =
                     episodeInfo.toLowerCase().contains('premiere') ||
                     episodeInfo.toLowerCase().contains('folge 1') ||
@@ -1851,7 +1835,7 @@ class CrunchyrollService implements EpisodeProvider {
                   }
                 }
 
-                // Release hinzufügen
+                // Release hinzuf├╝gen
                 weekReleases.add(
                   AnimeRelease(
                     title: animeName,
@@ -1886,75 +1870,7 @@ class CrunchyrollService implements EpisodeProvider {
       }
     }
 
-    final deduplicated = _deduplicateReleases(weekReleases);
-    return deduplicated;
-  }
-
-  /// Entfernt Duplikate innerhalb einer Liste von Releases.
-  /// Behält pro Serie und Tag nur die höchste Episodennummer bei.
-  List<AnimeRelease> _deduplicateReleases(List<AnimeRelease> releases) {
-    if (releases.isEmpty) return [];
-
-    final Map<String, AnimeRelease> uniqueMap = {};
-
-    for (final release in releases) {
-      // 1. Erzeuge einen robusten Serien-Key basierend auf dem TITEL
-      // Da URLs variieren können, ist der normalisierte Titel am zuverlässigsten.
-      final seriesKey = _normalizeForSearch(release.title);
-
-      // 2. Gruppierung nach Serie + Tag
-      final dayKey =
-          '${release.releaseTime.year}_${release.releaseTime.month}_${release.releaseTime.day}';
-      final groupKey = '${seriesKey}_$dayKey';
-
-      if (!uniqueMap.containsKey(groupKey)) {
-        uniqueMap[groupKey] = release;
-        continue;
-      }
-
-      final existing = uniqueMap[groupKey]!;
-
-      // 3. Vergleiche Episodennummern
-      final existingEp = parseEpisodeNumber(existing.episodeNumber) ?? 0;
-      final currentEp = parseEpisodeNumber(release.episodeNumber) ?? 0;
-
-      if (kDebugMode && existing.title == release.title) {
-        print(
-          '🤔 Comparing duplicates for ${release.title}: Exists=$existingEp (${existing.episodeNumber}), New=$currentEp (${release.episodeNumber})',
-        );
-      }
-
-      // Wenn die neue Folge höher ist, ersetze die alte
-      if (currentEp > existingEp) {
-        if (kDebugMode && existing.title == release.title) {
-          print(
-            '✅ Keeping higher Ep $currentEp (replacing $existingEp) for ${release.title}',
-          );
-        }
-        uniqueMap[groupKey] = release;
-      } else if (currentEp == existingEp) {
-        // Bei gleicher Folge: Behalte Premiere-Markierung bevorzugt
-        if (release.isPremiere && !existing.isPremiere) {
-          uniqueMap[groupKey] = release;
-        }
-      } else {
-        if (kDebugMode && existing.title == release.title) {
-          print(
-            '❌ Skipping lower Ep $currentEp (keeping $existingEp) for ${release.title}',
-          );
-        }
-      }
-    }
-
-    final result = uniqueMap.values.toList();
-
-    if (kDebugMode && result.length < releases.length) {
-      print(
-        '✂️ Deduplicated releases: ${releases.length} -> ${result.length} (Removed ${releases.length - result.length} duplicates)',
-      );
-    }
-
-    return result;
+    return weekReleases;
   }
 
   Future<void> _loadMissingImagesFromAniList(
@@ -2001,21 +1917,21 @@ class CrunchyrollService implements EpisodeProvider {
     if (alreadyProcessed > 0) {
       if (kDebugMode) {
         print(
-          '⏩ Skipping $alreadyProcessed already processed anime titles (${_processedAnimeTitles.length} total in memory)',
+          'ÔÅ® Skipping $alreadyProcessed already processed anime titles (${_processedAnimeTitles.length} total in memory)',
         );
       }
     }
 
     if (total == 0) {
       if (kDebugMode) {
-        print('✓ All anime image titles already processed');
+        print('Ô£ô All anime image titles already processed');
       }
       return;
     }
 
     if (kDebugMode) {
       print(
-        '📥 Loading $total missing images from Kitsu (${_processedAnimeTitles.length} already processed)...',
+        '­ƒôÑ Loading $total missing images from Kitsu (${_processedAnimeTitles.length} already processed)...',
       );
     }
 
@@ -2037,18 +1953,18 @@ class CrunchyrollService implements EpisodeProvider {
           release.imageUrl = imageUrl;
           if (kDebugMode) {
             print(
-              '✓ Kitsu: Found cover for $searchTitle (original: ${release.title})',
+              'Ô£ô Kitsu: Found cover for $searchTitle (original: ${release.title})',
             );
           }
           onImageLoaded?.call();
         } else {
           if (kDebugMode) {
-            print('✗ Kitsu: No cover found for $searchTitle');
+            print('Ô£ù Kitsu: No cover found for $searchTitle');
           }
         }
       } catch (e) {
         if (kDebugMode) {
-          print('✗ Kitsu: Failed for ${release.title}: $e');
+          print('Ô£ù Kitsu: Failed for ${release.title}: $e');
         }
       }
 
@@ -2060,7 +1976,7 @@ class CrunchyrollService implements EpisodeProvider {
       loaded++;
       onImageLoadingChanged?.call(true, loaded, total);
 
-      // Kleine Pause um Kitsu API nicht zu überlasten
+      // Kleine Pause um Kitsu API nicht zu ├╝berlasten
       await Future.delayed(const Duration(milliseconds: 100));
     }
 
@@ -2073,7 +1989,7 @@ class CrunchyrollService implements EpisodeProvider {
     }
   }
 
-  /// Lädt die Liste der bereits verarbeiteten Anime-Titel aus dem Speicher
+  /// L├ñdt die Liste der bereits verarbeiteten Anime-Titel aus dem Speicher
   Future<void> _loadProcessedAnimeTitles() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2127,10 +2043,10 @@ class CrunchyrollService implements EpisodeProvider {
 
   Future<String> _fetchImageFromKitsu(String animeName) async {
     try {
-      // Bereinige den Anime-Namen für bessere Suchergebnisse
+      // Bereinige den Anime-Namen f├╝r bessere Suchergebnisse
       var searchName = _cleanAnimeName(animeName);
 
-      // Entferne Sonderzeichen außer Leerzeichen, Buchstaben und Zahlen
+      // Entferne Sonderzeichen au├ƒer Leerzeichen, Buchstaben und Zahlen
       searchName = searchName
           .replaceAll(RegExp(r'[^\w\s\-]'), ' ')
           .replaceAll(RegExp(r'\s+'), ' ')
@@ -2140,11 +2056,11 @@ class CrunchyrollService implements EpisodeProvider {
         return '';
       }
 
-      // Prüfe zuerst ob wir das Bild bereits im Cache haben (und nicht leer)
+      // Pr├╝fe zuerst ob wir das Bild bereits im Cache haben (und nicht leer)
       if (_imageCache.containsKey(searchName) &&
           _imageCache[searchName]!.isNotEmpty) {
         if (kDebugMode) {
-          print('📦 Cache hit for: $searchName');
+          print('­ƒôª Cache hit for: $searchName');
         }
         return _imageCache[searchName]!;
       }
@@ -2172,7 +2088,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      // Fallback: Wenn mehr als 3 Wörter, versuche nur die ersten 3
+      // Fallback: Wenn mehr als 3 W├Ârter, versuche nur die ersten 3
       final words = searchName.split(' ');
       if (words.length > 3) {
         final shortName = words.take(3).join(' ');
@@ -2183,7 +2099,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      // Fallback: Versuche nur die ersten 2 Wörter
+      // Fallback: Versuche nur die ersten 2 W├Ârter
       if (words.length > 2) {
         final shortName = words.take(2).join(' ');
         imageUrl = await _queryKitsu(shortName);
@@ -2193,7 +2109,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      // Fallback: Versuche nur die ersten 2 Wörter (ohne einzelne Buchstaben)
+      // Fallback: Versuche nur die ersten 2 W├Ârter (ohne einzelne Buchstaben)
       if (wordsNoSingle.length > 2) {
         final shortName = wordsNoSingle.take(2).join(' ');
         imageUrl = await _queryKitsu(shortName);
@@ -2213,7 +2129,7 @@ class CrunchyrollService implements EpisodeProvider {
 
   Future<String> _queryKitsu(String searchName) async {
     try {
-      // Lade Bildqualität aus Einstellungen
+      // Lade Bildqualit├ñt aus Einstellungen
       final imageQuality = await AppSettingsService.getImageQuality();
 
       // Kitsu API - Text Suche
@@ -2233,7 +2149,7 @@ class CrunchyrollService implements EpisodeProvider {
         // Parse JSON Response - suche nach posterImage
         final body = response.body;
 
-        // Versuche gewünschte Qualität zu finden
+        // Versuche gew├╝nschte Qualit├ñt zu finden
         var imageMatch = RegExp(
           '"posterImage":\\s*\\{[^}]*"$imageQuality":\\s*"([^"]+)"',
         ).firstMatch(body);
@@ -2284,12 +2200,12 @@ class CrunchyrollService implements EpisodeProvider {
     return '';
   }
 
-  /// Lädt die Beschreibung eines Anime von Kitsu API oder dem gewählten Provider
+  /// L├ñdt die Beschreibung eines Anime von Kitsu API oder dem gew├ñhlten Provider
   Future<String> fetchDescription(AnimeRelease release) async {
-    // Prüfe ob bereits geladen
+    // Pr├╝fe ob bereits geladen
     if (release.description != null &&
         release.description!.isNotEmpty &&
-        release.description != 'Keine Beschreibung verfügbar') {
+        release.description != 'Keine Beschreibung verf├╝gbar') {
       return release.description!;
     }
 
@@ -2331,7 +2247,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      // Kitsu API - gleiche Logik wie für Bilder
+      // Kitsu API - gleiche Logik wie f├╝r Bilder
       final searchName = _cleanAnimeName(animeName);
 
       // Kitsu API - Text Suche
@@ -2361,7 +2277,7 @@ class CrunchyrollService implements EpisodeProvider {
             release.description = synopsis.trim();
             if (kDebugMode) {
               print(
-                '✓ Found description from Kitsu: ${synopsis.substring(0, synopsis.length > 50 ? 50 : synopsis.length)}...',
+                'Ô£ô Found description from Kitsu: ${synopsis.substring(0, synopsis.length > 50 ? 50 : synopsis.length)}...',
               );
             }
             return release.description!;
@@ -2369,7 +2285,7 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
 
-      // Fallback: Versuche mit kürzerem Namen
+      // Fallback: Versuche mit k├╝rzerem Namen
       final words = searchName.split(' ');
       if (words.length > 3) {
         final shortName = words.take(3).join(' ');
@@ -2385,7 +2301,7 @@ class CrunchyrollService implements EpisodeProvider {
       }
     }
 
-    release.description = 'Keine Beschreibung verfügbar';
+    release.description = 'Keine Beschreibung verf├╝gbar';
     return release.description!;
   }
 
@@ -2420,7 +2336,7 @@ class CrunchyrollService implements EpisodeProvider {
     return '';
   }
 
-  /// Lädt einen spezifischen Monat aus dem Cache
+  /// L├ñdt einen spezifischen Monat aus dem Cache
   /// Wird von main.dart verwendet um Punkte in allen Monaten anzuzeigen
   Future<List<AnimeRelease>> getReleasesForMonthFromCache(
     DateTime dateInMonth,
@@ -2447,7 +2363,7 @@ class CrunchyrollService implements EpisodeProvider {
     return [];
   }
 
-  /// Gibt alle verfügbaren Monate zurück, die gecacht sind (Jahr, Monat)
+  /// Gibt alle verf├╝gbaren Monate zur├╝ck, die gecacht sind (Jahr, Monat)
   Future<List<(int, int)>> getCachedMonths() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -2575,7 +2491,7 @@ class CrunchyrollService implements EpisodeProvider {
       }
       if (kDebugMode) {
         print(
-          '✓ Added predicted release to cache: ${predicted.title} ep ${predicted.episodeNumber}',
+          'Ô£ô Added predicted release to cache: ${predicted.title} ep ${predicted.episodeNumber}',
         );
       }
     } catch (e) {
@@ -2616,7 +2532,7 @@ class CrunchyrollService implements EpisodeProvider {
       } catch (_) {}
 
       if (kDebugMode) {
-        print('✓ All predicted releases removed');
+        print('Ô£ô All predicted releases removed');
       }
     } catch (e) {
       if (kDebugMode) {
@@ -2689,7 +2605,7 @@ class CrunchyrollService implements EpisodeProvider {
       } catch (_) {}
 
       if (kDebugMode) {
-        print('✓ Removed predicted releases for series: ${title ?? seriesUrl}');
+        print('Ô£ô Removed predicted releases for series: ${title ?? seriesUrl}');
       }
     } catch (e) {
       if (kDebugMode) {

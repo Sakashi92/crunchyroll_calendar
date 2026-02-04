@@ -117,18 +117,28 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
                       padding: const EdgeInsets.only(bottom: 6, right: 6),
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 2,
+                          horizontal: 4,
+                          vertical: 1,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.orange.shade700,
+                          color: Theme.of(context).colorScheme.primary,
                           borderRadius: BorderRadius.circular(6),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.surface,
+                            width: 1.0,
+                          ),
                         ),
-                        child: const Text(
+                        child: Text(
                           'V',
                           style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
+                            color:
+                                Theme.of(
+                                      context,
+                                    ).colorScheme.primary.computeLuminance() >
+                                    0.5
+                                ? Colors.black
+                                : Colors.white,
+                            fontSize: 8,
                             fontWeight: FontWeight.bold,
                           ),
                         ),

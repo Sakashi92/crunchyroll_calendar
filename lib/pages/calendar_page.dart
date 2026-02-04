@@ -679,6 +679,12 @@ class _CalendarPageState extends State<CalendarPage>
       return;
     }
 
+    if (mounted) {
+      setState(() {
+        _isLoadingReleases = true;
+      });
+    }
+
     try {
       // Clear only predicted releases cache so real releases remain cached
       await _crunchyrollService.removeAllPredictedReleases();
@@ -779,6 +785,12 @@ class _CalendarPageState extends State<CalendarPage>
     } catch (e) {
       if (kDebugMode) {
         print('Error during force refresh: $e');
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingReleases = false;
+        });
       }
     }
   }

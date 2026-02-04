@@ -83,13 +83,17 @@ class DetailsHeaderImage extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.orange.shade700,
+                color: Theme.of(context).colorScheme.primary,
                 borderRadius: BorderRadius.circular(4),
               ),
-              child: const Text(
+              child: Text(
                 'Vorhersage',
                 style: TextStyle(
-                  color: Colors.white,
+                  color:
+                      Theme.of(context).colorScheme.primary.computeLuminance() >
+                          0.5
+                      ? Colors.black
+                      : Colors.white,
                   fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),

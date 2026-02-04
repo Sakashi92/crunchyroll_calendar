@@ -413,6 +413,42 @@ class _ReleaseCardState extends State<ReleaseCard> {
                       ),
                     ),
                   ),
+                if (widget.release.isPredicted)
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary,
+                        borderRadius: BorderRadius.circular(4),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.3),
+                            blurRadius: 2,
+                            offset: const Offset(0, 1),
+                          ),
+                        ],
+                      ),
+                      child: Text(
+                        'Vorhersage',
+                        style: TextStyle(
+                          color:
+                              Theme.of(
+                                    context,
+                                  ).colorScheme.primary.computeLuminance() >
+                                  0.5
+                              ? Colors.black
+                              : Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ),
                 Positioned(
                   bottom: 8,
                   left: 8,
@@ -453,9 +489,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.release.isPredicted
-                        ? '$_displayTitle (Vorhersage)'
-                        : _displayTitle,
+                    _displayTitle,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
