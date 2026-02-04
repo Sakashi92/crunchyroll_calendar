@@ -16,9 +16,11 @@ class BackupService {
   static const String catCustomTitles = 'customTitles';
   static const String catSeenReleases = 'seenReleases';
   static const String catHistory = 'history';
+  static const String catCalendarCache = 'calendarCache';
 
   /// Generates the complete backup as a JSON string.
-  Future<String> generateBackupJson() async {
+  /// [includeCache] - If true, includes the monthly calendar cache in the backup.
+  Future<String> generateBackupJson({bool includeCache = false}) async {
     try {
       final prefs = await SharedPreferences.getInstance();
 
@@ -74,6 +76,23 @@ class BackupService {
       // 5. Search History
       data[catHistory] = prefs.getStringList('search_history');
 
+      // 6. Calendar Cache (Optional)
+      if (includeCache) {
+        final Map<String, dynamic> cacheData = {};
+        final keys = prefs.getKeys();
+        for (final key in keys) {
+          if (key.startsWith('cached_anime_releases_month_')) {
+            final value = prefs.getString(key);
+            if (value != null) {
+              cacheData[key] = value;
+            }
+          }
+        }
+        if (cacheData.isNotEmpty) {
+          data[catCalendarCache] = cacheData;
+        }
+      }
+
       Map<String, dynamic> backup = {
         'version': exportVersion,
         'timestamp': DateTime.now().toIso8601String(),
@@ -88,9 +107,9 @@ class BackupService {
   }
 
   /// Exports all relevant app data to a JSON file and shares it (Legacy/Quick share).
-  Future<void> exportData() async {
+  Future<void> exportData({bool includeCache = false}) async {
     try {
-      final jsonString = await generateBackupJson();
+      final jsonString = await generateBackupJson(includeCache: includeCache);
       final directory = await getTemporaryDirectory();
       final file = File('${directory.path}/crunchyroll_calendar_backup.json');
       await file.writeAsString(jsonString);
@@ -190,6 +209,23 @@ class BackupService {
         final history = (data[catHistory] as List?)?.cast<String>();
         if (history != null) {
           await prefs.setStringList('search_history', history);
+        }
+      }
+
+      // 6. Import Calendar Cache (if present and selected)
+      if (categories.contains(catCalendarCache) &&
+          data.containsKey(catCalendarCache)) {
+        final cacheRaw = data[catCalendarCache];
+        if (cacheRaw is Map) {
+          final cache = Map<String, dynamic>.from(cacheRaw);
+          cache.forEach((key, value) {
+            if (value is String) {
+              prefs.setString(key, value);
+            }
+          });
+          if (kDebugMode) {
+            print('✅ Restored ${cache.length} calendar months from backup.');
+          }
         }
       }
     } catch (e) {

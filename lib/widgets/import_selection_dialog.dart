@@ -18,6 +18,7 @@ class _ImportSelectionDialogState extends State<ImportSelectionDialog> {
     BackupService.catCustomTitles: 'Benutzerdefinierte Titel',
     BackupService.catSeenReleases: 'Gesehene Folgen',
     BackupService.catHistory: 'Suchverlauf',
+    BackupService.catCalendarCache: 'Kalender-Cache (Offline Daten)',
   };
 
   @override

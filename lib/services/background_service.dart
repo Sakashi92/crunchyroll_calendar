@@ -402,9 +402,18 @@ Future<bool> _executeBackgroundScraper() async {
 
           // Batch refresh metadata for all active series to check for finished status
           if (kDebugMode) {
-            print('🔄 [BACKGROUND-SCRAPER] Refreshing active metadata...');
+            print(
+              '🔄 [BACKGROUND-SCRAPER] Refreshing active metadata (targeted)...',
+            );
           }
-          await watchlistService.refreshActiveSeriesMetadata();
+          // Collect all unique titles from this week's releases to drive the update
+          final weekReleaseTitles = allReleases
+              .map((r) => r.title)
+              .toSet()
+              .toList();
+          await watchlistService.refreshMetadataForSpecificSeries(
+            weekReleaseTitles,
+          );
         } else {
           if (kDebugMode) {
             print(

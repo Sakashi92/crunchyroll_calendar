@@ -1530,18 +1530,65 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _handleExport() async {
+    // Dialog anzeigen zur Auswahl der Backup-Art
+    final bool? includeCache = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Exportieren'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Welche Art von Backup möchtest du erstellen?'),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.description_outlined),
+              title: const Text('Standard Backup'),
+              subtitle: const Text(
+                'Einstellungen, Watchlist, Verlauf\n(Klein, schnell)',
+              ),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_as_outlined),
+              title: const Text('Vollständiges Backup'),
+              subtitle: const Text(
+                'Inkl. Offline-Cache aller Kalendermonate\n(Große Datei, dafür sofort verfügbar)',
+              ),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context), // null result
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+
+    if (includeCache == null) return; // Abgebrochen
+
     try {
-      final jsonString = await BackupService().generateBackupJson();
+      final jsonString = await BackupService().generateBackupJson(
+        includeCache: includeCache,
+      );
       final bytes = utf8.encode(jsonString);
 
       final timestamp = DateTime.now()
           .toIso8601String()
           .replaceAll(':', '-')
           .split('.')[0];
-      final suggestedFileName = 'crunchyroll_calendar_backup_$timestamp.json';
+
+      final typeSuffix = includeCache ? '_full' : '';
+      final suggestedFileName =
+          'crunchyroll_calendar_backup$typeSuffix\_$timestamp.json';
 
       String? chosenPath = await FilePicker.platform.saveFile(
-        dialogTitle: 'Backup speichern',
+        dialogTitle: includeCache
+            ? 'Backup speichern (Vollständig)'
+            : 'Backup speichern',
         fileName: suggestedFileName,
         type: FileType.custom,
         allowedExtensions: ['json'],
@@ -1561,6 +1608,10 @@ class _SettingsPageState extends State<SettingsPage> {
         final actualFileName = file.path
             .split(Platform.isWindows ? '\\' : '/')
             .last;
+        final fileSize = (await file.length()) / 1024; // KB
+        final sizeStr = fileSize > 1024
+            ? '${(fileSize / 1024).toStringAsFixed(1)} MB'
+            : '${fileSize.toStringAsFixed(1)} KB';
 
         await showDialog(
           context: context,
@@ -1578,8 +1629,10 @@ class _SettingsPageState extends State<SettingsPage> {
             content: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Text(
-                  'Deine Daten wurden erfolgreich gesichert.',
+                Text(
+                  includeCache
+                      ? 'Deine Daten und der gesamte Cache wurden erfolgreich gesichert.'
+                      : 'Deine Daten wurden erfolgreich gesichert.',
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 8),
@@ -1591,6 +1644,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   actualFileName,
                   style: const TextStyle(fontSize: 13),
                   textAlign: TextAlign.center,
+                ),
+                Text(
+                  'Größe: $sizeStr',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                 ),
               ],
             ),

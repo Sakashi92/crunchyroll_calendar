@@ -663,6 +663,48 @@ class WatchlistService {
     await saveWatchlist();
   }
 
+  /// Refreshes metadata ONLY for active series that match the provided release titles.
+  /// This optimizes background sync by avoiding unnecessary API calls for series
+  /// that haven't had a new release this week.
+  Future<void> refreshMetadataForSpecificSeries(
+    List<String> releaseTitles,
+  ) async {
+    // 1. Filter active entries that match the release titles
+    final relevantEntries = watchlist.entries.where((e) {
+      if (e.status != WatchStatus.watching) return false;
+
+      // Check if title is in the release list (fuzzy match could be better but strict is safer for sync)
+      // We use a simple case-insensitive containment check
+      final title = e.title.toLowerCase();
+      // Also check custom title if exists
+      final customTitle = e.customTitle?.toLowerCase();
+
+      return releaseTitles.any((r) {
+        final rLower = r.toLowerCase();
+        return rLower == title ||
+            (customTitle != null && rLower == customTitle);
+      });
+    }).toList();
+
+    if (relevantEntries.isEmpty) {
+      if (kDebugMode) {
+        print(
+          '✓ [WATCHLIST-SYNC] No active series match the current releases - nothing to refresh.',
+        );
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      print(
+        '🔄 [WATCHLIST-SYNC] Targeted refresh for ${relevantEntries.length} series (out of ${releaseTitles.length} releases)',
+      );
+    }
+
+    // 2. Refresh only the relevant entries
+    await refreshEntries(relevantEntries);
+  }
+
   /// Refreshes metadata for the provided list of entries.
   Future<void> refreshEntries(List<WatchlistEntry> entries) async {
     if (kDebugMode) {
