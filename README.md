@@ -1,5 +1,7 @@
 # 📅 Crunchyroll Simulcast Calendar
 
+[![Flutter Release](https://github.com/Sakashi92/crunchyroll_calendar/actions/workflows/release.yml/badge.svg)](https://github.com/Sakashi92/crunchyroll_calendar/actions/workflows/release.yml)
+
 Ein inoffizieller Anime-Veröffentlichungskalender für Crunchyroll. Behalte alle deine Lieblings-Simulcasts im Blick und erhalte Benachrichtigungen, sobald eine neue Folge erscheint.
 
 ---
