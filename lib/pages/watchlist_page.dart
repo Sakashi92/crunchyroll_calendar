@@ -1086,16 +1086,27 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
-                                  if (autoSync)
+                                  if (autoSync) ...[
                                     Text(
                                       'Auto-Sync aktiv',
                                       style: TextStyle(
-                                        fontSize: 10,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
                                         color: Theme.of(
                                           context,
                                         ).colorScheme.primary,
                                       ),
                                     ),
+                                    Text(
+                                      '(Tippen zum Deaktivieren)',
+                                      style: TextStyle(
+                                        fontSize: 9,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary.withOpacity(0.7),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
