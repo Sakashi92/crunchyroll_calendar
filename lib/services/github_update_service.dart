@@ -23,7 +23,8 @@ class GitHubUpdateService {
         final latestVersion = data['tag_name'].toString().replaceAll('v', '');
 
         final packageInfo = await PackageInfo.fromPlatform();
-        final currentVersion = packageInfo.version;
+        final currentVersion =
+            '${packageInfo.version}+${packageInfo.buildNumber}';
 
         if (_isNewerVersion(latestVersion, currentVersion)) {
           // Suche nach dem APK-Asset
@@ -49,21 +50,41 @@ class GitHubUpdateService {
   }
 
   bool _isNewerVersion(String latest, String current) {
-    // Einfacher Versionsvergleich (z.B. 0.8.9 vs 0.8.8)
-    final latestParts = latest
+    // Teile Version (z.B. 0.9.5) und Build (z.B. 1)
+    final latestMatch = RegExp(r'^([^+]+)(?:\+(.*))?$').firstMatch(latest);
+    final currentMatch = RegExp(r'^([^+]+)(?:\+(.*))?$').firstMatch(current);
+
+    if (latestMatch == null || currentMatch == null) return false;
+
+    final latestVersion = latestMatch.group(1)!;
+    final latestBuild = latestMatch.group(2) ?? '0';
+    final currentVersion = currentMatch.group(1)!;
+    final currentBuild = currentMatch.group(2) ?? '0';
+
+    // 1. Versionsvergleich (x.y.z)
+    final latestParts = latestVersion
         .split('.')
         .map((e) => int.tryParse(e.replaceAll(RegExp(r'\D'), '')) ?? 0)
         .toList();
-    final currentParts = current
+    final currentParts = currentVersion
         .split('.')
         .map((e) => int.tryParse(e.replaceAll(RegExp(r'\D'), '')) ?? 0)
         .toList();
 
-    for (var i = 0; i < latestParts.length && i < currentParts.length; i++) {
-      if (latestParts[i] > currentParts[i]) return true;
-      if (latestParts[i] < currentParts[i]) return false;
+    for (var i = 0; i < latestParts.length || i < currentParts.length; i++) {
+      final l = i < latestParts.length ? latestParts[i] : 0;
+      final c = i < currentParts.length ? currentParts[i] : 0;
+      if (l > c) return true;
+      if (l < c) return false;
     }
-    return latestParts.length > currentParts.length;
+
+    // 2. Build-Vergleich (wenn Version identisch)
+    final latestBuildNum =
+        int.tryParse(latestBuild.replaceAll(RegExp(r'\D'), '')) ?? 0;
+    final currentBuildNum =
+        int.tryParse(currentBuild.replaceAll(RegExp(r'\D'), '')) ?? 0;
+
+    return latestBuildNum > currentBuildNum;
   }
 
   Stream<OtaEvent> executeUpdate(String url) {

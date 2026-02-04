@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.5+1] - 2026-02-04
+- **Feat**: Neuer professioneller Update-Dialog in deutscher Sprache.
+- **UI**: In-App Update-Benachrichtigung für bessere Sichtbarkeit verbessert.
+- **Internal**: Versionsformat auf 0.9.5+1 umgestellt und Vergleichslogik für Build-Nummern optimiert.
+- **Security**: App-Signing für lokale und automatisierte GitHub-Builds konfiguriert.
+
 ## [0.9.4] - 2026-02-04
 - **Fix**: Android In-App Update Problem behoben (FileProvider Berechtigung hinzugefügt).
 - **Feat**: Automatischer Update-Check beim App-Start.

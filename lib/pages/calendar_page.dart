@@ -231,19 +231,66 @@ class _CalendarPageState extends State<CalendarPage>
     final updateService = GitHubUpdateService();
     final updateInfo = await updateService.checkForUpdate();
 
-    if (updateInfo != null && mounted) {
-      final String newVersion = updateInfo['version'];
-
+    if (updateInfo != null) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '🚀 Neue Version $newVersion verfügbar! (In den Einstellungen auch später möglich)',
+      _showUpdateDialog(context, updateInfo);
+    }
+  }
+
+  void _showUpdateDialog(
+    BuildContext context,
+    Map<String, dynamic> updateInfo,
+  ) {
+    final newVersion = updateInfo['version'];
+
+    showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Row(
+          children: [
+            Icon(
+              Icons.system_update,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            const Text('Update verfügbar'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Eine neue Version ($newVersion) des Crunchyroll-Kalenders ist verfügbar.',
+              style: const TextStyle(fontSize: 14),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Möchtest du das Update jetzt herunterladen? Du kannst die Aktualisierung auch später jederzeit in den Einstellungen starten.',
+              style: TextStyle(
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('SPÄTER'),
           ),
-          duration: const Duration(seconds: 10),
-          action: SnackBarAction(
-            label: 'Download',
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
             onPressed: () {
+              Navigator.pop(context);
               Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -254,10 +301,11 @@ class _CalendarPageState extends State<CalendarPage>
                 ),
               );
             },
+            child: const Text('JETZT INSTALLIEREN'),
           ),
-        ),
-      );
-    }
+        ],
+      ),
+    );
   }
 
   void _debounceImageStateUpdate() {
