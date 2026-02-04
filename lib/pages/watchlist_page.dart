@@ -939,128 +939,37 @@ class _WatchlistPageState extends State<WatchlistPage> {
     final noteController = TextEditingController(text: entry.note ?? '');
     WatchStatus status = entry.status;
     String currentId = entry.animeId;
+
     await showDialog(
       context: context,
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setState) => AlertDialog(
           scrollable: true,
-          title: Text('Bearbeiten: ${entry.customTitle ?? entry.title}'),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Text(
+            entry.customTitle ?? entry.title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.center,
+          ),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Row(
-                children: [
-                  Expanded(child: Text('Gesehene Folgen')),
-                  IconButton(
-                    onPressed: () {
-                      if (episodes > 0) setState(() => episodes--);
-                    },
-                    icon: Icon(Icons.remove_circle_outline),
-                  ),
-                  InkWell(
-                    onTap: () async {
-                      final v = await _promptForEpisodeNumber(
-                        ctx,
-                        'Gesehene Folgen eingeben',
-                        episodes,
-                      );
-                      if (v != null) setState(() => episodes = v);
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 4.0,
-                      ),
-                      child: Text('$episodes', style: TextStyle(fontSize: 16)),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() => episodes++),
-                    icon: Icon(Icons.add_circle_outline),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Expanded(child: Text('Gesamtfolgen')),
-                  IconButton(
-                    onPressed: () {
-                      if (total > 0) {
-                        setState(() {
-                          total--;
-                          autoSync = false;
-                        });
-                      }
-                    },
-                    icon: Icon(Icons.remove_circle_outline),
-                  ),
-                  InkWell(
-                    onTap: () async {
-                      final v = await _promptForEpisodeNumber(
-                        ctx,
-                        'Gesamtfolgen eingeben',
-                        total,
-                      );
-                      if (v != null) {
-                        setState(() {
-                          total = v;
-                          autoSync = false;
-                        });
-                      }
-                    },
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8.0,
-                        vertical: 4.0,
-                      ),
-                      child: Text('$total', style: TextStyle(fontSize: 16)),
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => setState(() {
-                      total++;
-                      autoSync = false;
-                    }),
-                    icon: Icon(Icons.add_circle_outline),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(child: Text('Automatisch Gesamtfolgen abgleichen')),
-                  StatefulBuilder(
-                    builder: (ctx2, setState2) => Switch(
-                      value: autoSync,
-                      onChanged: (v) async {
-                        // Update local toggle immediately
-                        setState(() {
-                          autoSync = v;
-                        });
-
-                        if (v) {
-                          try {
-                            final crunch = CrunchyrollService();
-                            final known = await crunch.getMaxEpisodeForSeries(
-                              entry.animeId,
-                              entry.title,
-                            );
-                            if (known != null && known > total) {
-                              if (mounted) setState(() => total = known);
-                            }
-                          } catch (e) {
-                            if (kDebugMode) {
-                              print('Error fetching max episode on toggle: $e');
-                            }
-                          }
-                        }
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              DropdownButton<WatchStatus>(
+              // STATUS DROPDOWN
+              DropdownButtonFormField<WatchStatus>(
                 value: status,
+                decoration: const InputDecoration(
+                  labelText: 'Status',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
                 items: WatchStatus.values
                     .map(
                       (s) => DropdownMenuItem(
@@ -1070,104 +979,302 @@ class _WatchlistPageState extends State<WatchlistPage> {
                     )
                     .toList(),
                 onChanged: (s) {
-                  if (s != null) {
-                    setState(() => status = s);
-                  }
+                  if (s != null) setState(() => status = s);
                 },
               ),
-              TextField(
-                controller: noteController,
-                decoration: InputDecoration(labelText: 'Notiz'),
+              const SizedBox(height: 16),
+
+              // PROGRESS CARD
+              Card(
+                elevation: 0,
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withOpacity(0.3),
+                margin: EdgeInsets.zero,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  side: BorderSide(
+                    color: Theme.of(context).dividerColor.withOpacity(0.1),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.all(12.0),
+                  child: Column(
+                    children: [
+                      // WATCHED EPISODES
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Text(
+                              'Gesehene Folgen',
+                              style: TextStyle(fontWeight: FontWeight.w500),
+                            ),
+                          ),
+                          IconButton.filledTonal(
+                            onPressed: () {
+                              if (episodes > 0) setState(() => episodes--);
+                            },
+                            icon: const Icon(Icons.remove),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 32,
+                              height: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                          ),
+                          InkWell(
+                            onTap: () async {
+                              final v = await _promptForEpisodeNumber(
+                                ctx,
+                                'Gesehene Folgen',
+                                episodes,
+                              );
+                              if (v != null) setState(() => episodes = v);
+                            },
+                            borderRadius: BorderRadius.circular(4),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12.0,
+                              ),
+                              child: Text(
+                                '$episodes',
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton.filled(
+                            onPressed: () => setState(() => episodes++),
+                            icon: const Icon(Icons.add),
+                            constraints: const BoxConstraints.tightFor(
+                              width: 32,
+                              height: 32,
+                            ),
+                            padding: EdgeInsets.zero,
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 24),
+                      // TOTAL EPISODES
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                const Text(
+                                  'Gesamtfolgen',
+                                  style: TextStyle(fontWeight: FontWeight.w500),
+                                ),
+                                if (autoSync)
+                                  Text(
+                                    'Auto-Sync aktiv',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                          if (autoSync)
+                            IconButton(
+                              onPressed: () => setState(() => autoSync = false),
+                              icon: const Icon(Icons.sync),
+                              color: Theme.of(context).colorScheme.primary,
+                              tooltip: 'Auto-Sync deaktivieren',
+                            )
+                          else ...[
+                            IconButton.filledTonal(
+                              onPressed: () {
+                                if (total > 0) setState(() => total--);
+                              },
+                              icon: const Icon(Icons.remove),
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                            InkWell(
+                              onTap: () async {
+                                final v = await _promptForEpisodeNumber(
+                                  ctx,
+                                  'Gesamtfolgen',
+                                  total,
+                                );
+                                if (v != null) setState(() => total = v);
+                              },
+                              borderRadius: BorderRadius.circular(4),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12.0,
+                                ),
+                                child: Text(
+                                  '$total',
+                                  style: const TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton.filled(
+                              onPressed: () => setState(() => total++),
+                              icon: const Icon(Icons.add),
+                              constraints: const BoxConstraints.tightFor(
+                                width: 32,
+                                height: 32,
+                              ),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
+                        ],
+                      ),
+                      if (!autoSync)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8.0),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton.icon(
+                                onPressed: () async {
+                                  setState(() => autoSync = true);
+                                  // Logic for auto-sync fetch
+                                  try {
+                                    final crunch = CrunchyrollService();
+                                    final known = await crunch
+                                        .getMaxEpisodeForSeries(
+                                          entry.animeId,
+                                          entry.title,
+                                        );
+                                    if (known != null && known > total) {
+                                      if (ctx.mounted) {
+                                        setState(() => total = known);
+                                      }
+                                    }
+                                  } catch (_) {}
+                                },
+                                icon: const Icon(Icons.sync, size: 16),
+                                label: const Text('Auto-Sync aktivieren'),
+                                style: TextButton.styleFrom(
+                                  visualDensity: VisualDensity.compact,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 16),
-              if (!currentId.contains('crunchyroll.com'))
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton.icon(
-                    onPressed: () async {
-                      if (entry.anilistId != null) {
+
+              // NOTE
+              TextField(
+                controller: noteController,
+                maxLines: 3,
+                minLines: 1,
+                decoration: const InputDecoration(
+                  labelText: 'Notiz',
+                  border: OutlineInputBorder(),
+                  alignLabelWithHint: true,
+                ),
+              ),
+              const SizedBox(height: 16),
+
+              // CRUNCHYROLL SEARCH BUTTON
+              if (!currentId.contains('crunchyroll.com')) ...[
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    if (entry.anilistId != null) {
+                      UIUtils.showSnackBar(
+                        context,
+                        const SnackBar(
+                          content: Text(
+                            'Suche Crunchyroll Link via AniList...',
+                          ),
+                        ),
+                      );
+                      final url = await AnilistService().getCrunchyrollUrl(
+                        entry.anilistId!,
+                      );
+                      if (url != null) {
+                        if (!mounted) return;
+                        _applyFoundUrl(context, url, (newUrl) {
+                          setState(() => currentId = newUrl);
+                        });
+                        return;
+                      }
+                    }
+
+                    // Fallback to title search if no ID or no link found by ID
+                    final match = await AnilistService().findBestMatch(
+                      entry.title,
+                    );
+                    if (match != null &&
+                        match.hasCrunchyroll == true &&
+                        match.bannerImage != null) {
+                      if (mounted) {
+                        _applyFoundUrl(context, match.bannerImage!, (newUrl) {
+                          setState(() => currentId = newUrl);
+                        });
+                      }
+                      return;
+                    }
+
+                    final externalSearch = ExternalSearchService();
+                    final url = await externalSearch.findCrunchyrollUrl(
+                      entry.title,
+                    );
+                    if (url != null) {
+                      if (mounted) {
+                        _applyFoundUrl(context, url, (newUrl) {
+                          setState(() {
+                            currentId = newUrl;
+                          });
+                        });
+                      }
+                    } else {
+                      if (mounted) {
                         UIUtils.showSnackBar(
                           context,
                           const SnackBar(
-                            content: Text(
-                              'Suche Crunchyroll Link via AniList...',
-                            ),
+                            content: Text('Kein Link automatisch gefunden.'),
                           ),
                         );
-                        final url = await AnilistService().getCrunchyrollUrl(
-                          entry.anilistId!,
+                        // Open manual search
+                        final manualUrl = externalSearch.getManualSearchUrl(
+                          entry.title,
                         );
-                        if (url != null) {
-                          if (!mounted) return;
-                          // ... handle found URL as before
-                          _applyFoundUrl(context, url, (newUrl) {
-                            setState(() => currentId = newUrl);
-                          });
-                          return;
-                        }
-                      }
-
-                      // Fallback to title search if no ID or no link found by ID
-                      final match = await AnilistService().findBestMatch(
-                        entry.title,
-                      );
-                      if (match != null &&
-                          match.hasCrunchyroll == true &&
-                          match.bannerImage != null) {
-                        if (mounted) {
-                          _applyFoundUrl(context, match.bannerImage!, (newUrl) {
-                            setState(() => currentId = newUrl);
-                          });
-                        }
-                        return;
-                      }
-
-                      final externalSearch = ExternalSearchService();
-                      final url = await externalSearch.findCrunchyrollUrl(
-                        entry.title,
-                      );
-                      if (url != null) {
-                        if (mounted) {
-                          _applyFoundUrl(context, url, (newUrl) {
-                            setState(() {
-                              currentId = newUrl;
-                            });
-                          });
-                        }
-                      } else {
-                        if (mounted) {
-                          UIUtils.showSnackBar(
-                            context,
-                            const SnackBar(
-                              content: Text('Kein Link automatisch gefunden.'),
-                            ),
+                        final uri = Uri.parse(manualUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(
+                            uri,
+                            mode: LaunchMode.externalApplication,
                           );
-                          // Open manual search
-                          final manualUrl = externalSearch.getManualSearchUrl(
-                            entry.title,
-                          );
-                          final uri = Uri.parse(manualUrl);
-                          if (await canLaunchUrl(uri)) {
-                            await launchUrl(
-                              uri,
-                              mode: LaunchMode.externalApplication,
-                            );
-                          }
                         }
                       }
-                    },
-                    icon: const Icon(Icons.search),
-                    label: const Text('Crunchyroll Link suchen'),
+                    }
+                  },
+                  icon: const Icon(Icons.search),
+                  label: const Text('Crunchyroll Link suchen'),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 12),
                   ),
                 ),
+              ],
             ],
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('Abbrechen'),
+              child: const Text('Abbrechen'),
             ),
-            ElevatedButton(
+            FilledButton(
               onPressed: () {
                 bool finalNotifications = entry.notificationsEnabled;
                 bool finalPredictions = entry.predictionsEnabled;
@@ -1205,7 +1312,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
                 Navigator.pop(ctx);
               },
-              child: Text('Speichern'),
+              child: const Text('Speichern'),
             ),
           ],
         ),
