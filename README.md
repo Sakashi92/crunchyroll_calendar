@@ -41,5 +41,10 @@ Die aktuellste Version der App findest du immer hier:
 ## 🛠 Für Entwickler
 Technische Details zur Installation und zum Build findest du in der [DEVELOPER.md](./DEVELOPER.md).
 
+---
+
+## 🤖 KI & Entwicklung
+Dieses Projekt wurde unter maßgeblicher Unterstützung von **Künstlicher Intelligenz (LLMs)** entwickelt. Dies dient der Transparenz und zeigt das Potenzial moderner KI-gestützter Softwareentwicklung.
+
 ## 📄 Lizenz
 Dieses Projekt ist unter der MIT-Lizenz lizenziert.
