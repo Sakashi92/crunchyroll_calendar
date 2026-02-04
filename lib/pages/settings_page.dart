@@ -22,6 +22,7 @@ import '../widgets/import_selection_dialog.dart';
 import '../utils/ui_utils.dart';
 import '../services/github_update_service.dart';
 import 'package:ota_update/ota_update.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
@@ -51,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _episodeProvider = 'anilist';
   bool _predictionEnabled = false;
   bool _preferCrunchyrollEpisodeCount = false;
+  String _appVersion = '';
 
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
@@ -99,6 +101,18 @@ class _SettingsPageState extends State<SettingsPage> {
       _permissions = permissions;
       _isLoading = false;
     });
+
+    // Version separat laden, falls es etwas länger dauert
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    final packageInfo = await PackageInfo.fromPlatform();
+    if (mounted) {
+      setState(() {
+        _appVersion = packageInfo.version;
+      });
+    }
   }
 
   Future<void> _saveEpisodeProvider(String name) async {
@@ -1435,10 +1449,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Widget _buildInfoTile() {
-    return const ListTile(
-      leading: Icon(Icons.info_outline),
-      title: Text('Crunchyroll Kalender'),
-      subtitle: Text('Version 0.9.2\nBilder werden von Kitsu.app geladen'),
+    return ListTile(
+      leading: const Icon(Icons.info_outline),
+      title: const Text('Crunchyroll Kalender'),
+      subtitle: Text(
+        'Version $_appVersion\nBilder werden von Kitsu.app geladen',
+      ),
       isThreeLine: true,
     );
   }
