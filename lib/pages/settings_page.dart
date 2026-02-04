@@ -28,11 +28,13 @@ import 'package:package_info_plus/package_info_plus.dart';
 class SettingsPage extends StatefulWidget {
   final VoidCallback? onSettingsChanged;
   final CrunchyrollService? crunchyrollService;
+  final String? initialUpdateUrl;
 
   const SettingsPage({
     super.key,
     this.onSettingsChanged,
     this.crunchyrollService,
+    this.initialUpdateUrl,
   });
 
   @override
@@ -61,6 +63,13 @@ class _SettingsPageState extends State<SettingsPage> {
   void initState() {
     super.initState();
     _loadSettings();
+
+    // Automatisches Update starten, wenn eine URL übergeben wurde
+    if (widget.initialUpdateUrl != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _startUpdate(widget.initialUpdateUrl!);
+      });
+    }
   }
 
   Future<void> _loadSettings() async {
@@ -1410,10 +1419,18 @@ class _SettingsPageState extends State<SettingsPage> {
                     case OtaStatus.INTERNAL_ERROR:
                       message = 'Interner Fehler beim Update.';
                       break;
+                    case OtaStatus.DOWNLOAD_ERROR:
+                      message = 'Fehler beim Herunterladen.';
+                      break;
+                    case OtaStatus.CHECKSUM_ERROR:
+                      message = 'Prüfsummenfehler.';
+                      break;
                     default:
                       message = 'Status: ${snapshot.data!.status}';
                       break;
                   }
+                } else if (snapshot.hasError) {
+                  message = 'Fehler: ${snapshot.error}';
                 }
 
                 return AlertDialog(
@@ -1433,7 +1450,16 @@ class _SettingsPageState extends State<SettingsPage> {
                   actions: [
                     if (snapshot.hasError ||
                         (snapshot.hasData &&
-                            snapshot.data!.status.toString().contains('ERROR')))
+                            (snapshot.data!.status ==
+                                    OtaStatus.INTERNAL_ERROR ||
+                                snapshot.data!.status ==
+                                    OtaStatus.DOWNLOAD_ERROR ||
+                                snapshot.data!.status ==
+                                    OtaStatus.PERMISSION_NOT_GRANTED_ERROR ||
+                                snapshot.data!.status ==
+                                    OtaStatus.ALREADY_RUNNING_ERROR ||
+                                snapshot.data!.status ==
+                                    OtaStatus.CHECKSUM_ERROR)))
                       TextButton(
                         onPressed: () => Navigator.pop(context),
                         child: const Text('Schließen'),

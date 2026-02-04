@@ -237,16 +237,19 @@ class _CalendarPageState extends State<CalendarPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('🚀 Neue Version $newVersion verfügbar!'),
+          content: Text(
+            '🚀 Neue Version $newVersion verfügbar! (In den Einstellungen auch später möglich)',
+          ),
           duration: const Duration(seconds: 10),
           action: SnackBarAction(
-            label: 'Details',
+            label: 'Download',
             onPressed: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => SettingsPage(
                     onSettingsChanged: widget.onAccentColorChanged,
+                    initialUpdateUrl: updateInfo['url'],
                   ),
                 ),
               );
