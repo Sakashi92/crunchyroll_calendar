@@ -2,7 +2,7 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
-## [0.9.0] - 2026-02-04
+## [0.8.9] - 2026-02-04
 
 ### Behoben
 - **Scraper-Wiederherstellung**: Die Scraping-Logik wurde auf den stabilen Stand von Commit `1be531e` zurückgesetzt, um Probleme beim Laden des Kalenders nach einem Reset zu beheben.
