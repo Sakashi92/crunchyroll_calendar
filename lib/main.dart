@@ -9,19 +9,46 @@ import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'pages/calendar_page.dart';
 import 'utils/ui_utils.dart';
+import 'dart:io';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:window_manager/window_manager.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('de_DE', null);
   Intl.defaultLocale = 'de_DE';
 
-  // Notification Service initialisieren
-  await NotificationService().initialize();
+  if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+
+    await windowManager.ensureInitialized();
+    WindowOptions windowOptions = const WindowOptions(
+      size: Size(450, 850),
+      minimumSize: Size(350, 600),
+      center: true,
+      backgroundColor: Colors.transparent,
+      skipTaskbar: false,
+      titleBarStyle: TitleBarStyle.normal,
+      title: 'Crunchyroll Anime Kalender',
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
+    });
+  }
+
+  // Notification Service initialisieren (nur auf Mobilgeräten voll funktionsfähig)
+  if (Platform.isAndroid || Platform.isIOS) {
+    await NotificationService().initialize();
+  }
   await AppSettingsService.init();
 
-  // Background Service initialisieren und Task starten (alle 20 Minuten)
-  await BackgroundService.initialize();
-  await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
+  // Background Service initialisieren (nur auf Mobilgeräten)
+  if (Platform.isAndroid || Platform.isIOS) {
+    await BackgroundService.initialize();
+    await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
+  }
 
   runApp(const MainApp());
 }

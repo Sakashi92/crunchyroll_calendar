@@ -27,17 +27,50 @@ class CalendarReleaseList extends StatelessWidget {
 
     return Container(
       color: Theme.of(context).colorScheme.surface,
-      child: ListView.builder(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.all(8),
-        itemCount: releases.length,
-        itemBuilder: (context, index) {
-          final release = releases[index];
-          return ReleaseCard(
-            key: ValueKey('${release.title}_${release.episodeInfo}'),
-            release: release,
-            watchlistService: watchlistService,
-          );
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final width = constraints.maxWidth;
+          // Threshold for grid: 600px
+          if (width > 600) {
+            // Calculate number of columns
+            // We want each card to be at least ~300px wide
+            int crossAxisCount = (width / 350).floor();
+            if (crossAxisCount < 2) crossAxisCount = 2;
+
+            return GridView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(8),
+              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: crossAxisCount,
+                childAspectRatio: 0.85, // Adjust this to fit the card content
+                crossAxisSpacing: 8,
+                mainAxisSpacing: 8,
+              ),
+              itemCount: releases.length,
+              itemBuilder: (context, index) {
+                final release = releases[index];
+                return ReleaseCard(
+                  key: ValueKey('${release.title}_${release.episodeInfo}'),
+                  release: release,
+                  watchlistService: watchlistService,
+                );
+              },
+            );
+          } else {
+            return ListView.builder(
+              physics: const AlwaysScrollableScrollPhysics(),
+              padding: const EdgeInsets.all(8),
+              itemCount: releases.length,
+              itemBuilder: (context, index) {
+                final release = releases[index];
+                return ReleaseCard(
+                  key: ValueKey('${release.title}_${release.episodeInfo}'),
+                  release: release,
+                  watchlistService: watchlistService,
+                );
+              },
+            );
+          }
         },
       ),
     );

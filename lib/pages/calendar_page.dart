@@ -1086,49 +1086,72 @@ class _CalendarPageState extends State<CalendarPage>
               duration: const Duration(milliseconds: 450),
               curve: Curves.easeInOut,
               alignment: Alignment.topCenter,
-              child: CalendarDisplay(
-                focusedDay: _focusedDay,
-                selectedDay: _selectedDay,
-                calendarFormat: _calendarFormat,
-                isCalendarMinimized: _isCalendarMinimized,
-                eventLoader: _getReleasesForDay,
-                onDaySelected: (selectedDay, focusedDay) {
-                  if (!isSameDay(_selectedDay, selectedDay)) {
-                    final previous = _selectedDay ?? _focusedDay;
-                    final diff = selectedDay.difference(previous).inDays;
-                    if (diff > 0) {
-                      _lastSwipeDirection = -1;
-                    } else if (diff < 0) {
-                      _lastSwipeDirection = 1;
-                    }
+              child: () {
+                final orientation = MediaQuery.of(context).orientation;
+                final isLandscape = orientation == Orientation.landscape;
+                final effectiveFormat = isLandscape
+                    ? CalendarFormat.week
+                    : _calendarFormat;
 
-                    setState(() {
-                      _selectedDay = selectedDay;
-                      _focusedDay = focusedDay;
-                      _isLoadingReleases = true;
-                    });
+                Widget calendar = CalendarDisplay(
+                  focusedDay: _focusedDay,
+                  selectedDay: _selectedDay,
+                  calendarFormat: effectiveFormat,
+                  isCalendarMinimized: _isCalendarMinimized,
+                  eventLoader: _getReleasesForDay,
+                  onDaySelected: (selectedDay, focusedDay) {
+                    if (!isSameDay(_selectedDay, selectedDay)) {
+                      final previous = _selectedDay ?? _focusedDay;
+                      final diff = selectedDay.difference(previous).inDays;
+                      if (diff > 0) {
+                        _lastSwipeDirection = -1;
+                      } else if (diff < 0) {
+                        _lastSwipeDirection = 1;
+                      }
+
+                      setState(() {
+                        _selectedDay = selectedDay;
+                        _focusedDay = focusedDay;
+                        _isLoadingReleases = true;
+                      });
+                      _loadReleases();
+                    }
+                  },
+                  onFormatChanged: (format) {
+                    if (_calendarFormat != format) {
+                      setState(() => _calendarFormat = format);
+                      _saveCalendarFormat(format);
+                    }
+                  },
+                  onPageChanged: (focusedDay) {
+                    setState(() => _focusedDay = focusedDay);
                     _loadReleases();
-                  }
-                },
-                onFormatChanged: (format) {
-                  if (_calendarFormat != format) {
-                    setState(() => _calendarFormat = format);
-                    _saveCalendarFormat(format);
-                  }
-                },
-                onPageChanged: (focusedDay) {
-                  setState(() => _focusedDay = focusedDay);
-                  _loadReleases();
-                },
-                onExpand: () {
-                  setState(() {
-                    _isCalendarMinimized = false;
-                    _cumulativeScrollDelta = 0.0;
-                  });
-                },
-                onCycleFormat: ({required bool up}) =>
-                    _cycleCalendarFormat(up: up),
-              ),
+                  },
+                  onExpand: () {
+                    setState(() {
+                      _isCalendarMinimized = false;
+                      _cumulativeScrollDelta = 0.0;
+                    });
+                  },
+                  onCycleFormat: ({required bool up}) =>
+                      _cycleCalendarFormat(up: up),
+                );
+
+                return Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: isLandscape ? 700 : 500,
+                      ),
+                      child: calendar,
+                    ),
+                  ),
+                );
+              }(),
             ),
             const Divider(height: 1),
             Expanded(

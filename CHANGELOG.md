@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.6] - 2026-02-05
+- **Feat**: Responsives Grid-Layout für Anime-Releases hinzugefügt (automatische Spalten bei breitem Fenster oder Landscape).
+- **Feat**: Dynamische Landscape-Optimierung (Kalender wechselt im Querformat automatisch zur Wochenansicht und wird zentriert).
+- **UI**: Fenstergröße unter Windows auf ein Smartphone-ähnliches Format begrenzt (450x850 px).
+- **Fix**: Absturz im GitHub-Update-Service auf Windows behoben (`OtaStatus.UNKNOWN` durch `INTERNAL_ERROR` ersetzt).
+
 ## [0.9.5+1] - 2026-02-04
 - **Feat**: Neuer professioneller Update-Dialog in deutscher Sprache.
 - **UI**: In-App Update-Benachrichtigung für bessere Sichtbarkeit verbessert.
