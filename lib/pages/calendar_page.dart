@@ -1077,6 +1077,16 @@ class _CalendarPageState extends State<CalendarPage>
         imagesLoaded: _imagesLoaded,
         imagesToLoad: _imagesToLoad,
         onOpenSettings: _openSettings,
+        activeDay: _selectedDay ?? _focusedDay,
+        currentReleases: _getReleasesForDay(_selectedDay ?? _focusedDay),
+        isMinimized: _isCalendarMinimized,
+        onToggleExpand: () {
+          setState(() {
+            _isCalendarMinimized = !_isCalendarMinimized;
+            _cumulativeScrollDelta = 0.0;
+            // Scroll to top if expanding? Maybe not needed as expanding shows calendar
+          });
+        },
       ),
       body: RefreshIndicator(
         onRefresh: _forceRefresh,
@@ -1089,6 +1099,12 @@ class _CalendarPageState extends State<CalendarPage>
               child: () {
                 final orientation = MediaQuery.of(context).orientation;
                 final isLandscape = orientation == Orientation.landscape;
+
+                // Hide body calendar if minimized in landscape (it's in the AppBar)
+                if (isLandscape && _isCalendarMinimized) {
+                  return const SizedBox.shrink();
+                }
+
                 final effectiveFormat = isLandscape
                     ? CalendarFormat.week
                     : _calendarFormat;

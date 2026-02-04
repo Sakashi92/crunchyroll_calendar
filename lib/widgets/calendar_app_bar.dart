@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import 'package:intl/intl.dart';
 import '../models/anime_release.dart';
 import '../services/watchlist_service.dart';
 import '../services/crunchyroll_service.dart';
@@ -23,32 +24,115 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
     required this.imagesLoaded,
     required this.imagesToLoad,
     required this.onOpenSettings,
+    required this.activeDay,
+    required this.currentReleases,
+    required this.isMinimized,
+    required this.onToggleExpand,
   });
+
+  final DateTime activeDay;
+  final List<AnimeRelease> currentReleases;
+  final bool isMinimized;
+  final VoidCallback onToggleExpand;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+
+    final baseTitle = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const Text('Kalender'),
+        if (isLoadingImages)
+          Text(
+            'Lade Bilder... $imagesLoaded/$imagesToLoad',
+            style: TextStyle(
+              fontSize: 12,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
+          ),
+      ],
+    );
+
+    final isLandscape =
+        MediaQuery.of(context).orientation == Orientation.landscape;
+
     return AppBar(
       backgroundColor: theme.colorScheme.surface,
       toolbarHeight: 48,
       elevation: 0,
       scrolledUnderElevation: 0,
       surfaceTintColor: Colors.transparent,
-      title: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Text('Kalender'),
-          if (isLoadingImages)
-            Text(
-              'Lade Bilder... $imagesLoaded/$imagesToLoad',
-              style: TextStyle(
-                fontSize: 12,
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+      centerTitle: false,
+      title: baseTitle,
+      flexibleSpace: (isLandscape && isMinimized)
+          ? SafeArea(
+              child: Center(
+                child: InkWell(
+                  onTap: onToggleExpand,
+                  borderRadius: BorderRadius.circular(30),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: theme.colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(30),
+                      border: Border.all(
+                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                      ),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.calendar_today,
+                          size: 14,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          DateFormat('E, d. MMM', 'de_DE').format(activeDay),
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '•',
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurfaceVariant
+                                .withValues(alpha: 0.5),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          currentReleases.isEmpty
+                              ? 'Kein Release'
+                              : '${currentReleases.length} Release${currentReleases.length == 1 ? '' : 's'}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.keyboard_arrow_down,
+                          size: 16,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
-            ),
-        ],
-      ),
+            )
+          : null,
       actions: [
         IconButton(
           icon: const Icon(Icons.search),
