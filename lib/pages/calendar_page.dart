@@ -14,6 +14,7 @@ import '../services/permission_service.dart';
 import '../services/battery_optimization_service.dart';
 import '../repositories/seen_repository.dart';
 import '../services/app_settings_service.dart';
+import '../services/github_update_service.dart';
 
 import '../widgets/calendar_app_bar.dart';
 import '../widgets/calendar_display.dart';
@@ -86,6 +87,7 @@ class _CalendarPageState extends State<CalendarPage>
     // Berechtigungen nach dem ersten Frame anfragen
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _requestPermissions();
+      _checkForAppUpdate();
     });
 
     // Registriere Callback für Bilder-Ladestatus
@@ -219,6 +221,40 @@ class _CalendarPageState extends State<CalendarPage>
       vsync: this,
       duration: const Duration(milliseconds: 260),
     );
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    // Kurze Verzögerung damit der User nicht sofort beim Start genervt wird
+    await Future.delayed(const Duration(seconds: 3));
+    if (!mounted) return;
+
+    final updateService = GitHubUpdateService();
+    final updateInfo = await updateService.checkForUpdate();
+
+    if (updateInfo != null && mounted) {
+      final String newVersion = updateInfo['version'];
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('🚀 Neue Version $newVersion verfügbar!'),
+          duration: const Duration(seconds: 10),
+          action: SnackBarAction(
+            label: 'Details',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => SettingsPage(
+                    onSettingsChanged: widget.onAccentColorChanged,
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+      );
+    }
   }
 
   void _debounceImageStateUpdate() {
