@@ -16,7 +16,6 @@ import '../services/next_episode_predictor.dart';
 import '../services/anilist_service.dart';
 import '../services/anilist_cache.dart';
 import '../utils/title_utils.dart';
-import '../widgets/anilist_search_dialog.dart';
 import '../widgets/anime_search_dialog.dart';
 import 'details_description_section.dart';
 import 'details_metadata_section.dart';
@@ -393,8 +392,6 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
                         autoTranslateEnabled: _autoTranslateEnabled,
                         onToggleLanguage: _toggleLanguage,
                       ),
-                      const SizedBox(height: 8),
-                      if (widget.showManualLink) _buildManualLinkButton(),
                       const SizedBox(height: 20),
                       if (!release.isPredicted && widget.isCrunchyroll)
                         _buildCrunchyrollPlayButton(),
@@ -404,21 +401,6 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
               ],
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildManualLinkButton() {
-    return SizedBox(
-      width: double.infinity,
-      child: OutlinedButton.icon(
-        onPressed: _handleManualLink,
-        icon: const Icon(Icons.link),
-        label: const Text('Manuelle AniList Verknüpfung'),
-        style: OutlinedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         ),
       ),
     );
@@ -662,71 +644,6 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           setState(() {
             _isProcessingWatchlist = false;
           });
-        }
-      }
-    }
-  }
-
-  Future<void> _handleManualLink() async {
-    final currentTitle = widget.release.title;
-    final seriesUrl = widget.release.seriesUrl;
-
-    final result = await showDialog<AnimeMetadata>(
-      context: context,
-      builder: (_) => AnilistSearchDialog(initialQuery: currentTitle),
-    );
-
-    if (result != null && mounted) {
-      final cache = AnilistCache();
-      final key = normalizeTitle(seriesUrl);
-      await cache.save(key, result);
-
-      if (_isInWatchlist && widget.watchlistService != null) {
-        try {
-          final ws = widget.watchlistService!;
-          final entryIndex = ws.watchlist.entries.indexWhere(
-            (e) => e.animeId == seriesUrl,
-          );
-          if (entryIndex != -1) {
-            final entry = ws.watchlist.entries[entryIndex];
-            // final oldId = entry.animeId; // Unused
-
-            entry.anilistId = result.id;
-
-            // NEW: Automatically update Crunchyroll URL logic REMOVED.
-            // We keep the original ID to ensure the link to the Calendar (Red Heart) remains valid.
-          }
-        } catch (e) {
-          if (kDebugMode) print('❌ Link: Failed to update watchlist entry: $e');
-        }
-      }
-
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          SnackBar(
-            content: Text(
-              'Verknüpft mit: ${result.siteUrl ?? "ID ${result.id}"}',
-            ),
-          ),
-        );
-        setState(() {
-          _isLoadingDescription = true;
-        });
-        _loadDescription();
-
-        if (_isInWatchlist && widget.watchlistService != null) {
-          try {
-            final anilist = AnilistService();
-            final predictor = NextEpisodePredictor(
-              widget.crunchyrollService,
-              anilist,
-            );
-            await predictor.predictNextForSeries(
-              widget.release.seriesUrl,
-              widget.release.title,
-            );
-          } catch (_) {}
         }
       }
     }

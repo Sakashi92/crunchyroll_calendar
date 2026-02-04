@@ -2712,8 +2712,14 @@ class CrunchyrollService implements EpisodeProvider {
     if (title.isEmpty) return false;
     final normalized = normalizeTitle(title);
 
-    // Look in ALL cached releases we know about
+    // Only consider releases from the last 2 weeks
+    final cutoffDate = DateTime.now().subtract(const Duration(days: 14));
+
+    // Look in cached releases from the last 2 weeks
     for (final r in _cachedReleases) {
+      // Skip releases older than 2 weeks
+      if (r.releaseTime.isBefore(cutoffDate)) continue;
+
       final rNorm = normalizeTitle(r.title);
       if (rNorm == normalized) return true;
       if (rNorm.contains(normalized) && normalized.length > 5) return true;

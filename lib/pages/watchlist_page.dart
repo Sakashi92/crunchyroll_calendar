@@ -282,6 +282,31 @@ class _WatchlistPageState extends State<WatchlistPage> {
     return false;
   }
 
+  /// Checks if anime is in simulcast, prioritizing metadata status over calendar.
+  /// 1. If airingStatus indicates RELEASING → show
+  /// 2. If airingStatus indicates FINISHED/CANCELLED → hide
+  /// 3. If no airingStatus → fall back to calendar check
+  bool _isAnimeInSimulcast(WatchlistEntry entry) {
+    final status = entry.airingStatus?.toUpperCase();
+
+    // If metadata says it's still airing, show badge
+    if (status == 'RELEASING' ||
+        status == 'AIRING' ||
+        status == 'NOT_YET_RELEASED') {
+      return true;
+    }
+
+    // If metadata says it's finished, don't show badge
+    if (status == 'FINISHED' || status == 'CANCELLED') {
+      return false;
+    }
+
+    // No status info → fall back to calendar check (last 2 weeks)
+    return CrunchyrollService().isTitleInCalendar(
+      entry.customTitle ?? entry.title,
+    );
+  }
+
   void _addAnime() async {
     // Search Dialog
     final searchController = TextEditingController();
@@ -1650,15 +1675,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                 ],
                               ),
                             ],
-                            if (CrunchyrollService().isTitleInCalendar(
-                              entry.customTitle ?? entry.title,
-                            )) ...[
+                            // Check if anime is in simulcast:
+                            // 1. If meta status says RELEASING → show badge
+                            // 2. If meta status says FINISHED/CANCELLED → hide badge
+                            // 3. If no meta status → use calendar as fallback
+                            if (_isAnimeInSimulcast(entry)) ...[
                               const SizedBox(height: 4),
                               Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Icon(
-                                    Icons.calendar_today,
+                                    Icons.live_tv,
                                     size: 14,
                                     color: Theme.of(
                                       context,
@@ -1667,7 +1694,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   const SizedBox(width: 4),
                                   Flexible(
                                     child: Text(
-                                      'Im Kalender',
+                                      'Im Simulcast',
                                       style: TextStyle(
                                         fontSize: 12,
                                         color: Theme.of(
