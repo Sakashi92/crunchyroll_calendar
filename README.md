@@ -37,6 +37,15 @@ Ein leistungsstarker, inoffizieller Anime-Veröffentlichungskalender für Crunch
    flutter run
    ```
 
+### 📦 Automatische Releases (CI/CD)
+Dieses Projekt nutzt GitHub Actions für die Automatisierung. Sobald du einen neuen Versions-Tag pushst, wird die APK automatisch gebaut und als Release veröffentlicht:
+1. Version in `pubspec.yaml` anpassen.
+2. Tag erstellen und pushen:
+   ```bash
+   git tag v0.9.0
+   git push origin v0.9.0
+   ```
+
 ## 🛠 Technologien
 
 - **Framework:** Flutter (Dart)
