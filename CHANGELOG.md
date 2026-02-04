@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.1] - 2026-02-04
+- **CI/CD**: Anpassung der APK-Benennung auf GitHub (`cr_calendar_v0.9.1.apk`).
+
 ## [0.9.0] - 2026-02-04
 - **Feature**: In-App Update System integriert. Updates können jetzt direkt über GitHub in den Einstellungen geprüft und installiert werden.
 - **CI/CD**: Vollständige Automatisierung der Releases via GitHub Actions.
