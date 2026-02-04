@@ -2,6 +2,10 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.8.9-Fix2] - 2026-02-04
+- **Test**: Verifizierung der automatischen GitHub Release-Erstellung (CI/CD).
+- **CI/CD**: GitHub Action baut nun automatisch die APK bei jedem neuen Tag.
+
 ## [0.8.9] - 2026-02-04
 
 ### Behoben
