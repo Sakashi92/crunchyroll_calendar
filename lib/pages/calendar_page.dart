@@ -228,6 +228,19 @@ class _CalendarPageState extends State<CalendarPage>
     await Future.delayed(const Duration(seconds: 3));
     if (!mounted) return;
 
+    final prefs = await SharedPreferences.getInstance();
+
+    // Prüfe ob ein Snooze-Counter gesetzt ist
+    int snoozeCounter = prefs.getInt('update_snooze_counter') ?? 0;
+
+    if (snoozeCounter > 0) {
+      // Dekrementiere den Counter
+      snoozeCounter--;
+      await prefs.setInt('update_snooze_counter', snoozeCounter);
+      // Dialog nicht anzeigen, da noch im Snooze-Modus
+      return;
+    }
+
     final updateService = GitHubUpdateService();
     final updateInfo = await updateService.checkForUpdate();
 
@@ -278,7 +291,12 @@ class _CalendarPageState extends State<CalendarPage>
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () async {
+              // Setze Snooze-Counter auf 3, damit der Dialog erst nach 3 Starts wieder erscheint
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.setInt('update_snooze_counter', 3);
+              if (context.mounted) Navigator.pop(context);
+            },
             child: const Text('SPÄTER'),
           ),
           ElevatedButton(

@@ -45,12 +45,16 @@ jobs:
       - name: Rename APK
         run: mv build/app/outputs/flutter-apk/app-release.apk build/app/outputs/flutter-apk/cr_calendar_${{ github.ref_name }}.apk
 
+      - name: Extract Latest Changelog
+        run: |
+          sed -n '/^## \[/ { :a; p; n; /^## \[/q; ba; }' CHANGELOG.md > LATEST_CHANGELOG.md
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: build/app/outputs/flutter-apk/cr_calendar_${{ github.ref_name }}.apk
           name: Release ${{ github.ref_name }}
-          body_path: CHANGELOG.md
+          body_path: LATEST_CHANGELOG.md
           draft: false
           prerelease: false
         env:
