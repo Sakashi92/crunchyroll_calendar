@@ -2,6 +2,11 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.7] - 2026-02-05
+- **UI**: Animationen beim Minimieren des Kalenders verlangsamt und sanfter gestaltet (Fade-Effekt + längere Dauer).
+- **Feat**: Neue Einstellung hinzugefügt: "Vollständiges Datum in Pillenform" (erlaubt Wechsel zwischen Kurz- und Langform).
+- **Feat**: Standardwerte für Einstellungen optimiert ("Aktuelle Episodenzahl bevorzugen" ist nun standardmäßig aktiviert).
+
 ## [0.9.6+1] - 2026-02-05
 - **UI**: Smooth Übergänge beim Wechsel zwischen Kalenderformaten (AnimatedSwitcher-Integration).
 - **Feat**: Update-Snooze-Funktion (Dialog erscheint nach "Später" erst nach dem 3. weiteren App-Start erneut).
