@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:table_calendar/table_calendar.dart';
 import 'package:intl/intl.dart';
 import '../models/anime_release.dart';
+import '../services/app_settings_service.dart';
 
 class CalendarDisplay extends StatefulWidget {
   final DateTime focusedDay;
@@ -69,8 +70,8 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
       onPointerUp: (_) => _verticalDragDelta = 0.0,
       onPointerCancel: (_) => _verticalDragDelta = 0.0,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeInOut,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeOut,
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
         decoration: BoxDecoration(
           color: useTransparentBackground
@@ -217,78 +218,81 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
 
   Widget _buildMinimizedHeader(BuildContext context) {
     final theme = Theme.of(context);
-    final isLandscape =
-        MediaQuery.of(context).orientation == Orientation.landscape;
     final selected = widget.selectedDay ?? widget.focusedDay;
     final releases = widget.eventLoader(selected);
 
-    return Center(
-      child: InkWell(
-        onTap: widget.onExpand,
-        borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(
-            color: theme.colorScheme.surfaceContainerHighest,
+    return FutureBuilder<bool>(
+      future: AppSettingsService.getFullDateInPill(),
+      builder: (context, snapshot) {
+        final useFullDate = snapshot.data ?? false;
+        final dateFormat = useFullDate ? 'EEEE, d. MMMM' : 'E, d. MMM';
+
+        return Center(
+          child: InkWell(
+            onTap: widget.onExpand,
             borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.15),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.calendar_today,
-                size: 16,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                DateFormat(
-                  isLandscape ? 'E, d. MMM' : 'EEEE, d. MMMM',
-                  'de_DE',
-                ).format(selected),
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '•',
-                style: TextStyle(
-                  color: theme.colorScheme.onSurfaceVariant.withValues(
-                    alpha: 0.5,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: theme.colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
                   ),
-                ),
+                ],
               ),
-              const SizedBox(width: 8),
-              Text(
-                releases.isEmpty
-                    ? 'Keine Releases'
-                    : '${releases.length} Release${releases.length == 1 ? '' : 's'}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: theme.colorScheme.primary,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.calendar_today,
+                    size: 16,
+                    color: theme.colorScheme.primary,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    DateFormat(dateFormat, 'de_DE').format(selected),
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '•',
+                    style: TextStyle(
+                      color: theme.colorScheme.onSurfaceVariant.withValues(
+                        alpha: 0.5,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    releases.isEmpty
+                        ? 'Keine Releases'
+                        : '${releases.length} Release${releases.length == 1 ? '' : 's'}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.keyboard_arrow_down,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
               ),
-              const SizedBox(width: 4),
-              Icon(
-                Icons.keyboard_arrow_down,
-                size: 18,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
+            ),
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }

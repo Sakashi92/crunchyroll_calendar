@@ -20,6 +20,7 @@ class AppSettingsService {
   static const String _predictionEnabledKey = 'enable_next_episode_prediction';
   static const String _preferCrunchyrollEpisodeCountKey =
       'prefer_crunchyroll_episode_count';
+  static const String _fullDateInPillKey = 'full_date_in_pill';
 
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -230,11 +231,21 @@ class AppSettingsService {
 
   static Future<bool> getPreferCrunchyrollEpisodeCount() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_preferCrunchyrollEpisodeCountKey) ?? false;
+    return prefs.getBool(_preferCrunchyrollEpisodeCountKey) ?? true;
   }
 
   static Future<void> setPreferCrunchyrollEpisodeCount(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_preferCrunchyrollEpisodeCountKey, enabled);
+  }
+
+  static Future<bool> getFullDateInPill() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_fullDateInPillKey) ?? false;
+  }
+
+  static Future<void> setFullDateInPill(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_fullDateInPillKey, enabled);
   }
 }

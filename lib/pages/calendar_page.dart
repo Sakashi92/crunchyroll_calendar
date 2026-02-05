@@ -1176,22 +1176,38 @@ class _CalendarPageState extends State<CalendarPage>
           );
 
           Widget calendarContainer = AnimatedSize(
-            duration: const Duration(milliseconds: 450),
+            duration: const Duration(milliseconds: 600),
             curve: Curves.easeInOut,
             alignment: Alignment.topCenter,
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.only(
-                  left: isLandscape ? 16 : 20,
-                  right: isLandscape ? 16 : 20,
-                  top: isLandscape ? 8 : 2,
-                  bottom: isLandscape ? 8 : 8,
-                ),
-                child: ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxWidth: isLandscape ? 700 : 500,
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 500),
+              switchInCurve: Curves.easeInOut,
+              switchOutCurve: Curves.easeInOut,
+              transitionBuilder: (Widget child, Animation<double> animation) {
+                return FadeTransition(
+                  opacity: animation,
+                  child: SizeTransition(
+                    sizeFactor: animation,
+                    axisAlignment: -1.0,
+                    child: child,
                   ),
-                  child: calendar,
+                );
+              },
+              child: Center(
+                key: ValueKey(_isCalendarMinimized),
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: isLandscape ? 16 : 20,
+                    right: isLandscape ? 16 : 20,
+                    top: isLandscape ? 8 : 2,
+                    bottom: isLandscape ? 8 : 8,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: isLandscape ? 700 : 500,
+                    ),
+                    child: calendar,
+                  ),
                 ),
               ),
             ),

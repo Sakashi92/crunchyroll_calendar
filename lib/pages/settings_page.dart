@@ -54,6 +54,7 @@ class _SettingsPageState extends State<SettingsPage> {
   String _episodeProvider = 'anilist';
   bool _predictionEnabled = false;
   bool _preferCrunchyrollEpisodeCount = false;
+  bool _fullDateInPill = false;
   String _appVersion = '';
 
   bool _isLoading = true;
@@ -90,6 +91,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final predictionEnabled = await AppSettingsService.getPredictionEnabled();
     final preferCrunchyrollEpisodeCount =
         await AppSettingsService.getPreferCrunchyrollEpisodeCount();
+    final fullDateInPill = await AppSettingsService.getFullDateInPill();
 
     final permissions = await PermissionService().checkAllPermissions();
 
@@ -106,6 +108,7 @@ class _SettingsPageState extends State<SettingsPage> {
       _episodeProvider = episodeProvider;
       _predictionEnabled = predictionEnabled;
       _preferCrunchyrollEpisodeCount = preferCrunchyrollEpisodeCount;
+      _fullDateInPill = fullDateInPill;
 
       _permissions = permissions;
       _isLoading = false;
@@ -266,6 +269,14 @@ class _SettingsPageState extends State<SettingsPage> {
     await AppSettingsService.setPreferCrunchyrollEpisodeCount(enabled);
     setState(() {
       _preferCrunchyrollEpisodeCount = enabled;
+    });
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _saveFullDateInPill(bool enabled) async {
+    await AppSettingsService.setFullDateInPill(enabled);
+    setState(() {
+      _fullDateInPill = enabled;
     });
     widget.onSettingsChanged?.call();
   }
@@ -632,6 +643,17 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               value: _autoMinimizeCalendar,
               onChanged: (v) => _saveAutoMinimizeCalendar(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: SwitchListTile(
+              title: const Text('Vollständiges Datum in Pillenform'),
+              subtitle: const Text(
+                'Zeigt das vollständige Datum (z.B. "Mittwoch, 5. Februar") statt der Kurzform (z.B. "Mi, 5. Feb") in der minimierten Kalenderansicht an',
+              ),
+              value: _fullDateInPill,
+              onChanged: (v) => _saveFullDateInPill(v),
             ),
           ),
           Padding(

@@ -4,6 +4,7 @@ import 'package:intl/intl.dart';
 import '../models/anime_release.dart';
 import '../services/watchlist_service.dart';
 import '../services/crunchyroll_service.dart';
+import '../services/app_settings_service.dart';
 import '../pages/search_page.dart';
 import '../pages/watchlist_page.dart';
 import 'anime_details_dialog.dart';
@@ -67,70 +68,80 @@ class CalendarAppBar extends StatelessWidget implements PreferredSizeWidget {
       centerTitle: false,
       title: baseTitle,
       flexibleSpace: (isLandscape && isMinimized)
-          ? SafeArea(
-              child: Center(
-                child: InkWell(
-                  onTap: onToggleExpand,
-                  borderRadius: BorderRadius.circular(30),
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
+          ? FutureBuilder<bool>(
+              future: AppSettingsService.getFullDateInPill(),
+              builder: (context, snapshot) {
+                final useFullDate = snapshot.data ?? false;
+                final dateFormat = useFullDate ? 'EEEE, d. MMMM' : 'E, d. MMM';
+
+                return SafeArea(
+                  child: Center(
+                    child: InkWell(
+                      onTap: onToggleExpand,
                       borderRadius: BorderRadius.circular(30),
-                      border: Border.all(
-                        color: theme.colorScheme.outline.withValues(alpha: 0.1),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 6,
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                            color: theme.colorScheme.outline.withValues(
+                              alpha: 0.1,
+                            ),
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.calendar_today,
+                              size: 14,
+                              color: theme.colorScheme.primary,
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              DateFormat(dateFormat, 'de_DE').format(activeDay),
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              '•',
+                              style: TextStyle(
+                                color: theme.colorScheme.onSurfaceVariant
+                                    .withValues(alpha: 0.5),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Text(
+                              currentReleases.isEmpty
+                                  ? 'Kein Release'
+                                  : '${currentReleases.length} Release${currentReleases.length == 1 ? '' : 's'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                                color: theme.colorScheme.primary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(
+                              Icons.keyboard_arrow_down,
+                              size: 16,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          Icons.calendar_today,
-                          size: 14,
-                          color: theme.colorScheme.primary,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          DateFormat('E, d. MMM', 'de_DE').format(activeDay),
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          '•',
-                          style: TextStyle(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.5),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          currentReleases.isEmpty
-                              ? 'Kein Release'
-                              : '${currentReleases.length} Release${currentReleases.length == 1 ? '' : 's'}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w500,
-                            color: theme.colorScheme.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          Icons.keyboard_arrow_down,
-                          size: 16,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ],
-                    ),
                   ),
-                ),
-              ),
+                );
+              },
             )
           : null,
       actions: [
