@@ -159,39 +159,47 @@ class _CalendarDisplayState extends State<CalendarDisplay> {
                     ),
                   ),
                   if (hasPrediction)
-                    Align(
-                      alignment: Alignment.bottomRight,
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 6, right: 6),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 4,
-                            vertical: 1,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(
-                              color: Theme.of(context).colorScheme.surface,
-                              width: 1.0,
+                    Builder(
+                      builder: (context) {
+                        final isLandscape =
+                            MediaQuery.of(context).orientation ==
+                            Orientation.landscape;
+                        return Align(
+                          alignment: Alignment.bottomRight,
+                          child: Padding(
+                            padding: isLandscape
+                                ? const EdgeInsets.only(bottom: 4, right: 28)
+                                : const EdgeInsets.only(bottom: 6, right: 6),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 4,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Theme.of(context).colorScheme.primary,
+                                borderRadius: BorderRadius.circular(6),
+                                border: Border.all(
+                                  color: Theme.of(context).colorScheme.surface,
+                                  width: 1.0,
+                                ),
+                              ),
+                              child: Text(
+                                'V',
+                                style: TextStyle(
+                                  color:
+                                      Theme.of(context).colorScheme.primary
+                                              .computeLuminance() >
+                                          0.5
+                                      ? Colors.black
+                                      : Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
                             ),
                           ),
-                          child: Text(
-                            'V',
-                            style: TextStyle(
-                              color:
-                                  Theme.of(
-                                        context,
-                                      ).colorScheme.primary.computeLuminance() >
-                                      0.5
-                                  ? Colors.black
-                                  : Colors.white,
-                              fontSize: 8,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ),
+                        );
+                      },
                     ),
                 ],
               );

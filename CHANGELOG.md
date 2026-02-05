@@ -5,6 +5,10 @@ Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokument
 ## [0.9.6] - 2026-02-05
 - **Feat**: Responsives Grid-Layout für Anime-Releases hinzugefügt (automatische Spalten bei breitem Fenster oder Landscape).
 - **Feat**: Dynamische Landscape-Optimierung (Kalender wechselt im Querformat automatisch zur Wochenansicht und wird zentriert).
+- **UI**: Expandierter Kalender hat nun einen abgerundeten Hintergrund mit Schatten, der beim Scrollen transparent wird.
+- **UI**: Wochentage im Kalender sind jetzt dunkler und besser lesbar.
+- **UI**: Kalender-Abstände und Tageskreise optimiert.
+- **UI**: Vorhersage-Badge ("V") Position für Portrait und Landscape separat angepasst.
 - **UI**: Fenstergröße unter Windows auf ein Smartphone-ähnliches Format begrenzt (450x850 px).
 - **Fix**: Absturz im GitHub-Update-Service auf Windows behoben (`OtaStatus.UNKNOWN` durch `INTERNAL_ERROR` ersetzt).
 
