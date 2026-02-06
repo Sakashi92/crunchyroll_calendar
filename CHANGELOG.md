@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.8+1] - 2026-02-07
+- **Fix**: Problem behoben, bei dem der "Im Simulcast" Status nach dem Umbennen eines Anime verschwand.
+
 ## [0.9.8] - 2026-02-07
 - **UI**: Schwarzes "+" Icon in der Anime-Suchliste beim manuellen Hinzufügen korrigiert - verwendet jetzt die korrekte Theme-Farbe.
 - **Feat**: Umfassendes Einstellungsmanagement mit dedizierten Services für App-Einstellungen implementiert.

@@ -324,9 +324,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
     // Nur Anime, die tatsächlich aktuell im Crunchyroll-Kalender stehen,
     // gelten als Simulcast. Metadaten-Infos wie "AIRING" werden ignoriert,
     // um die Konsistenz mit der Hauptseite zu gewährleisten.
-    return CrunchyrollService().isTitleInCalendar(
-      entry.customTitle ?? entry.title,
-    );
+    return CrunchyrollService().isTitleInCalendar(entry.title);
   }
 
   void _addAnime() async {
