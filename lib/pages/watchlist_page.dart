@@ -33,6 +33,8 @@ class _WatchlistPageState extends State<WatchlistPage> {
   late Watchlist watchlist;
   late List<WatchlistEntry> _displayEntries;
   SortMode _sortMode = SortMode.addedAtDesc;
+  bool _showOnlySimulcast = false;
+  bool _showOnlyCatchUp = false;
   bool _fabVisible = true;
   late ScrollController _scrollController;
 
@@ -87,15 +89,21 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
     // Load watchlist and refresh totals asynchronously
     _initAsync();
-    // Load saved sort mode then apply
-    AppSettingsService.getWatchlistSortModeIndex()
-        .then((idx) {
-          if (!mounted) {
-            return;
-          }
+    // Load saved sort mode and filters then apply
+    Future.wait([
+          AppSettingsService.getWatchlistSortModeIndex(),
+          AppSettingsService.getWatchlistOnlySimulcast(),
+          AppSettingsService.getWatchlistOnlyCatchUp(),
+        ])
+        .then((results) {
+          if (!mounted) return;
           setState(() {
+            final sortIdx = results[0] as int;
+            _showOnlySimulcast = results[1] as bool;
+            _showOnlyCatchUp = results[2] as bool;
+
             _sortMode = SortMode.values.elementAt(
-              idx.clamp(0, SortMode.values.length - 1),
+              sortIdx.clamp(0, SortMode.values.length - 1),
             );
             _applySort();
           });
@@ -235,6 +243,20 @@ class _WatchlistPageState extends State<WatchlistPage> {
       }).toList();
     }
 
+    // Filter by Simulcast
+    if (_showOnlySimulcast) {
+      temp = temp.where((e) => _isAnimeInSimulcast(e)).toList();
+    }
+
+    // Filter by Catch-up (Rückstand)
+    if (_showOnlyCatchUp) {
+      temp = temp
+          .where(
+            (e) => e.totalEpisodes > 0 && e.episodesWatched < e.totalEpisodes,
+          )
+          .toList();
+    }
+
     if (_sortMode == SortMode.addedAtDesc) {
       temp.sort((a, b) {
         final da = a.addedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -287,21 +309,9 @@ class _WatchlistPageState extends State<WatchlistPage> {
   /// 2. If airingStatus indicates FINISHED/CANCELLED → hide
   /// 3. If no airingStatus → fall back to calendar check
   bool _isAnimeInSimulcast(WatchlistEntry entry) {
-    final status = entry.airingStatus?.toUpperCase();
-
-    // If metadata says it's still airing, show badge
-    if (status == 'RELEASING' ||
-        status == 'AIRING' ||
-        status == 'NOT_YET_RELEASED') {
-      return true;
-    }
-
-    // If metadata says it's finished, don't show badge
-    if (status == 'FINISHED' || status == 'CANCELLED') {
-      return false;
-    }
-
-    // No status info → fall back to calendar check (last 2 weeks)
+    // Nur Anime, die tatsächlich aktuell im Crunchyroll-Kalender stehen,
+    // gelten als Simulcast. Metadaten-Infos wie "AIRING" werden ignoriert,
+    // um die Konsistenz mit der Hauptseite zu gewährleisten.
     return CrunchyrollService().isTitleInCalendar(
       entry.customTitle ?? entry.title,
     );
@@ -616,6 +626,18 @@ class _WatchlistPageState extends State<WatchlistPage> {
           (meta.hasCrunchyroll == true) ||
           (meta.siteUrl?.contains('crunchyroll.com') == true) ||
           (meta.bannerImage?.contains('crunchyroll.com') == true),
+      predictionsEnabled: _isAnimeInSimulcast(
+        WatchlistEntry(
+          animeId: id,
+          title: title,
+          episodesWatched: 0,
+          totalEpisodes: totalEpisodes,
+          isCrunchyroll:
+              (meta.hasCrunchyroll == true) ||
+              (meta.siteUrl?.contains('crunchyroll.com') == true) ||
+              (meta.bannerImage?.contains('crunchyroll.com') == true),
+        ),
+      ),
     );
 
     // Auto-fetch status if possible
@@ -1419,29 +1441,86 @@ class _WatchlistPageState extends State<WatchlistPage> {
           ),
           // AniList forecast removed — calendar icon intentionally omitted
           // Sort button
-          PopupMenuButton<SortMode>(
-            icon: const Icon(Icons.sort),
-            tooltip: 'Sortieren',
-            onSelected: (m) {
-              setState(() {
-                _sortMode = m;
-                _displayEntries = List.from(watchlist.entries);
-                _applySort();
-              });
-              // persist selection
-              AppSettingsService.setWatchlistSortModeIndex(m.index).catchError((
-                e,
-              ) {
-                if (kDebugMode) {
-                  print('Failed to save watchlist sort mode: $e');
-                }
-              });
+          PopupMenuButton<dynamic>(
+            icon: const Icon(Icons.tune),
+            tooltip: 'Filter & Sortieren',
+            onSelected: (val) {
+              if (val is SortMode) {
+                setState(() {
+                  _sortMode = val;
+                  _applySort();
+                });
+                AppSettingsService.setWatchlistSortModeIndex(
+                  val.index,
+                ).catchError((e) {
+                  if (kDebugMode) {
+                    print('Failed to save watchlist sort mode: $e');
+                  }
+                });
+              } else if (val == 'toggle_simulcast') {
+                setState(() {
+                  _showOnlySimulcast = !_showOnlySimulcast;
+                  _applySort();
+                });
+                AppSettingsService.setWatchlistOnlySimulcast(
+                  _showOnlySimulcast,
+                ).catchError((e) {
+                  if (kDebugMode) {
+                    print('Failed to save watchlist simulcast filter: $e');
+                  }
+                });
+              } else if (val == 'toggle_catchup') {
+                setState(() {
+                  _showOnlyCatchUp = !_showOnlyCatchUp;
+                  _applySort();
+                });
+                AppSettingsService.setWatchlistOnlyCatchUp(
+                  _showOnlyCatchUp,
+                ).catchError((e) {
+                  if (kDebugMode) {
+                    print('Failed to save watchlist catch-up filter: $e');
+                  }
+                });
+              }
             },
             itemBuilder: (ctx) => [
+              PopupMenuItem(
+                enabled: false,
+                child: Text(
+                  'FILTER',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              CheckedPopupMenuItem(
+                value: 'toggle_simulcast',
+                checked: _showOnlySimulcast,
+                child: Text('Nur Simulcast'),
+              ),
+              CheckedPopupMenuItem(
+                value: 'toggle_catchup',
+                checked: _showOnlyCatchUp,
+                child: Text('Nur mit Rückstand'),
+              ),
+              const PopupMenuDivider(),
+              PopupMenuItem(
+                enabled: false,
+                child: Text(
+                  'SORTIERUNG',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
               CheckedPopupMenuItem(
                 value: SortMode.addedAtDesc,
                 checked: _sortMode == SortMode.addedAtDesc,
-                child: Text('Datum: zuletzt hinzugefügt'),
+                child: Text('Datum: Neu zuerst'),
               ),
               CheckedPopupMenuItem(
                 value: SortMode.alphabet,
@@ -1490,13 +1569,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 if (entry.status == WatchStatus.watching &&
-                                    (CrunchyrollService().isTitleInCalendar(
-                                          entry.title,
-                                        ) ||
-                                        (entry.airingStatus?.toUpperCase() !=
-                                                'FINISHED' &&
-                                            entry.airingStatus?.toUpperCase() !=
-                                                'CANCELLED')))
+                                    _isAnimeInSimulcast(entry))
                                   IconButton(
                                     icon: Icon(
                                       entry.notificationsEnabled
@@ -1535,10 +1608,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                                   ),
                                 ),
                                 if (entry.status == WatchStatus.watching &&
-                                    (CrunchyrollService().isTitleInCalendar(
-                                          entry.title,
-                                        ) ||
-                                        _isCrunchyrollItem(entry)))
+                                    _isAnimeInSimulcast(entry))
                                   IconButton(
                                     icon: Icon(
                                       entry.predictionsEnabled

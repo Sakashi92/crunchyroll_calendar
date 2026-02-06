@@ -510,6 +510,10 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           storedCustomTitle = await CustomSeriesTitleRepository().getTitle(id);
         } catch (_) {}
 
+        final bool isSimulcast = widget.crunchyrollService.isTitleInCalendar(
+          storedCustomTitle ?? widget.release.title,
+        );
+
         final entry = WatchlistEntry(
           animeId: id,
           title: widget.release.title,
@@ -519,6 +523,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
           anilistId: autoId,
           customTitle: storedCustomTitle,
           addedAt: DateTime.now(),
+          predictionsEnabled: isSimulcast,
+          isCrunchyroll: widget.isCrunchyroll,
         );
         ws.watchlist.addEntry(entry);
         await ws.saveWatchlist();

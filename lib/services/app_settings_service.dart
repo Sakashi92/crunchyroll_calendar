@@ -21,6 +21,8 @@ class AppSettingsService {
   static const String _preferCrunchyrollEpisodeCountKey =
       'prefer_crunchyroll_episode_count';
   static const String _fullDateInPillKey = 'full_date_in_pill';
+  static const String _watchlistOnlySimulcastKey = 'watchlist_only_simulcast';
+  static const String _watchlistOnlyCatchUpKey = 'watchlist_only_catchup';
 
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -247,5 +249,25 @@ class AppSettingsService {
   static Future<void> setFullDateInPill(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_fullDateInPillKey, enabled);
+  }
+
+  static Future<bool> getWatchlistOnlySimulcast() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_watchlistOnlySimulcastKey) ?? false;
+  }
+
+  static Future<void> setWatchlistOnlySimulcast(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_watchlistOnlySimulcastKey, enabled);
+  }
+
+  static Future<bool> getWatchlistOnlyCatchUp() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_watchlistOnlyCatchUpKey) ?? false;
+  }
+
+  static Future<void> setWatchlistOnlyCatchUp(bool enabled) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_watchlistOnlyCatchUpKey, enabled);
   }
 }

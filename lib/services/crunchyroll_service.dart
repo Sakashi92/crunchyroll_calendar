@@ -2806,8 +2806,8 @@ class CrunchyrollService implements EpisodeProvider {
 
       final rNorm = normalizeTitle(r.title);
       if (rNorm == normalized) return true;
-      if (rNorm.contains(normalized) && normalized.length > 5) return true;
-      if (normalized.contains(rNorm) && rNorm.length > 5) return true;
+      if (rNorm.contains(normalized) && normalized.length >= 8) return true;
+      if (normalized.contains(rNorm) && rNorm.length >= 8) return true;
     }
     return false;
   }
