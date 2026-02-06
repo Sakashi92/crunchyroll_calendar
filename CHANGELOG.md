@@ -2,6 +2,12 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.8] - 2026-02-07
+- **UI**: Schwarzes "+" Icon in der Anime-Suchliste beim manuellen Hinzufügen korrigiert - verwendet jetzt die korrekte Theme-Farbe.
+- **Feat**: Umfassendes Einstellungsmanagement mit dedizierten Services für App-Einstellungen implementiert.
+- **Feat**: AniList, Crunchyroll und Kitsu Services für Metadaten-Abfrage hinzugefügt.
+- **Refactor**: Verbesserte Service-Architektur mit modularen API-Komponenten.
+
 ## [0.9.7] - 2026-02-05
 - **UI**: Animationen beim Minimieren des Kalenders verlangsamt und sanfter gestaltet (Fade-Effekt + längere Dauer).
 - **Feat**: Neue Einstellung hinzugefügt: "Vollständiges Datum in Pillenform" (erlaubt Wechsel zwischen Kurz- und Langform).
