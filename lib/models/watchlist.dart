@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 
 enum WatchStatus { watching, completed, paused, dropped }
 
+enum EpisodeCountSource { auto, crunchyroll, metadata }
+
 class WatchlistEntry {
   String animeId; // Not final anymore to allow URL updates
   final String title;
@@ -19,6 +21,7 @@ class WatchlistEntry {
   bool predictionsEnabled;
   String? airingStatus; // Added field for airing status (e.g. FINISHED)
   String? customTitle; // Added field for user-defined anime title
+  EpisodeCountSource episodeCountSource;
 
   WatchlistEntry({
     required this.animeId,
@@ -37,6 +40,7 @@ class WatchlistEntry {
     this.predictionsEnabled = true,
     this.airingStatus,
     this.customTitle,
+    this.episodeCountSource = EpisodeCountSource.auto,
   });
 
   WatchlistEntry copyWith({
@@ -54,8 +58,8 @@ class WatchlistEntry {
     DateTime? addedAt,
     bool? isCrunchyroll,
     bool? predictionsEnabled,
-    String? airingStatus,
     String? customTitle,
+    EpisodeCountSource? episodeCountSource,
   }) {
     return WatchlistEntry(
       animeId: animeId ?? this.animeId,
@@ -74,6 +78,7 @@ class WatchlistEntry {
       predictionsEnabled: predictionsEnabled ?? this.predictionsEnabled,
       airingStatus: airingStatus ?? this.airingStatus,
       customTitle: customTitle ?? this.customTitle,
+      episodeCountSource: episodeCountSource ?? this.episodeCountSource,
     );
   }
 }

@@ -188,6 +188,7 @@ class WatchlistService {
             'predictionsEnabled': e.predictionsEnabled,
             'airingStatus': e.airingStatus,
             'customTitle': e.customTitle,
+            'episodeCountSource': e.episodeCountSource.index,
           },
         )
         .toList();
@@ -489,72 +490,105 @@ class WatchlistService {
       }
     }
 
-    if (meta != null) {
-      bool changed = false;
+    if (meta == null) {
+      if (kDebugMode) {
+        print('⚠️ [SYNC] All metadata providers failed for "${entry.title}"');
+      }
+    }
 
-      // Update airing status
-      if (meta.status != null && meta.status != entry.airingStatus) {
-        entry.airingStatus = meta.status;
+    bool changed = false;
+
+    // 1. Update airing status if metadata available
+    if (meta != null &&
+        meta.status != null &&
+        meta.status != entry.airingStatus) {
+      entry.airingStatus = meta.status;
+      changed = true;
+    }
+
+    // 2. Update total episodes if Auto-Sync is on or missing (0)
+    if (entry.totalEpisodes == 0 || entry.autoSyncTotal) {
+      // Get the highest episode number from Crunchyroll calendar
+      final int maxEp =
+          await cr.getMaxEpisodeForSeries(entry.animeId, entry.title) ?? 0;
+
+      // Get metadata total if available
+      int? metaTotal = meta?.totalEpisodes;
+
+      // NEW: Calculate from "Next Airing Episode" (NextEp - 1 = CurrentEp)
+      int? calculatedFromAiring;
+      if (meta?.nextEpisodeNumber != null) {
+        final nextNum = int.tryParse(meta!.nextEpisodeNumber!);
+        if (nextNum != null && nextNum > 1) {
+          calculatedFromAiring = nextNum - 1;
+        }
+      }
+
+      // PRIORITIZE "Next Airing" calculation if available
+      if (calculatedFromAiring != null) {
+        metaTotal = calculatedFromAiring;
+      }
+
+      final bool preferCrCount =
+          await AppSettingsService.getPreferCrunchyrollEpisodeCount();
+
+      int currentTotal = entry.totalEpisodes;
+      int targetTotal = currentTotal;
+
+      final bool isFinished =
+          meta?.status?.toUpperCase() == 'FINISHED' ||
+          meta?.status?.toUpperCase() == 'CANCELLED';
+
+      final bool forceCr =
+          entry.episodeCountSource == EpisodeCountSource.crunchyroll;
+      final bool forceMeta =
+          entry.episodeCountSource == EpisodeCountSource.metadata;
+
+      // DECISION LOGIC
+      if (forceCr) {
+        // Source: FORCED Crunchyroll
+        if (maxEp > 0) targetTotal = maxEp;
+      } else if (forceMeta) {
+        // Source: FORCED Metadata
+        if (metaTotal != null && metaTotal > 0) targetTotal = metaTotal;
+      } else if (preferCrCount && !isFinished) {
+        // Source: Auto (Global CR preferred, not finished)
+        // If we have a reliable count from "Next Airing", and it's much higher than maxEp,
+        // it's likely maxEp is just a partial match or the series is long-running.
+        if (calculatedFromAiring != null && calculatedFromAiring > maxEp) {
+          targetTotal = calculatedFromAiring;
+        } else if (maxEp > 0) {
+          targetTotal = maxEp;
+        } else if (metaTotal != null && metaTotal > 0) {
+          // Fallback to meta if CR has nothing
+          targetTotal = metaTotal;
+        }
+      } else {
+        // Source: Auto (Global Meta preferred OR is finished)
+        if (metaTotal != null && metaTotal > 0) {
+          targetTotal = metaTotal;
+        } else if (maxEp > 0) {
+          // Fallback to CR if Meta has nothing
+          targetTotal = maxEp;
+        }
+      }
+
+      // Only update if changed
+      if (targetTotal > 0 && entry.totalEpisodes != targetTotal) {
+        entry.totalEpisodes = targetTotal;
         changed = true;
-      }
-
-      // Update total episodes if missing or auto-sync is on
-      // Update total episodes if missing or auto-sync is on
-      if (entry.totalEpisodes == 0 || entry.autoSyncTotal) {
-        // Logik-Änderung: Wir holen uns erst die Anzahl der releasten Folgen aus dem Kalender (maxEp).
-        // ABER wir überschreiben den Total-Wert nur, wenn maxEp > meta.totalEpisodes ist,
-        // oder wenn meta.totalEpisodes gar nicht verfügbar ist.
-        // Das fixt das Problem, dass bei Simulcasts mit 12 Folgen anfangs "1" steht,
-        // weil erst 1 Folge released ist.
-
-        // Logik-Änderung: Wir holen uns die höchste Episodennummer direkt via Service.
-        // Der Service durchsucht alle Monate und beherrscht fuzzy matching.
-        final int maxEp =
-            await cr.getMaxEpisodeForSeries(entry.animeId, entry.title) ?? 0;
-
-        // Determine the best source of truth for "Total Episodes"
-        int? metaTotal = meta.totalEpisodes;
-
-        final bool preferCrCount =
-            await AppSettingsService.getPreferCrunchyrollEpisodeCount();
-
-        int currentTotal = entry.totalEpisodes;
-        int targetTotal = currentTotal;
-
-        if (preferCrCount) {
-          // If enabled, we strictly prefer the Crunchyroll count (maxEp)
-          // UNLESS maxEp is 0 (no data), then we might fallback or keep current
-          if (maxEp > 0) {
-            targetTotal = maxEp;
-          } else if (metaTotal != null && metaTotal > 0 && currentTotal == 0) {
-            // Fallback to meta only if we have NOTHING and CR is empty
-            targetTotal = metaTotal;
-          }
-        } else {
-          // New behavior: If "Prefer CR count" is OFF, we TRUST the Metadata count.
-          // The user explicitly requested to "read out generally all max episodes per meta".
-          if (metaTotal != null && metaTotal > 0) {
-            targetTotal = metaTotal;
-          } else if (maxEp > 0 && maxEp > targetTotal) {
-            // Fallback to calendar if meta is empty but calendar has something
-            targetTotal = maxEp;
-          }
-        }
-
-        // Only update if changed (handling the case where we might reduce the count if preferCrCount is on)
-        if (targetTotal > 0 && entry.totalEpisodes != targetTotal) {
-          entry.totalEpisodes = targetTotal;
-          changed = true;
-          if (kDebugMode) {
-            print(
-              '✓ [SYNC] Updated "${entry.title}" episodes to $targetTotal (Mode: ${preferCrCount ? 'CR-Only' : 'Max-All'}, Meta: $metaTotal, Cal: $maxEp)',
-            );
-          }
+        if (kDebugMode) {
+          print(
+            '✓ [SYNC] Updated "${entry.title}" episodes to $targetTotal '
+            '(Source: ${entry.episodeCountSource.name}, Global: ${preferCrCount ? 'CR' : 'Meta'}, '
+            'Finished: $isFinished, MetaVal: $metaTotal, CRVal: $maxEp)',
+          );
         }
       }
+    }
 
-      // AUTO-DEACTIVATION LOGIC 1: Metadata Providers
-      // If finished/cancelled AND not in Crunchyroll calendar
+    // 3. Auto-Deactivation Logic (Finished series)
+    if (meta != null) {
       final isFinished =
           meta.status?.toUpperCase() == 'FINISHED' ||
           meta.status?.toUpperCase() == 'CANCELLED';
@@ -562,75 +596,59 @@ class WatchlistService {
         final inCalendar = cr.isTitleInCalendar(entry.title);
         if (!inCalendar) {
           if (entry.notificationsEnabled || entry.predictionsEnabled) {
-            if (kDebugMode) {
-              print(
-                '🛑 [SYNC] Deactivating "${entry.title}" - Finished and NOT in CR calendar',
-              );
-            }
             entry.notificationsEnabled = false;
             entry.predictionsEnabled = false;
-            // Clean up predictions
             cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
             changed = true;
+            if (kDebugMode) {
+              print(
+                '🛑 [SYNC] Deactivated "${entry.title}" - Finished and not in CR calendar',
+              );
+            }
           }
         }
       }
+    }
 
-      // AUTO-DEACTIVATION LOGIC 2: Calendar Stale Check (User requested)
-      // If last release was > 4 weeks ago or not found, deactivate.
-      if (!isFinished) {
-        try {
-          final cachedReleases = await cr.getReleasesForSeriesCached(
-            entry.animeId,
-            entry.title,
-          );
-          // Filter out predictions to get actual airing history
-          final actualReleases = cachedReleases
-              .where((r) => !r.isPredicted)
-              .toList();
+    // 4. Stale Logic (Not finished but no releases)
+    final bool isActuallyFinished = meta?.status?.toUpperCase() == 'FINISHED';
+    if (!isActuallyFinished) {
+      try {
+        final cachedReleases = await cr.getReleasesForSeriesCached(
+          entry.animeId,
+          entry.title,
+        );
+        final actualReleases = cachedReleases
+            .where((r) => !r.isPredicted)
+            .toList();
 
-          if (actualReleases.isEmpty) {
-            if (kDebugMode) {
-              print(
-                '🛑 [SYNC] No past releases found for "${entry.title}" - Deactivating',
-              );
-            }
+        if (actualReleases.isEmpty) {
+          // No past releases found at all
+          entry.airingStatus = 'FINISHED';
+          entry.notificationsEnabled = false;
+          entry.predictionsEnabled = false;
+          cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
+          changed = true;
+        } else {
+          actualReleases.sort((a, b) => b.releaseTime.compareTo(a.releaseTime));
+          final latest = actualReleases.first.releaseTime;
+          final diff = DateTime.now().difference(latest).inDays;
+
+          if (diff > 28) {
+            // 4 weeks
             entry.airingStatus = 'FINISHED';
             entry.notificationsEnabled = false;
             entry.predictionsEnabled = false;
             cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
             changed = true;
-          } else {
-            // Find latest actual release
-            actualReleases.sort(
-              (a, b) => b.releaseTime.compareTo(a.releaseTime),
-            );
-            final latest = actualReleases.first.releaseTime;
-            final diff = DateTime.now().difference(latest).inDays;
-
-            if (diff > 28) {
-              // 4 weeks
-              if (kDebugMode) {
-                print(
-                  '🛑 [SYNC] Last release for "${entry.title}" was $diff days ago - Deactivating',
-                );
-              }
-              entry.airingStatus = 'FINISHED';
-              entry.notificationsEnabled = false;
-              entry.predictionsEnabled = false;
-              cr.removePredictedReleasesForSeries(entry.animeId, entry.title);
-              changed = true;
-            }
           }
-        } catch (e) {
-          if (kDebugMode) print('⚠️ [SYNC] Calendar stale check failed: $e');
         }
-      }
+      } catch (_) {}
+    }
 
-      if (changed) {
-        watchlist.updateEntry(entry);
-        saveWatchlistDebounced();
-      }
+    if (changed) {
+      watchlist.updateEntry(entry);
+      saveWatchlistDebounced();
     }
   }
 

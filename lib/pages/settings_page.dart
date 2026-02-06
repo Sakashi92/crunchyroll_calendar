@@ -672,7 +672,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: SwitchListTile(
               title: const Text('Aktuelle Episodenanzahl bevorzugen'),
               subtitle: const Text(
-                'Zeigt nur die Anzahl der bereits veröffentlichten Folgen an (Kalender), statt der geplanten Gesamtanzahl (Info-Datenbank)',
+                'Bevorzugt den Crunchyroll-Kalender (für Simulcasts). Bei beendeten Serien oder Ausnahmen wird die Metadaten-Datenbank (AniList/Kitsu) verwendet.',
               ),
               value: _preferCrunchyrollEpisodeCount,
               onChanged: (v) => _savePreferCrunchyrollEpisodeCount(v),

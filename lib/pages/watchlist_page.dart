@@ -231,6 +231,17 @@ class _WatchlistPageState extends State<WatchlistPage> {
     }
   }
 
+  String _episodeSourceLabel(EpisodeCountSource source) {
+    switch (source) {
+      case EpisodeCountSource.auto:
+        return 'Auto (Empfohlen)';
+      case EpisodeCountSource.crunchyroll:
+        return 'Crunchyroll Kalender';
+      case EpisodeCountSource.metadata:
+        return 'Metadaten (Anilist/Kitsu)';
+    }
+  }
+
   void _applySort() {
     List<WatchlistEntry> temp = List.from(watchlist.entries);
 
@@ -961,6 +972,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
     final noteController = TextEditingController(text: entry.note ?? '');
     WatchStatus status = entry.status;
     String currentId = entry.animeId;
+    EpisodeCountSource source = entry.episodeCountSource;
 
     await showDialog(
       context: context,
@@ -980,7 +992,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                 top: Radius.circular(16),
               ),
             ),
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: Text(
               entry.customTitle ?? entry.title,
               style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18),
@@ -1016,7 +1028,101 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   if (s != null) setState(() => status = s);
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
+
+              // EPISODE SOURCE DROPDOWN
+              DropdownButtonFormField<EpisodeCountSource>(
+                value: source,
+                decoration: const InputDecoration(
+                  labelText: 'Episodenzahl-Quelle',
+                  border: OutlineInputBorder(),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                ),
+                items: EpisodeCountSource.values
+                    .map(
+                      (s) => DropdownMenuItem(
+                        value: s,
+                        child: Text(_episodeSourceLabel(s)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (s) async {
+                  if (s != null) {
+                    setState(() => source = s);
+                    // Live-Vorschau der Episodenzahl versuchen
+                    if (autoSync) {
+                      try {
+                        final cr = CrunchyrollService();
+                        final ani = AnilistService();
+                        int? newTotal;
+
+                        if (s == EpisodeCountSource.crunchyroll) {
+                          newTotal = await cr.getMaxEpisodeForSeries(
+                            entry.animeId,
+                            entry.title,
+                          );
+                        } else if (s == EpisodeCountSource.metadata) {
+                          final meta = await ani.fetchSeriesMetadata(
+                            entry.animeId,
+                            entry.title,
+                          );
+                          newTotal = meta?.totalEpisodes;
+                          // Support nextEp - 1
+                          if (meta?.nextEpisodeNumber != null) {
+                            final n = int.tryParse(meta!.nextEpisodeNumber!);
+                            if (n != null && n > 1) {
+                              final calced = n - 1;
+                              if (newTotal == null || calced > newTotal) {
+                                newTotal = calced;
+                              }
+                            }
+                          }
+                        } else if (s == EpisodeCountSource.auto) {
+                          // Auto Mode Prediction
+                          final meta = await ani.fetchSeriesMetadata(
+                            entry.animeId,
+                            entry.title,
+                          );
+                          final crMax =
+                              await cr.getMaxEpisodeForSeries(
+                                entry.animeId,
+                                entry.title,
+                              ) ??
+                              0;
+                          final preferCr =
+                              await AppSettingsService.getPreferCrunchyrollEpisodeCount();
+
+                          int? mTotal = meta?.totalEpisodes;
+                          if (meta?.nextEpisodeNumber != null) {
+                            final n = int.tryParse(meta!.nextEpisodeNumber!);
+                            if (n != null && n > 1) {
+                              mTotal = n - 1;
+                            }
+                          }
+
+                          if (preferCr) {
+                            if (mTotal != null && mTotal > crMax) {
+                              newTotal = mTotal;
+                            } else {
+                              newTotal = crMax > 0 ? crMax : mTotal;
+                            }
+                          } else {
+                            newTotal = mTotal ?? crMax;
+                          }
+                        }
+
+                        if (newTotal != null && newTotal > 0 && ctx.mounted) {
+                          setState(() => total = newTotal!);
+                        }
+                      } catch (_) {}
+                    }
+                  }
+                },
+              ),
+              const SizedBox(height: 12),
 
               // PROGRESS CARD
               Card(
@@ -1089,7 +1195,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                           ),
                         ],
                       ),
-                      const Divider(height: 24),
+                      const Divider(height: 16),
                       // TOTAL EPISODES
                       Row(
                         children: [
@@ -1207,41 +1313,48 @@ class _WatchlistPageState extends State<WatchlistPage> {
                       ),
                       if (!autoSync)
                         Padding(
-                          padding: const EdgeInsets.only(top: 8.0),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.end,
-                            children: [
-                              TextButton.icon(
-                                onPressed: () async {
-                                  setState(() => autoSync = true);
-                                  try {
-                                    final crunch = CrunchyrollService();
-                                    final known = await crunch
-                                        .getMaxEpisodeForSeries(
-                                          entry.animeId,
-                                          entry.title,
-                                        );
-                                    if (known != null && known > total) {
-                                      if (ctx.mounted) {
-                                        setState(() => total = known);
-                                      }
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () async {
+                                setState(() => autoSync = true);
+                                try {
+                                  final crunch = CrunchyrollService();
+                                  final known = await crunch
+                                      .getMaxEpisodeForSeries(
+                                        entry.animeId,
+                                        entry.title,
+                                      );
+                                  if (known != null && known > total) {
+                                    if (ctx.mounted) {
+                                      setState(() => total = known);
                                     }
-                                  } catch (_) {}
-                                },
-                                icon: const Icon(Icons.sync, size: 16),
-                                label: const Text('Auto-Sync aktivieren'),
-                                style: TextButton.styleFrom(
-                                  visualDensity: VisualDensity.compact,
+                                  }
+                                } catch (_) {}
+                              },
+                              icon: const Icon(Icons.sync, size: 16),
+                              label: const Flexible(
+                                child: Text(
+                                  'Auto-Sync aktivieren',
+                                  style: TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                            ],
+                              style: TextButton.styleFrom(
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                ),
+                              ),
+                            ),
                           ),
                         ),
                     ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               // NOTE
               TextField(
@@ -1254,7 +1367,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   alignLabelWithHint: true,
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 12),
 
               // CRUNCHYROLL SEARCH BUTTON
               if (!currentId.contains('crunchyroll.com')) ...[
@@ -1367,6 +1480,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                   autoSyncTotal: autoSync,
                   note: noteController.text,
                   predictionsEnabled: finalPredictions,
+                  episodeCountSource: source,
                 );
                 watchlist.updateEntry(newEntry);
                 widget.service.saveWatchlist();
@@ -1384,6 +1498,123 @@ class _WatchlistPageState extends State<WatchlistPage> {
           ],
         ),
       ),
+    );
+  }
+
+  void _showFilterSortDialog() {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black26,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Filter & Sortierung'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'FILTER',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Im Simulcast'),
+                      value: _showOnlySimulcast,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _showOnlySimulcast = v);
+                        setDialogState(() {});
+                        _applySort();
+                        AppSettingsService.setWatchlistOnlySimulcast(v);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      dense: true,
+                    ),
+                    CheckboxListTile(
+                      title: const Text('Offene Folgen'),
+                      value: _showOnlyCatchUp,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _showOnlyCatchUp = v);
+                        setDialogState(() {});
+                        _applySort();
+                        AppSettingsService.setWatchlistOnlyCatchUp(v);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      controlAffinity: ListTileControlAffinity.leading,
+                      dense: true,
+                    ),
+                    const Divider(),
+                    Text(
+                      'SORTIERUNG',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    RadioListTile<SortMode>(
+                      title: const Text('Datum: Neu zuerst'),
+                      value: SortMode.addedAtDesc,
+                      groupValue: _sortMode,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _sortMode = v);
+                        setDialogState(() {});
+                        _applySort();
+                        AppSettingsService.setWatchlistSortModeIndex(v.index);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      dense: true,
+                    ),
+                    RadioListTile<SortMode>(
+                      title: const Text('Alphabet'),
+                      value: SortMode.alphabet,
+                      groupValue: _sortMode,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _sortMode = v);
+                        setDialogState(() {});
+                        _applySort();
+                        AppSettingsService.setWatchlistSortModeIndex(v.index);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      dense: true,
+                    ),
+                    RadioListTile<SortMode>(
+                      title: const Text('Status'),
+                      value: SortMode.status,
+                      groupValue: _sortMode,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setState(() => _sortMode = v);
+                        setDialogState(() {});
+                        _applySort();
+                        AppSettingsService.setWatchlistSortModeIndex(v.index);
+                      },
+                      activeColor: Theme.of(context).colorScheme.primary,
+                      dense: true,
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('Fertig'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1441,98 +1672,10 @@ class _WatchlistPageState extends State<WatchlistPage> {
           ),
           // AniList forecast removed — calendar icon intentionally omitted
           // Sort button
-          PopupMenuButton<dynamic>(
+          IconButton(
             icon: const Icon(Icons.tune),
             tooltip: 'Filter & Sortieren',
-            onSelected: (val) {
-              if (val is SortMode) {
-                setState(() {
-                  _sortMode = val;
-                  _applySort();
-                });
-                AppSettingsService.setWatchlistSortModeIndex(
-                  val.index,
-                ).catchError((e) {
-                  if (kDebugMode) {
-                    print('Failed to save watchlist sort mode: $e');
-                  }
-                });
-              } else if (val == 'toggle_simulcast') {
-                setState(() {
-                  _showOnlySimulcast = !_showOnlySimulcast;
-                  _applySort();
-                });
-                AppSettingsService.setWatchlistOnlySimulcast(
-                  _showOnlySimulcast,
-                ).catchError((e) {
-                  if (kDebugMode) {
-                    print('Failed to save watchlist simulcast filter: $e');
-                  }
-                });
-              } else if (val == 'toggle_catchup') {
-                setState(() {
-                  _showOnlyCatchUp = !_showOnlyCatchUp;
-                  _applySort();
-                });
-                AppSettingsService.setWatchlistOnlyCatchUp(
-                  _showOnlyCatchUp,
-                ).catchError((e) {
-                  if (kDebugMode) {
-                    print('Failed to save watchlist catch-up filter: $e');
-                  }
-                });
-              }
-            },
-            itemBuilder: (ctx) => [
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  'FILTER',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ),
-              CheckedPopupMenuItem(
-                value: 'toggle_simulcast',
-                checked: _showOnlySimulcast,
-                child: Text('Nur Simulcast'),
-              ),
-              CheckedPopupMenuItem(
-                value: 'toggle_catchup',
-                checked: _showOnlyCatchUp,
-                child: Text('Nur mit Rückstand'),
-              ),
-              const PopupMenuDivider(),
-              PopupMenuItem(
-                enabled: false,
-                child: Text(
-                  'SORTIERUNG',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                ),
-              ),
-              CheckedPopupMenuItem(
-                value: SortMode.addedAtDesc,
-                checked: _sortMode == SortMode.addedAtDesc,
-                child: Text('Datum: Neu zuerst'),
-              ),
-              CheckedPopupMenuItem(
-                value: SortMode.alphabet,
-                checked: _sortMode == SortMode.alphabet,
-                child: Text('Alphabet'),
-              ),
-              CheckedPopupMenuItem(
-                value: SortMode.status,
-                checked: _sortMode == SortMode.status,
-                child: Text('Status'),
-              ),
-            ],
+            onPressed: () => _showFilterSortDialog(),
           ),
         ],
       ),

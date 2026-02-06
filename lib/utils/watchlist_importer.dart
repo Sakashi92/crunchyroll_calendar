@@ -94,6 +94,9 @@ class WatchlistImporter {
         predictionsEnabled: (e['predictionsEnabled'] as bool?) ?? true,
         airingStatus: e['airingStatus'] as String?,
         customTitle: e['customTitle'] as String?,
+        episodeCountSource:
+            EpisodeCountSource.values[(e['episodeCountSource'] as int?) ??
+                EpisodeCountSource.auto.index],
       );
     }).toList();
   }

@@ -135,6 +135,14 @@ class AppSettingsService {
   static Future<void> init() async {
     final prefs = await SharedPreferences.getInstance();
     _showRefreshMessageCached = prefs.getBool(_showRefreshMessageKey) ?? true;
+
+    // Migration: "Prefer Crunchyroll Episode Count" standardmäßig auf AUS setzen
+    // (Einmaliger Trigger für bestehende Nutzer)
+    const migrationKey = 'migration_force_meta_v1';
+    if (!(prefs.getBool(migrationKey) ?? false)) {
+      await prefs.setBool(_preferCrunchyrollEpisodeCountKey, false);
+      await prefs.setBool(migrationKey, true);
+    }
   }
 
   static Future<bool> getShowRefreshMessage() async {
@@ -233,7 +241,7 @@ class AppSettingsService {
 
   static Future<bool> getPreferCrunchyrollEpisodeCount() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getBool(_preferCrunchyrollEpisodeCountKey) ?? true;
+    return prefs.getBool(_preferCrunchyrollEpisodeCountKey) ?? false;
   }
 
   static Future<void> setPreferCrunchyrollEpisodeCount(bool enabled) async {
