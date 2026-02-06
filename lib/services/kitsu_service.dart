@@ -121,6 +121,8 @@ class KitsuService implements EpisodeProvider {
             siteUrl: displayTitle,
             startDate: null,
             status: status,
+            // Kitsu mapping for potential future 'next release' info
+            nextEpisodeNumber: attrs['nextEpisode']?.toString(),
           );
         }).toList();
       } else {

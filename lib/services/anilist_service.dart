@@ -575,12 +575,37 @@ class AnilistService implements EpisodeProvider {
       }
     }
 
-    // STRICT MODE: User requested ONLY ID-based predictions.
-    // We disable the automatic text/heuristic search entirely.
-    // Metadata/Predictions will only appear if the anime has been MANUALLY LINKED via the UI.
+    // NO CACHED ID: Perform a STRICT text search as fallback
     if (kDebugMode) {
       print(
-        '🔒 [ANILIST] Strict mode: No cached ID found for "$cacheKey" - skipping automatic search.',
+        '🔎 [ANILIST] No cached ID for "$cacheKey" - attempting STRICT text search.',
+      );
+    }
+
+    try {
+      final best = await findBestMatch(
+        title ?? extractAnimeName(seriesUrl) ?? '',
+      );
+      if (best != null) {
+        // Only accept if it's a very high confidence strict match
+        if (isStrictMatch(
+          title ?? extractAnimeName(seriesUrl) ?? '',
+          best.siteUrl ?? '',
+        )) {
+          if (kDebugMode) {
+            print(
+              '✅ [ANILIST] Strict match found via search for "$cacheKey": ${best.siteUrl}',
+            );
+          }
+          await cache.save(cacheKey, best);
+          return best;
+        }
+      }
+    } catch (_) {}
+
+    if (kDebugMode) {
+      print(
+        '🔒 [ANILIST] Strict mode: No cached ID or strict match found for "$cacheKey" - skipping.',
       );
     }
     return null;
@@ -778,11 +803,9 @@ class AnilistService implements EpisodeProvider {
 
       // 3. Heuristic: Top result is "good enough" (contains query)
       // and query is long enough to be specific (> 5 chars)
-      if (query.length > 5) {
+      if (query.length > 3) {
         final first = results.first;
-        final firstTitle = first.siteUrl?.toLowerCase() ?? '';
-        if (firstTitle.contains(normalizedQuery) ||
-            normalizedQuery.contains(firstTitle)) {
+        if (isStrictMatch(query, first.siteUrl ?? '')) {
           if (kDebugMode) {
             print(
               '✅ Auto-Link: High confidence match for "$query" -> "${first.siteUrl}"',

@@ -11,6 +11,7 @@ import '../models/watchlist.dart';
 import '../services/watchlist_service.dart';
 import '../services/app_settings_service.dart';
 import '../utils/ui_utils.dart';
+import '../utils/title_utils.dart';
 
 import '../models/anime_metadata.dart';
 import '../services/anilist_service.dart';
@@ -469,7 +470,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
                             isThreeLine: true,
                             trailing: IconButton(
                               icon: const Icon(Icons.add_circle_outline),
-                              color: Theme.of(context).primaryColor,
+                              color: Theme.of(context).colorScheme.primary,
                               onPressed: () async {
                                 AnimeMetadata itemToAdd = meta;
                                 try {
@@ -1067,36 +1068,38 @@ class _WatchlistPageState extends State<WatchlistPage> {
                         } else if (s == EpisodeCountSource.metadata) {
                           final meta = await ani.fetchSeriesMetadata(
                             entry.animeId,
-                            entry.title,
+                            entry.customTitle ?? entry.title,
                           );
-                          newTotal = meta?.totalEpisodes;
-                          // Support nextEp - 1
-                          if (meta?.nextEpisodeNumber != null) {
+                          // PRIORITIZE "Next Airing" calculation if available
+                          int? airingTotal;
+                          final bool isReleasing =
+                              meta?.status?.toUpperCase() == 'RELEASING';
+                          if (isReleasing && meta?.nextEpisodeNumber != null) {
                             final n = int.tryParse(meta!.nextEpisodeNumber!);
                             if (n != null && n > 1) {
-                              final calced = n - 1;
-                              if (newTotal == null || calced > newTotal) {
-                                newTotal = calced;
-                              }
+                              airingTotal = n - 1;
                             }
                           }
+                          newTotal = airingTotal ?? meta?.totalEpisodes;
                         } else if (s == EpisodeCountSource.auto) {
                           // Auto Mode Prediction
                           final meta = await ani.fetchSeriesMetadata(
                             entry.animeId,
-                            entry.title,
+                            entry.customTitle ?? entry.title,
                           );
                           final crMax =
                               await cr.getMaxEpisodeForSeries(
                                 entry.animeId,
-                                entry.title,
+                                entry.customTitle ?? entry.title,
                               ) ??
                               0;
                           final preferCr =
                               await AppSettingsService.getPreferCrunchyrollEpisodeCount();
 
                           int? mTotal = meta?.totalEpisodes;
-                          if (meta?.nextEpisodeNumber != null) {
+                          final bool isReleasing =
+                              meta?.status?.toUpperCase() == 'RELEASING';
+                          if (isReleasing && meta?.nextEpisodeNumber != null) {
                             final n = int.tryParse(meta!.nextEpisodeNumber!);
                             if (n != null && n > 1) {
                               mTotal = n - 1;
@@ -1396,11 +1399,15 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
                     // Fallback to title search
                     final match = await AnilistService().findBestMatch(
-                      entry.title,
+                      entry.customTitle ?? entry.title,
                     );
                     if (match != null &&
                         match.hasCrunchyroll == true &&
-                        match.bannerImage != null) {
+                        match.bannerImage != null &&
+                        isStrictMatch(
+                          entry.customTitle ?? entry.title,
+                          match.siteUrl ?? '',
+                        )) {
                       if (mounted) {
                         _applyFoundUrl(context, match.bannerImage!, (newUrl) {
                           setState(() => currentId = newUrl);
@@ -1411,7 +1418,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
                     final externalSearch = ExternalSearchService();
                     final url = await externalSearch.findCrunchyrollUrl(
-                      entry.title,
+                      entry.customTitle ?? entry.title,
                     );
                     if (url != null) {
                       if (mounted) {

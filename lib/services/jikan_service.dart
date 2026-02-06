@@ -177,6 +177,9 @@ class JikanService implements EpisodeProvider {
             siteUrl: displayTitle,
             startDate: null,
             status: status,
+            // Jikan / MAL don't have a reliable 'next episode' field in search,
+            // but we map it here in case it's added or available in full responses
+            nextEpisodeNumber: item['next_episode']?.toString(),
           );
         }).toList();
       } else {

@@ -887,48 +887,7 @@ class CrunchyrollService implements EpisodeProvider {
 
   /// Normalisiert Namen für Vergleichs-Suchen: reinige, entferne Sonderzeichen, lower-case
   String _normalizeForSearch(String name) {
-    var s = _cleanAnimeName(name);
-    s = s.replaceAll(
-      RegExp(r'[^ -\w\s]'),
-      ' ',
-    ); // entferne exotische Sonderzeichen
-    s = s.replaceAll(RegExp(r'[\W_]+'), ' ');
-    s = s.replaceAll(RegExp(r'\s+'), ' ').trim().toLowerCase();
-    return s;
-  }
-
-  /// Levenshtein-Distanz (iterative) - verwendet zur fuzzy-Übereinstimmung
-  int _levenshteinDistance(String a, String b) {
-    if (a == b) {
-      return 0;
-    }
-    if (a.isEmpty) {
-      return b.length;
-    }
-    if (b.isEmpty) {
-      return a.length;
-    }
-
-    final la = a.length;
-    final lb = b.length;
-    List<int> prev = List<int>.generate(lb + 1, (i) => i);
-    List<int> cur = List<int>.filled(lb + 1, 0);
-
-    for (int i = 1; i <= la; i++) {
-      cur[0] = i;
-      for (int j = 1; j <= lb; j++) {
-        final cost = a.codeUnitAt(i - 1) == b.codeUnitAt(j - 1) ? 0 : 1;
-        cur[j] = [
-          prev[j] + 1,
-          cur[j - 1] + 1,
-          prev[j - 1] + cost,
-        ].reduce((v, e) => v < e ? v : e);
-      }
-      final tmp = prev;
-      prev = cur;
-      cur = tmp;
-    }
-    return prev[lb];
+    return normalizeTitle(name);
   }
 
   Future<void> _saveToCache(List<AnimeRelease> releases) async {
@@ -1195,12 +1154,9 @@ class CrunchyrollService implements EpisodeProvider {
         }
       }
       if (found == null && title != null) {
-        String norm(String s) => s.toLowerCase();
         try {
           found = _cachedReleases.firstWhere(
-            (r) =>
-                norm(r.title).contains(norm(effectiveTitle!)) ||
-                norm(effectiveTitle).contains(norm(r.title)),
+            (r) => isStrictMatch(effectiveTitle!, r.title),
           );
         } catch (_) {
           found = null;
@@ -1255,9 +1211,7 @@ class CrunchyrollService implements EpisodeProvider {
               if (rt.isEmpty || normTitle.isEmpty) {
                 return false;
               }
-              return rt == normTitle ||
-                  rt.contains(normTitle) ||
-                  normTitle.contains(rt);
+              return isStrictMatch(normTitle, rt);
             })
             .where((r) => !r.isPredicted)
             .toList();
@@ -2485,10 +2439,8 @@ class CrunchyrollService implements EpisodeProvider {
       // ensure in-memory cache loaded
       if (_cachedReleases.isEmpty) await _loadFromCache();
 
-      // normalize search title for fuzzy matching
-      final normQuery = title != null && title.isNotEmpty
-          ? _normalizeForSearch(title)
-          : null;
+      // ensure in-memory cache loaded
+      if (_cachedReleases.isEmpty) await _loadFromCache();
 
       bool matchesRelease(AnimeRelease r) {
         // Prefer exact seriesUrl match
@@ -2499,15 +2451,8 @@ class CrunchyrollService implements EpisodeProvider {
         }
 
         // If title provided, try normalized/fuzzy matching on titles
-        if (normQuery != null && normQuery.isNotEmpty) {
-          final rt = _normalizeForSearch(r.title);
-          if (rt.isEmpty) return false;
-          if (rt == normQuery) return true;
-          if (rt.contains(normQuery) || normQuery.contains(rt)) return true;
-          // small Levenshtein allowance for minor typos
-          final dist = _levenshteinDistance(rt, normQuery);
-          final len = normQuery.length;
-          if (len > 0 && dist <= (len * 0.25).ceil()) return true;
+        if (title != null && title.isNotEmpty) {
+          if (isStrictMatch(title, r.title)) return true;
         }
 
         return false;
@@ -2794,7 +2739,6 @@ class CrunchyrollService implements EpisodeProvider {
   /// Checks if a title exists in the current cached calendar releases.
   bool isTitleInCalendar(String title) {
     if (title.isEmpty) return false;
-    final normalized = normalizeTitle(title);
 
     // Only consider releases from the last 2 weeks
     final cutoffDate = DateTime.now().subtract(const Duration(days: 14));
@@ -2804,10 +2748,7 @@ class CrunchyrollService implements EpisodeProvider {
       // Skip releases older than 2 weeks
       if (r.releaseTime.isBefore(cutoffDate)) continue;
 
-      final rNorm = normalizeTitle(r.title);
-      if (rNorm == normalized) return true;
-      if (rNorm.contains(normalized) && normalized.length >= 8) return true;
-      if (normalized.contains(rNorm) && rNorm.length >= 8) return true;
+      if (isStrictMatch(title, r.title)) return true;
     }
     return false;
   }

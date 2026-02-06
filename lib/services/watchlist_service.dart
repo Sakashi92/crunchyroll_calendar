@@ -465,10 +465,19 @@ class WatchlistService {
     // 2. Try Kitsu fallback
     if (meta == null || meta.status == null) {
       try {
-        meta = await kitsu.fetchSeriesMetadata(
+        final kMeta = await kitsu.fetchSeriesMetadata(
           entry.animeId,
           entry.customTitle ?? entry.title,
         );
+        // Better Matching for Kitsu using isStrictMatch
+        if (kMeta != null) {
+          if (isStrictMatch(
+            entry.customTitle ?? entry.title,
+            kMeta.siteUrl ?? '',
+          )) {
+            meta = kMeta;
+          }
+        }
       } catch (e) {
         if (kDebugMode) {
           print('⚠️ [SYNC] Kitsu failed for "${entry.title}": $e');
@@ -479,10 +488,19 @@ class WatchlistService {
     // 3. Try Jikan/MAL fallback
     if (meta == null || meta.status == null) {
       try {
-        meta = await jikan.fetchSeriesMetadata(
+        final jMeta = await jikan.fetchSeriesMetadata(
           entry.animeId,
           entry.customTitle ?? entry.title,
         );
+        // Better Matching: Ensure the titles are reasonably similar using isStrictMatch
+        if (jMeta != null) {
+          if (isStrictMatch(
+            entry.customTitle ?? entry.title,
+            jMeta.siteUrl ?? '',
+          )) {
+            meta = jMeta;
+          }
+        }
       } catch (e) {
         if (kDebugMode) {
           print('⚠️ [SYNC] Jikan failed for "${entry.title}": $e');
@@ -517,7 +535,9 @@ class WatchlistService {
 
       // NEW: Calculate from "Next Airing Episode" (NextEp - 1 = CurrentEp)
       int? calculatedFromAiring;
-      if (meta?.nextEpisodeNumber != null) {
+      final bool isReleasing = meta?.status?.toUpperCase() == 'RELEASING';
+
+      if (isReleasing && meta?.nextEpisodeNumber != null) {
         final nextNum = int.tryParse(meta!.nextEpisodeNumber!);
         if (nextNum != null && nextNum > 1) {
           calculatedFromAiring = nextNum - 1;

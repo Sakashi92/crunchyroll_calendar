@@ -73,3 +73,60 @@ double similarity(String a, String b) {
   if (maxLen == 0) return 0.0;
   return 1.0 - (dist / maxLen);
 }
+
+/// Checks if [target] is likely a sequel, movie or different version of [query].
+/// e.g. "Dragon Ball Z" is a sequel of "Dragon Ball".
+bool isLikelySequel(String query, String target) {
+  final q = normalizeTitle(query);
+  final t = normalizeTitle(target);
+  if (q == t) return false;
+
+  if (t.startsWith(q + ' ')) {
+    final suffix = t.substring(q.length).trim();
+    // Common sequel/version markers
+    final markers = [
+      'z',
+      'gt',
+      'kai',
+      'super',
+      's2',
+      's3',
+      's4',
+      'part 2',
+      'part 3',
+      'season 2',
+      'season 3',
+      'movie',
+      'film',
+      'special',
+      'ova',
+    ];
+    if (markers.contains(suffix) || RegExp(r'^\d+$').hasMatch(suffix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool isStrictMatch(String query, String result) {
+  final q = normalizeTitle(query);
+  final r = normalizeTitle(result);
+  if (q == r) return true;
+
+  // If result is longer than query and looks like a sequel/variation, it's NOT a strict match
+  if (isLikelySequel(query, result)) return false;
+
+  // Word set similarity: Ensures that "Dragon Ball" and "Dragon Raja" don't match
+  // even if "Dragon" is shared.
+  final set1 = q.split(' ').where((w) => w.length > 1).toSet();
+  final set2 = r.split(' ').where((w) => w.length > 1).toSet();
+
+  if (set1.isNotEmpty && set2.isNotEmpty) {
+    final intersection = set1.intersection(set2);
+    final overlap = intersection.length / set1.length;
+    if (overlap < 0.7)
+      return false; // Require at least 70% of query words to be present
+  }
+
+  return similarity(query, result) > 0.85;
+}
