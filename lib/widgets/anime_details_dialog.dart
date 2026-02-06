@@ -511,7 +511,7 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
         } catch (_) {}
 
         final bool isSimulcast = widget.crunchyrollService.isTitleInCalendar(
-          storedCustomTitle ?? widget.release.title,
+          widget.release.title,
         );
 
         final entry = WatchlistEntry(
