@@ -6,6 +6,7 @@ import '../models/anime_release.dart';
 import '../models/anime_metadata.dart';
 import '../services/watchlist_service.dart';
 import '../models/watchlist.dart';
+import '../utils/title_utils.dart';
 
 class JikanService implements EpisodeProvider {
   static const String _baseUrl = 'https://api.jikan.moe/v4';
@@ -50,7 +51,9 @@ class JikanService implements EpisodeProvider {
 
     if (searchTerm == null || searchTerm.isEmpty) return null;
 
-    final results = await searchSeries(searchTerm);
+    final cleanSearchTerm = stripCrunchyrollSuffixes(searchTerm);
+
+    final results = await searchSeries(cleanSearchTerm);
     if (results.isNotEmpty) {
       final best = results.first;
       if (best.id != null) {

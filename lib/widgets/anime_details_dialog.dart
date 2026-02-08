@@ -71,8 +71,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
   void initState() {
     super.initState();
     _loadDescription();
-    // If caller provided a total episode count (e.g., from Watchlist), use it immediately
-    if (widget.totalEpisodes != null) {
+    // If caller provided a total episode count, use it if it's > 0
+    if (widget.totalEpisodes != null && widget.totalEpisodes! > 0) {
       _knownMaxEpisode = widget.totalEpisodes;
     } else {
       _prefetchKnownMaxEpisode();
@@ -85,8 +85,8 @@ class _AnimeDetailsDialogState extends State<AnimeDetailsDialog> {
     AppSettingsService.getEpisodeProviderName().then((name) {
       if (mounted) {
         setState(() {
-          _hideTotalCount =
-              (name == 'anilist' || name == 'jikan' || name == 'crunchyroll');
+          // TOTAL count will now always be shown if knownMaxEpisode is available.
+          _hideTotalCount = false;
         });
       }
     });

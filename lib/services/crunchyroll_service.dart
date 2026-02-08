@@ -993,8 +993,8 @@ class CrunchyrollService implements EpisodeProvider {
         final normEntryTitle = normalize(entry.title);
         final matches = _cachedReleases
             .where((r) {
-              // Prefer exact seriesUrl match
-              if (r.seriesUrl == entry.animeId) {
+              // Prefer exact seriesUrl match (using isUrlMatch for flexibility)
+              if (isUrlMatch(r.seriesUrl, entry.animeId)) {
                 return true;
               }
               // Normalize titles and allow contains / equality to be resilient to minor differences
@@ -1165,10 +1165,13 @@ class CrunchyrollService implements EpisodeProvider {
       if (found == null) {
         return null;
       }
+
+      int? maxFromCache = await getMaxEpisodeFromCache(seriesUrl, title);
+
       return AnimeMetadata(
         imageUrl: found.imageUrl,
         description: null,
-        totalEpisodes: null,
+        totalEpisodes: maxFromCache,
         siteUrl: found.seriesUrl,
       );
     } catch (e) {
@@ -1198,16 +1201,18 @@ class CrunchyrollService implements EpisodeProvider {
             .where(
               (r) =>
                   r.seriesUrl.isNotEmpty &&
-                  r.seriesUrl == seriesUrl &&
+                  isUrlMatch(r.seriesUrl, seriesUrl) &&
                   !r.isPredicted,
             )
             .toList();
       }
       if (matches.isEmpty && title != null) {
-        final normTitle = normalize(title);
+        final cleanTitle = stripCrunchyrollSuffixes(title);
+        final normTitle = normalize(cleanTitle);
         matches = _cachedReleases
             .where((r) {
-              final rt = normalize(r.title);
+              final cleanRTitle = stripCrunchyrollSuffixes(r.title);
+              final rt = normalize(cleanRTitle);
               if (rt.isEmpty || normTitle.isEmpty) {
                 return false;
               }
@@ -2443,16 +2448,18 @@ class CrunchyrollService implements EpisodeProvider {
       if (_cachedReleases.isEmpty) await _loadFromCache();
 
       bool matchesRelease(AnimeRelease r) {
-        // Prefer exact seriesUrl match
+        // Prefer exact seriesUrl match (using isUrlMatch for flexibility)
         if (seriesUrl != null &&
             seriesUrl.isNotEmpty &&
             r.seriesUrl.isNotEmpty) {
-          if (r.seriesUrl == seriesUrl) return true;
+          if (isUrlMatch(r.seriesUrl, seriesUrl)) return true;
         }
 
         // If title provided, try normalized/fuzzy matching on titles
         if (title != null && title.isNotEmpty) {
-          if (isStrictMatch(title, r.title)) return true;
+          final cleanTitle = stripCrunchyrollSuffixes(title);
+          final cleanRTitle = stripCrunchyrollSuffixes(r.title);
+          if (isStrictMatch(cleanTitle, cleanRTitle)) return true;
         }
 
         return false;
