@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [0.9.9] - 2026-02-08
+- **Fix**: Metadaten-Matching verbessert (One Piece Episodenzahl wird nun korrekt geladen).
+- **Fix**: Problem mit mehrdeutigen AniList-Suchergebnissen bei populären Shows behoben.
+- **Fix**: URL-Matching robuster gestaltet (Ignoriert http/https und www Differenzen).
+- **Fix**: Anime-Details-Dialog lädt Metadaten nun auch dann vorab, wenn die Episodenzahl 0 ist.
+- **UI**: Gesamtepisodenzahl wird nun in den Details immer angezeigt, wenn verfügbar.
+
 ## [0.9.8+1] - 2026-02-07
 - **Fix**: Problem behoben, bei dem der "Im Simulcast" Status nach dem Umbennen eines Anime verschwand.
 

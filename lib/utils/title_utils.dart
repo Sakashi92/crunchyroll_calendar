@@ -5,6 +5,11 @@ import 'dart:core';
 String normalizeTitle(String? s) {
   if (s == null) return '';
   var t = s.trim().toLowerCase();
+
+  // Strip protocol and www for URL-like strings
+  t = t.replaceFirst(RegExp(r'^https?://'), '');
+  t = t.replaceFirst(RegExp(r'^www\.'), '');
+
   // remove HTML entities commonly found
   t = t.replaceAll('&amp;', '&');
   // replace common diacritics
@@ -129,4 +134,42 @@ bool isStrictMatch(String query, String result) {
   }
 
   return similarity(query, result) > 0.85;
+}
+
+String stripCrunchyrollSuffixes(String title) {
+  var t = title;
+  // Remove (Simulcast), (Dub), (German Dub), (Deutsch Dub), (OmU) etc.
+  final suffixes = [
+    RegExp(r'\s*\(Simulcast\)', caseSensitive: false),
+    RegExp(r'\s*\(Dub\)', caseSensitive: false),
+    RegExp(r'\s*\(German\s+Dub\)', caseSensitive: false),
+    RegExp(r'\s*\(Deutsch\s+Dub\)', caseSensitive: false),
+    RegExp(r'\s*\(English\s+Dub\)', caseSensitive: false),
+    RegExp(r'\s*\(OmU\)', caseSensitive: false),
+    RegExp(r'\s*\(OmAV\)', caseSensitive: false),
+    RegExp(r'\s*\(S\d+\)', caseSensitive: false),
+    RegExp(r'\s*Season\s+\d+', caseSensitive: false),
+    RegExp(r'\s*Staffel\s+\d+', caseSensitive: false),
+  ];
+
+  for (final s in suffixes) {
+    t = t.replaceAll(s, '');
+  }
+
+  return t.trim();
+}
+
+bool isUrlMatch(String? url1, String? url2) {
+  if (url1 == null || url2 == null) return false;
+  if (url1 == url2) return true;
+
+  String norm(String u) {
+    var s = u.trim().toLowerCase();
+    s = s.replaceFirst(RegExp(r'^https?://'), '');
+    s = s.replaceFirst(RegExp(r'^www\.'), '');
+    if (s.endsWith('/')) s = s.substring(0, s.length - 1);
+    return s;
+  }
+
+  return norm(url1) == norm(url2);
 }

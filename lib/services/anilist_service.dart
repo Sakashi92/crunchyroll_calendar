@@ -583,15 +583,13 @@ class AnilistService implements EpisodeProvider {
     }
 
     try {
-      final best = await findBestMatch(
-        title ?? extractAnimeName(seriesUrl) ?? '',
-      );
+      final rawSearchTitle = title ?? extractAnimeName(seriesUrl) ?? '';
+      final searchTitle = stripCrunchyrollSuffixes(rawSearchTitle);
+
+      final best = await findBestMatch(searchTitle);
       if (best != null) {
         // Only accept if it's a very high confidence strict match
-        if (isStrictMatch(
-          title ?? extractAnimeName(seriesUrl) ?? '',
-          best.siteUrl ?? '',
-        )) {
+        if (isStrictMatch(searchTitle, best.siteUrl ?? '')) {
           if (kDebugMode) {
             print(
               '✅ [ANILIST] Strict match found via search for "$cacheKey": ${best.siteUrl}',
@@ -773,17 +771,7 @@ class AnilistService implements EpisodeProvider {
 
       final normalizedQuery = query.trim().toLowerCase();
 
-      // User requested: If more than 2 candidates exist, we stay safe and require manual choice.
-      if (results.length > 2) {
-        if (kDebugMode) {
-          print(
-            '🔍 Auto-Link: Ambiguous search for "$query" (${results.length} hits). Manual link required.',
-          );
-        }
-        return null;
-      }
-
-      // 1. Exact Match
+      // 1. Exact Match (prioritize even if multiple results exist)
       for (final r in results) {
         if (r.siteUrl != null && r.siteUrl!.toLowerCase() == normalizedQuery) {
           if (kDebugMode) {
@@ -791,6 +779,16 @@ class AnilistService implements EpisodeProvider {
           }
           return r;
         }
+      }
+
+      // User requested: If more than 2 candidates exist and no exact match above, stay safe.
+      if (results.length > 2) {
+        if (kDebugMode) {
+          print(
+            '🔍 Auto-Link: Ambiguous search for "$query" (${results.length} hits). Manual link required.',
+          );
+        }
+        return null;
       }
 
       // 2. Single Result (and it's not totally off)
