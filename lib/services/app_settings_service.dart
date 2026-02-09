@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
 import 'dart:async';
 
 /// Service für die App-Einstellungen
@@ -23,6 +25,12 @@ class AppSettingsService {
   static const String _fullDateInPillKey = 'full_date_in_pill';
   static const String _watchlistOnlySimulcastKey = 'watchlist_only_simulcast';
   static const String _watchlistOnlyCatchUpKey = 'watchlist_only_catchup';
+
+  // Backup Settings Keys
+  static const String _backupPathKey = 'backup_path';
+  static const String _backupFrequencyKey = 'backup_frequency_days';
+  static const String _backupMaxCountKey = 'backup_max_count';
+  static const String _lastBackupTimestampKey = 'last_backup_timestamp';
 
   /// Verfügbare Bildqualitäten
   static const Map<String, String> imageQualities = {
@@ -277,5 +285,83 @@ class AppSettingsService {
   static Future<void> setWatchlistOnlyCatchUp(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_watchlistOnlyCatchUpKey, enabled);
+  }
+
+  // Backup Settings Methods
+
+  /// Returns the configured backup path or null if not set.
+  static Future<String?> getBackupPath() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_backupPathKey);
+  }
+
+  /// Returns the effective backup path.
+  /// If a user-defined path exists, returns it.
+  /// Otherwise returns the platform-specific default data directory.
+  static Future<String> getEffectiveBackupPath() async {
+    final userPath = await getBackupPath();
+    if (userPath != null) return userPath;
+
+    if (Platform.isAndroid) {
+      // Use public Download directory for persistence
+      return '/storage/emulated/0/Download/CrunchyrollBackup';
+    } else {
+      final dir = await getApplicationDocumentsDirectory();
+      return dir.path;
+    }
+  }
+
+  static Future<void> setBackupPath(String path) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_backupPathKey, path);
+  }
+
+  /// Returns the backup frequency in days. 0 means disabled.
+  static Future<int> getBackupFrequencyDays() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_backupFrequencyKey) ?? 0; // Default: 0 (Disabled)
+  }
+
+  static Future<void> setBackupFrequencyDays(int days) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_backupFrequencyKey, days);
+  }
+
+  /// Returns the maximum number of backups to keep.
+  static Future<int> getBackupMaxCount() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(_backupMaxCountKey) ?? 5; // Default: Keep 5
+  }
+
+  static Future<void> setBackupMaxCount(int count) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_backupMaxCountKey, count);
+  }
+
+  static const String _backupIncludeCacheKey = 'backup_include_cache';
+
+  /// Returns whether auto-backups should include the cache (Full Backup).
+  static Future<bool> getBackupIncludeCache() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_backupIncludeCacheKey) ??
+        false; // Default: Standard (False)
+  }
+
+  static Future<void> setBackupIncludeCache(bool include) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_backupIncludeCacheKey, include);
+  }
+
+  /// Returns the timestamp of the last successful backup.
+  static Future<DateTime?> getLastBackupTimestamp() async {
+    final prefs = await SharedPreferences.getInstance();
+    final timestamp = prefs.getString(_lastBackupTimestampKey);
+    if (timestamp == null) return null;
+    return DateTime.tryParse(timestamp);
+  }
+
+  static Future<void> setLastBackupTimestamp(DateTime timestamp) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastBackupTimestampKey, timestamp.toIso8601String());
   }
 }

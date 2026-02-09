@@ -10,6 +10,7 @@ import '../services/app_settings_service.dart';
 import '../models/watchlist.dart';
 import '../utils/release_comparator.dart';
 import '../models/notification_log.dart';
+import 'backup_service.dart';
 
 // Hilfsfunktion: Erzeuge eine 32-bit positive Int-ID aus einem Hex-Hash (erste 8 Zeichen)
 int _notificationIdFromHash(String contentHash) {
@@ -284,6 +285,15 @@ void callbackDispatcher() {
       }
 
       if (taskName == BackgroundService._taskName) {
+        // Check for auto-backups (fire & forget, or await)
+        try {
+          // Initialize settings first as performAutoBackup depends on them
+          await AppSettingsService.init();
+          await BackupService().performAutoBackup();
+        } catch (e) {
+          if (kDebugMode) print('❌ Background Backup Error: $e');
+        }
+
         if (kDebugMode) print('📱 [BACKGROUND] Running scraper task...');
         return await _executeBackgroundScraper();
       } else if (taskName == BackgroundService._testNotificationTaskName) {
