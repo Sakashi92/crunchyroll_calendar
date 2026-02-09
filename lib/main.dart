@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'services/app_settings_service.dart';
+import 'services/backup_service.dart';
 import 'models/watchlist.dart';
 import 'services/watchlist_service.dart';
 import 'pages/calendar_page.dart';
@@ -49,6 +50,11 @@ void main() async {
     await BackgroundService.initialize();
     await BackgroundService().startPeriodicScraperTask(intervalMinutes: 20);
   }
+
+  // Automatisches Backup prüfen und durchführen (Fire & Forget)
+  BackupService().performAutoBackup().catchError((e) {
+    if (kDebugMode) print('❌ Error during startup auto-backup: $e');
+  });
 
   runApp(const MainApp());
 }

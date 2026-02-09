@@ -6,6 +6,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../repositories/custom_series_title_repository.dart';
+import 'app_settings_service.dart';
+import 'permission_service.dart';
 
 class BackupService {
   static const int exportVersion = 1;
@@ -49,6 +51,9 @@ class BackupService {
         'prefer_crunchyroll_episode_count': prefs.getBool(
           'prefer_crunchyroll_episode_count',
         ),
+        'full_date_in_pill': prefs.getBool('full_date_in_pill'),
+        'watchlist_only_simulcast': prefs.getBool('watchlist_only_simulcast'),
+        'watchlist_only_catchup': prefs.getBool('watchlist_only_catchup'),
       };
 
       // 2. Watchlist
@@ -133,6 +138,11 @@ class BackupService {
     if (result == null || result.files.single.path == null) return null;
 
     final file = File(result.files.single.path!);
+    return parseBackupFromFile(file);
+  }
+
+  /// Parses backup data from a specific file.
+  Future<Map<String, dynamic>> parseBackupFromFile(File file) async {
     final jsonString = await file.readAsString();
     final decoded = json.decode(jsonString);
 
@@ -141,11 +151,39 @@ class BackupService {
     }
 
     final backup = Map<String, dynamic>.from(decoded);
-    if (backup['version'] == null) {
-      throw Exception('Ungültiges Backup-Format (Version fehlt)');
-    }
+    // Version check optional, but good practice
+    // if (backup['version'] == null) ...
 
     return backup;
+  }
+
+  /// Returns a list of available backup files in the configured backup directory.
+  /// Sorted by modification time (newest first).
+  Future<List<File>> getAvailableBackups() async {
+    final path = await AppSettingsService.getEffectiveBackupPath();
+    // if (path == null) return []; // path is now non-nullable string, but check empty
+    if (path.isEmpty) return [];
+
+    final directory = Directory(path);
+    if (!await directory.exists()) return [];
+
+    List<File> files = [];
+    try {
+      final List<FileSystemEntity> entities = directory.listSync();
+      for (final entity in entities) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.json')) {
+          files.add(entity);
+        }
+      }
+
+      // Sort by modification time (descending)
+      files.sort((a, b) {
+        return b.lastModifiedSync().compareTo(a.lastModifiedSync());
+      });
+    } catch (e) {
+      if (kDebugMode) print('Error listing backups: $e');
+    }
+    return files;
   }
 
   /// Imports specific categories from backup data.
@@ -231,6 +269,177 @@ class BackupService {
     } catch (e) {
       if (kDebugMode) print('❌ Error importing data: $e');
       rethrow;
+    }
+  }
+
+  /// Triggers an automatic backup if conditions are met.
+  Future<void> performAutoBackup() async {
+    try {
+      final frequency = await AppSettingsService.getBackupFrequencyDays();
+      if (frequency <= 0) {
+        if (kDebugMode) print('⚠️ Auto-backup skipped: Disabled (freq=0)');
+        return;
+      }
+
+      if (Platform.isAndroid) {
+        // In background, we can't request permission, only check.
+        // If we really need to request, we might crash or hang.
+        // Best to just check. But requestStoragePermission() implementation handles request.
+        // Let's rely on the fact that if it returns false, we abort.
+        // NOTE: Requesting in background might be ignored.
+        final hasPermission = await PermissionService()
+            .requestStoragePermission();
+        if (!hasPermission) {
+          if (kDebugMode)
+            print('⚠️ Auto-backup skipped: No storage permission');
+          return;
+        }
+      }
+
+      final path = await AppSettingsService.getEffectiveBackupPath();
+      // Path should generally not be null now, but good to keep sanity check if something fails completely
+      if (path.isEmpty) {
+        if (kDebugMode) print('⚠️ Auto-backup skipped: No path configured');
+        return;
+      }
+
+      final lastBackup = await AppSettingsService.getLastBackupTimestamp();
+      if (lastBackup != null) {
+        final difference = DateTime.now().difference(lastBackup).inDays;
+        if (difference < frequency) {
+          if (kDebugMode) {
+            print(
+              'ℹ️ Auto-backup skipped: Not due yet (Last: $difference days ago, Freq: $frequency)',
+            );
+          }
+          return;
+        }
+      }
+
+      if (kDebugMode) print('🚀 Starting auto-backup to $path...');
+
+      final includeCache = await AppSettingsService.getBackupIncludeCache();
+      final jsonString = await generateBackupJson(includeCache: includeCache);
+
+      final directory = Directory(path);
+      if (!await directory.exists()) {
+        try {
+          await directory.create(recursive: true);
+        } catch (e) {
+          if (kDebugMode) print('❌ Error creating backup directory: $e');
+          return;
+        }
+      }
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
+
+      final typeSuffix = includeCache ? '_full' : '';
+      final filename = 'backup_auto$typeSuffix\_$timestamp.json';
+
+      String fullPath = directory.path;
+      if (!fullPath.endsWith(Platform.pathSeparator)) {
+        fullPath += Platform.pathSeparator;
+      }
+      fullPath += filename;
+
+      final file = File(fullPath);
+
+      await file.writeAsString(jsonString);
+      await AppSettingsService.setLastBackupTimestamp(DateTime.now());
+
+      if (kDebugMode) print('✅ Auto-backup created: ${file.path}');
+
+      // Cleanup old backups
+      await cleanupOldBackups(directory);
+    } catch (e) {
+      if (kDebugMode) print('❌ Error performing auto-backup: $e');
+    }
+  }
+
+  /// Deletes old backups exceeding the max count.
+  /// Made public so it can be called after manual backups too.
+  Future<void> cleanupOldBackups(Directory directory) async {
+    try {
+      final maxCount = await AppSettingsService.getBackupMaxCount();
+      if (maxCount <= 0) return; // Keep all if 0 (or handled as disabled)
+
+      final List<FileSystemEntity> files = directory.listSync();
+      final backupFiles = files.where((file) {
+        if (file is! File) return false;
+        final name = file.path.split(Platform.pathSeparator).last;
+        return (name.startsWith('backup_auto_') ||
+                name.startsWith('backup_manual')) &&
+            file.path.endsWith('.json');
+      }).toList();
+
+      if (backupFiles.length <= maxCount) return;
+
+      // Sort by modification time (oldest first)
+      backupFiles.sort((a, b) {
+        return a.statSync().modified.compareTo(b.statSync().modified);
+      });
+
+      final filesToDelete = backupFiles.length - maxCount;
+      for (int i = 0; i < filesToDelete; i++) {
+        try {
+          await backupFiles[i].delete();
+          if (kDebugMode) {
+            print('🗑️ Deleted old backup: ${backupFiles[i].path}');
+          }
+        } catch (e) {
+          if (kDebugMode) print('❌ Error deleting old backup: $e');
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error cleaning up old backups: $e');
+    }
+  }
+
+  /// Migrates backups from the old app-specific directory to the new public folder.
+  Future<void> migrateOldBackups() async {
+    if (!Platform.isAndroid) return;
+
+    try {
+      final oldDir = await getExternalStorageDirectory();
+      if (oldDir == null || !await oldDir.exists()) return;
+
+      final newPath = '/storage/emulated/0/Download/CrunchyrollBackup';
+      final newDir = Directory(newPath);
+
+      if (!await newDir.exists()) {
+        try {
+          await newDir.create(recursive: true);
+        } catch (e) {
+          return;
+        }
+      }
+
+      final files = oldDir.listSync();
+      int movedCount = 0;
+      for (final entity in files) {
+        if (entity is File && entity.path.toLowerCase().endsWith('.json')) {
+          final fileName = entity.path.split(Platform.pathSeparator).last;
+          if (fileName.startsWith('backup_')) {
+            final newFile = File('$newPath/$fileName');
+            if (!await newFile.exists()) {
+              await entity.copy(newFile.path);
+              try {
+                await entity.delete();
+              } catch (_) {}
+              movedCount++;
+            }
+          }
+        }
+      }
+
+      if (movedCount > 0 && kDebugMode) {
+        print('✅ Migrated $movedCount backups to $newPath');
+      }
+    } catch (e) {
+      if (kDebugMode) print('Error migrating backups: $e');
     }
   }
 }

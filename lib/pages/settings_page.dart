@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
-import 'dart:convert';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/crunchyroll_service.dart';
@@ -23,6 +23,7 @@ import '../utils/ui_utils.dart';
 import '../services/github_update_service.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
@@ -57,6 +58,12 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _fullDateInPill = false;
   String _appVersion = '';
 
+  // Backup Settings
+  String? _backupPath;
+  int _backupFrequencyDays = 0;
+  int _backupMaxCount = 5;
+  bool _backupIncludeCache = false;
+
   bool _isLoading = true;
   Map<String, PermissionStatus> _permissions = {};
 
@@ -71,6 +78,77 @@ class _SettingsPageState extends State<SettingsPage> {
         _startUpdate(widget.initialUpdateUrl!);
       });
     }
+  }
+
+  Future<void> _showChangelogDialog() async {
+    try {
+      final changelog = await rootBundle.loadString('CHANGELOG.md');
+      final versionNotes = _parseChangelog(changelog, _appVersion);
+
+      if (!mounted) return;
+
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Changelog v$_appVersion'),
+          content: SingleChildScrollView(
+            child: Text(
+              versionNotes ?? 'Keine Einträge für diese Version gefunden.',
+              style: const TextStyle(fontSize: 14),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () async {
+                final url = Uri.parse(
+                  'https://github.com/Sakashi92/crunchyroll_calendar',
+                );
+                if (await canLaunchUrl(url)) {
+                  await launchUrl(url, mode: LaunchMode.externalApplication);
+                }
+              },
+              child: const Text('GitHub (Sakashi92)'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Schließen'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (kDebugMode) print('Error loading changelog: $e');
+    }
+  }
+
+  String? _parseChangelog(String content, String targetVersion) {
+    // Normalisiere Version für Suche (0.9.9+1 -> 0.9.9)
+    final baseVersion = targetVersion.split('+')[0];
+    final lines = content.split('\n');
+    bool inVersion = false;
+    final List<String> notes = [];
+
+    for (var line in lines) {
+      // Suche nach Header-Zeilen wie "## [0.9.9]"
+      if (line.startsWith('## ')) {
+        if (inVersion) break; // Nächste Version erreicht
+
+        if (line.contains('[$baseVersion]') ||
+            line.contains('[$targetVersion]')) {
+          inVersion = true;
+          continue;
+        }
+      }
+
+      if (inVersion) {
+        final trimmed = line.trim();
+        if (trimmed.isNotEmpty) {
+          notes.add(line);
+        }
+      }
+    }
+
+    return notes.isEmpty ? null : notes.join('\n');
   }
 
   Future<void> _loadSettings() async {
@@ -93,6 +171,11 @@ class _SettingsPageState extends State<SettingsPage> {
         await AppSettingsService.getPreferCrunchyrollEpisodeCount();
     final fullDateInPill = await AppSettingsService.getFullDateInPill();
 
+    final backupPath = await AppSettingsService.getBackupPath();
+    final backupFrequency = await AppSettingsService.getBackupFrequencyDays();
+    final backupMaxCount = await AppSettingsService.getBackupMaxCount();
+    final backupIncludeCache = await AppSettingsService.getBackupIncludeCache();
+
     final permissions = await PermissionService().checkAllPermissions();
 
     setState(() {
@@ -110,19 +193,29 @@ class _SettingsPageState extends State<SettingsPage> {
       _preferCrunchyrollEpisodeCount = preferCrunchyrollEpisodeCount;
       _fullDateInPill = fullDateInPill;
 
+      _backupPath = backupPath;
+      _backupFrequencyDays = backupFrequency;
+      _backupMaxCount = backupMaxCount;
+      _backupIncludeCache = backupIncludeCache;
+
       _permissions = permissions;
       _isLoading = false;
     });
 
     // Version separat laden, falls es etwas länger dauert
     _loadAppVersion();
+
+    // Migriere alte Backups falls möglich (asynchron)
+    if (permissions['Speicherzugriff'] == PermissionStatus.granted) {
+      BackupService().migrateOldBackups();
+    }
   }
 
   Future<void> _loadAppVersion() async {
     final packageInfo = await PackageInfo.fromPlatform();
     if (mounted) {
       setState(() {
-        _appVersion = packageInfo.version;
+        _appVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
       });
     }
   }
@@ -497,6 +590,403 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<void> _pickBackupPath() async {
+    // Request storage permission first
+    final hasPermission = await PermissionService().requestStoragePermission();
+    if (!hasPermission) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          const SnackBar(
+            content: Text('Speicherzugriff erforderlich für Backups.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
+    if (selectedDirectory != null) {
+      await AppSettingsService.setBackupPath(selectedDirectory);
+      setState(() {
+        _backupPath = selectedDirectory;
+      });
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(content: Text('Backup-Pfad gesetzt: $selectedDirectory')),
+        );
+      }
+      widget.onSettingsChanged?.call();
+    }
+  }
+
+  Future<void> _saveBackupFrequency(int days) async {
+    // Berechtigung anfragen wenn Auto-Backup aktiviert wird
+    if (days > 0 && Platform.isAndroid) {
+      final hasPermission = await PermissionService()
+          .requestStoragePermission();
+      if (!hasPermission) {
+        if (mounted) {
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(
+              content: Text(
+                'Berechtigung abgelehnt. Automatische Backups deaktiviert.',
+              ),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        // Fallback auf 0 (deaktiviert)
+        days = 0;
+      }
+    }
+
+    await AppSettingsService.setBackupFrequencyDays(days);
+    setState(() {
+      _backupFrequencyDays = days;
+    });
+
+    // If we enable logic to reschedule background tasks specifically for backups, do it here.
+    // For now, the existing background service picks up the frequency check logic internally.
+    if ((Platform.isAndroid || Platform.isIOS) && days > 0) {
+      // Periodic scraper task handles backup checks
+    }
+
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _saveBackupMaxCount(int count) async {
+    await AppSettingsService.setBackupMaxCount(count);
+    setState(() {
+      _backupMaxCount = count;
+    });
+    widget.onSettingsChanged?.call();
+  }
+
+  Future<void> _saveBackupIncludeCache(bool include) async {
+    await AppSettingsService.setBackupIncludeCache(include);
+    setState(() {
+      _backupIncludeCache = include;
+    });
+    widget.onSettingsChanged?.call();
+    if (mounted) {
+      UIUtils.showSnackBar(
+        context,
+        SnackBar(
+          content: Text(
+            include
+                ? 'Automatische Backups: Vollständig (mit Cache)'
+                : 'Automatische Backups: Standard (ohne Cache)',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  Future<void> _triggerManualBackup() async {
+    // Permission check for Android
+    if (Platform.isAndroid) {
+      final hasPermission = await PermissionService()
+          .requestStoragePermission();
+      if (!hasPermission) {
+        if (mounted) {
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(content: Text('Keine Speicherberechtigung.')),
+          );
+        }
+        return;
+      }
+    }
+
+    // Ask for backup type
+    final bool? includeCache = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Backup erstellen'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.description),
+              title: const Text('Standard Backup'),
+              subtitle: const Text('Einstellungen, Watchlist, Verlauf, Titel'),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              leading: const Icon(Icons.image),
+              title: const Text('Vollständiges Backup'),
+              subtitle: const Text('Zusätzlich: Offline-Cache (Bilder)'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Abbrechen'),
+          ),
+        ],
+      ),
+    );
+
+    if (includeCache == null) return;
+
+    setState(() => _isLoading = true);
+    try {
+      // Force a "auto" backup manually but using the auto logic (or manual logic?)
+      // Use performAutoBackup but bypass time check? No, performAutoBackup checks time.
+      // Let's call BackupService().performAutoBackup() but we might want to force it.
+      // Or just valid manual export to that folder.
+      // Let's make a manual trigger that respects the path.
+
+      final service = BackupService();
+
+      // Request permission again just in case
+      if (Platform.isAndroid) {
+        final hasPermission = await PermissionService()
+            .requestStoragePermission();
+        if (!hasPermission) {
+          throw Exception(
+            'Keine Speicherberechtigung (Manage External Storage erforderlich für Android 11+)',
+          );
+        }
+      }
+
+      // We want to save to the configured path, similar to auto backup but forced.
+      final jsonString = await service.generateBackupJson(
+        includeCache: includeCache,
+      );
+      final path = await AppSettingsService.getEffectiveBackupPath();
+      final directory = Directory(path);
+      if (!await directory.exists()) {
+        await directory.create(recursive: true);
+      }
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .split('.')[0];
+
+      final typeSuffix = includeCache ? '_full' : '';
+      final filename = 'backup_manual$typeSuffix\_$timestamp.json';
+
+      // Sanitized path handling
+      String fullPath = directory.path;
+      if (!fullPath.endsWith(Platform.pathSeparator)) {
+        fullPath += Platform.pathSeparator;
+      }
+      fullPath += filename;
+
+      final file = File(fullPath);
+
+      if (kDebugMode) {
+        print('📂 Manual Backup: Writing to $fullPath');
+      }
+
+      await file.writeAsString(jsonString);
+
+      // Enforce retention limit
+      await service.cleanupOldBackups(directory);
+
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(content: Text('Backup erstellt: $filename\n$fullPath')),
+        );
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Manual Backup Error: $e');
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('Fehler: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _showRestoreInternalDialog() async {
+    // Check permission
+    if (Platform.isAndroid) {
+      final hasPermission = await PermissionService()
+          .requestStoragePermission();
+      if (!hasPermission) {
+        if (mounted) {
+          UIUtils.showSnackBar(
+            context,
+            const SnackBar(content: Text('Keine Speicherberechtigung.')),
+          );
+        }
+        return;
+      }
+    }
+
+    // Zeige Lade-Indikator oder warte kurz
+    final files = await BackupService().getAvailableBackups();
+
+    if (!mounted) return;
+
+    await showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Backup wiederherstellen'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.folder_open),
+                  title: const Text('Datei auswählen...'),
+                  subtitle: const Text('Backup von anderem Ort laden'),
+                  onTap: () async {
+                    // File picking logic
+                    try {
+                      final result = await FilePicker.platform.pickFiles(
+                        type: FileType.custom,
+                        allowedExtensions: ['json'],
+                      );
+                      if (result != null && result.files.single.path != null) {
+                        Navigator.pop(context);
+                        _restoreFromFile(File(result.files.single.path!));
+                      }
+                    } catch (e) {
+                      print('Error picking file: $e');
+                    }
+                  },
+                ),
+                const Divider(),
+                Flexible(
+                  child: files.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: Text(
+                            'Keine Backups im Standard-Ordner gefunden.',
+                          ),
+                        )
+                      : ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: files.length,
+                          itemBuilder: (context, index) {
+                            final file = files[index];
+                            final name = file.path
+                                .split(Platform.pathSeparator)
+                                .last;
+                            final stat = file.statSync();
+                            final size =
+                                (stat.size / 1024).toStringAsFixed(1) + ' KB';
+                            final date = stat.modified.toString().split('.')[0];
+
+                            return ListTile(
+                              leading: const Icon(Icons.restore),
+                              title: Text(
+                                name,
+                                style: const TextStyle(fontSize: 14),
+                              ),
+                              subtitle: Text(
+                                '$date • $size',
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                              onTap: () {
+                                Navigator.pop(context);
+                                _restoreFromFile(file);
+                              },
+                              trailing: IconButton(
+                                icon: const Icon(Icons.share),
+                                onPressed: () => _shareFile(file),
+                                tooltip: 'Exportieren / Teilen',
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Abbrechen'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _restoreFromFile(File file) async {
+    try {
+      final backupData = await BackupService().parseBackupFromFile(file);
+
+      if (!mounted) return;
+
+      // Use existing import selection dialog
+      // Note: ImportSelectionDialog returns List<String>? when popped with selection
+      final List<dynamic>? result = await showDialog(
+        context: context,
+        builder: (context) => ImportSelectionDialog(backupData: backupData),
+      );
+
+      if (result != null && result.isNotEmpty) {
+        final categories = result.cast<String>();
+        await BackupService().importData(backupData, categories);
+
+        if (categories.contains(BackupService.catSettings)) {
+          await _loadSettings();
+          widget.onSettingsChanged?.call();
+        }
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Backup erfolgreich wiederhergestellt!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('Fehler beim Laden des Backups: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _shareFile(File file) async {
+    try {
+      final xFile = XFile(file.path);
+      await Share.shareXFiles([xFile], text: 'Backup exportieren');
+    } catch (e) {
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(
+            content: Text('Fehler beim Teilen: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _showNotificationHistory() async {
     final repo = NotificationRepository();
     final history = await repo.getHistory(limit: 200);
@@ -787,23 +1277,104 @@ class _SettingsPageState extends State<SettingsPage> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ListTile(
-              leading: const Icon(Icons.upload_file),
-              title: const Text('Daten exportieren'),
-              subtitle: const Text(
-                'Erstelle ein Backup deiner Einstellungen und Watchlist',
+              leading: const Icon(Icons.folder),
+              title: const Text('Backup-Pfad wählen'),
+              subtitle: Text(
+                _backupPath ??
+                    (Platform.isAndroid
+                        ? 'Standard (Download/CrunchyrollBackup)'
+                        : 'Standard (App-Daten)'),
+                style: TextStyle(
+                  fontStyle: _backupPath == null ? FontStyle.italic : null,
+                ),
               ),
-              onTap: () => _handleExport(),
+              trailing: const Icon(Icons.edit),
+              onTap: _pickBackupPath,
             ),
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
             child: ListTile(
-              leading: const Icon(Icons.download_for_offline),
-              title: const Text('Daten importieren'),
-              subtitle: const Text('Stelle Daten aus einem Backup wieder her'),
-              onTap: () => _handleImport(),
+              leading: const Icon(Icons.timer),
+              title: const Text('Automatische Backups'),
+              subtitle: Text(
+                _backupFrequencyDays == 0
+                    ? 'Deaktiviert'
+                    : _backupFrequencyDays == 1
+                    ? 'Täglich'
+                    : 'Alle $_backupFrequencyDays Tage',
+              ),
+              trailing: DropdownButton<int>(
+                value: _backupFrequencyDays,
+                underline: const SizedBox(),
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('Nie')),
+                  DropdownMenuItem(value: 1, child: Text('Täglich')),
+                  DropdownMenuItem(value: 3, child: Text('Alle 3 Tage')),
+                  DropdownMenuItem(value: 7, child: Text('Wöchentlich')),
+                  DropdownMenuItem(value: 30, child: Text('Monatlich')),
+                ],
+                onChanged: (v) {
+                  if (v != null) _saveBackupFrequency(v);
+                },
+              ),
             ),
           ),
+          if (_backupFrequencyDays > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ListTile(
+                leading: const Icon(Icons.history),
+                title: const Text('Anzahl zu behaltender Backups'),
+                subtitle: Text('$_backupMaxCount Backups'),
+                trailing: DropdownButton<int>(
+                  value: _backupMaxCount,
+                  underline: const SizedBox(),
+                  items: [3, 5, 10, 20, 50]
+                      .map((e) => DropdownMenuItem(value: e, child: Text('$e')))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v != null) _saveBackupMaxCount(v);
+                  },
+                ),
+              ),
+            ),
+          if (_backupFrequencyDays > 0)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: SwitchListTile(
+                secondary: const Icon(Icons.save_as),
+                title: const Text('Backup-Typ: Vollständig'),
+                subtitle: const Text(
+                  'Sichert auch Bilder-Cache (größere Datei)',
+                ),
+                value: _backupIncludeCache,
+                onChanged: (v) => _saveBackupIncludeCache(v),
+              ),
+            ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.save),
+              title: const Text('Backup jetzt erstellen'),
+              subtitle: const Text(
+                'Erstellt sofort ein Backup im gewählten Ordner',
+              ),
+              onTap: _triggerManualBackup,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.restore_page),
+              title: const Text('Backup wiederherstellen'),
+              subtitle: const Text(
+                'Wähle ein Backup aus dem Ordner zur Wiederherstellung',
+              ),
+              onTap: _showRestoreInternalDialog,
+            ),
+          ),
+
           const Divider(),
           _buildSectionHeader('Info'),
           _buildUpdateCheckTile(),
@@ -1500,10 +2071,31 @@ class _SettingsPageState extends State<SettingsPage> {
     return ListTile(
       leading: const Icon(Icons.info_outline),
       title: const Text('Crunchyroll Kalender'),
-      subtitle: Text(
-        'Version $_appVersion\nBilder werden von Kitsu.app geladen',
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Version $_appVersion'),
+          const Text(
+            'Made by Sakashi92',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+          Text(
+            'Bilder werden von Kitsu.app geladen',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Tippen für Changelog',
+            style: TextStyle(
+              fontSize: 11,
+              fontStyle: FontStyle.italic,
+              color: Colors.blue,
+            ),
+          ),
+        ],
       ),
       isThreeLine: true,
+      onTap: _showChangelogDialog,
     );
   }
 
@@ -1748,206 +2340,6 @@ class _SettingsPageState extends State<SettingsPage> {
           backgroundColor: color,
         ),
       );
-    }
-  }
-
-  Future<void> _handleExport() async {
-    // Dialog anzeigen zur Auswahl der Backup-Art
-    final bool? includeCache = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Exportieren'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Welche Art von Backup möchtest du erstellen?'),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.description_outlined),
-              title: const Text('Standard Backup'),
-              subtitle: const Text(
-                'Einstellungen, Watchlist, Verlauf\n(Klein, schnell)',
-              ),
-              onTap: () => Navigator.pop(context, false),
-            ),
-            ListTile(
-              leading: const Icon(Icons.save_as_outlined),
-              title: const Text('Vollständiges Backup'),
-              subtitle: const Text(
-                'Inkl. Offline-Cache aller Kalendermonate\n(Große Datei, dafür sofort verfügbar)',
-              ),
-              onTap: () => Navigator.pop(context, true),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context), // null result
-            child: const Text('Abbrechen'),
-          ),
-        ],
-      ),
-    );
-
-    if (includeCache == null) return; // Abgebrochen
-
-    try {
-      final jsonString = await BackupService().generateBackupJson(
-        includeCache: includeCache,
-      );
-      final bytes = utf8.encode(jsonString);
-
-      final timestamp = DateTime.now()
-          .toIso8601String()
-          .replaceAll(':', '-')
-          .split('.')[0];
-
-      final typeSuffix = includeCache ? '_full' : '';
-      final suggestedFileName =
-          'crunchyroll_calendar_backup$typeSuffix\_$timestamp.json';
-
-      String? chosenPath = await FilePicker.platform.saveFile(
-        dialogTitle: includeCache
-            ? 'Backup speichern (Vollständig)'
-            : 'Backup speichern',
-        fileName: suggestedFileName,
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        bytes: bytes,
-      );
-
-      if (chosenPath == null) return;
-
-      if (chosenPath.startsWith('file://')) {
-        chosenPath = Uri.parse(chosenPath).toFilePath();
-      }
-
-      final file = File(chosenPath);
-      await file.writeAsBytes(bytes);
-
-      if (mounted) {
-        final actualFileName = file.path
-            .split(Platform.isWindows ? '\\' : '/')
-            .last;
-        final fileSize = (await file.length()) / 1024; // KB
-        final sizeStr = fileSize > 1024
-            ? '${(fileSize / 1024).toStringAsFixed(1)} MB'
-            : '${fileSize.toStringAsFixed(1)} KB';
-
-        await showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            icon: CircleAvatar(
-              backgroundColor: Theme.of(
-                context,
-              ).colorScheme.primary.withOpacity(0.1),
-              child: Icon(
-                Icons.check,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-            ),
-            title: const Text('Backup erfolgreich'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  includeCache
-                      ? 'Deine Daten und der gesamte Cache wurden erfolgreich gesichert.'
-                      : 'Deine Daten wurden erfolgreich gesichert.',
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Dateiname:',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  actualFileName,
-                  style: const TextStyle(fontSize: 13),
-                  textAlign: TextAlign.center,
-                ),
-                Text(
-                  'Größe: $sizeStr',
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Schließen'),
-              ),
-              FilledButton.icon(
-                onPressed: () async {
-                  Navigator.pop(context);
-                  await Share.shareXFiles([
-                    XFile(file.path),
-                  ], subject: 'Crunchyroll Kalender Backup');
-                },
-                icon: const Icon(Icons.share, size: 18),
-                label: const Text('Teilen'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          SnackBar(
-            content: Text('Export fehlgeschlagen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  Future<void> _handleImport() async {
-    try {
-      final backup = await BackupService().pickAndParseBackup();
-      if (backup == null) return;
-
-      if (!mounted) return;
-      final selectedCategories = await showDialog<List<String>>(
-        context: context,
-        builder: (context) => ImportSelectionDialog(backupData: backup),
-      );
-
-      if (selectedCategories == null || selectedCategories.isEmpty) return;
-
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          const SnackBar(content: Text('Import wird ausgeführt...')),
-        );
-      }
-
-      await BackupService().importData(backup, selectedCategories);
-
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          const SnackBar(
-            content: Text('Import erfolgreich! App wird neu geladen.'),
-          ),
-        );
-        // Reload all settings
-        await _loadSettings();
-        widget.onSettingsChanged?.call();
-      }
-    } catch (e) {
-      if (mounted) {
-        UIUtils.showSnackBar(
-          context,
-          SnackBar(
-            content: Text('Import fehlgeschlagen: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
     }
   }
 }

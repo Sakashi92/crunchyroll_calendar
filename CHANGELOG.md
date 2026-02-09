@@ -2,6 +2,17 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [1.0.0] - 2026-02-09
+- **Feat**: Umfassendes Backup- & Wiederherstellungssystem für Android und Windows.
+- **Feat**: Automatisches Backup im Hintergrund hinzugefügt (einstellbares Intervall).
+- **Feat**: Persistente Sicherung im öffentlichen Downloads-Ordner (Android) verhindert Datenverlust bei Deinstallation.
+- **Feat**: Automatische Migration alter Backups in den neuen Speicherort.
+- **Feat**: Interaktiver Changelog-Viewer direkt in den App-Einstellungen (tippbar auf die Versionsnummer).
+- **Feat**: GitHub-Link und Entwickler-Credit ("Made by Sakashi92") in den Einstellungen integriert.
+- **UI**: Sofortige Aktualisierung des App-Themes (Accent-Farbe) nach dem Restore.
+- **Security**: Adaptive Berechtigungsanfragen – Speicherzugriff wird erst bei tatsächlicher Aktivierung der Backup-Funktion angefragt.
+- **Cleanup**: Entfernung der veralteten (Legacy) Import/Export-Funktionen für ein entschlacktes Interface.
+
 ## [0.9.9] - 2026-02-08
 - **Fix**: Metadaten-Matching verbessert (One Piece Episodenzahl wird nun korrekt geladen).
 - **Fix**: Problem mit mehrdeutigen AniList-Suchergebnissen bei populären Shows behoben.

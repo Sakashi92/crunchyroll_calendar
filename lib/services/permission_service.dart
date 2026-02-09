@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart' as ph;
+import 'package:device_info_plus/device_info_plus.dart';
 
 enum PermissionStatus {
   granted('Aktiviert', Color(0xFF4CAF50)),
@@ -167,6 +169,23 @@ class PermissionService {
         } catch (e) {
           permissions['Akku-Optimierung'] = PermissionStatus.unknown;
         }
+
+        // Speicherzugriff prüfen
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        if (androidInfo.version.sdkInt >= 30) {
+          if (await ph.Permission.manageExternalStorage.isGranted) {
+            permissions['Speicherzugriff'] = PermissionStatus.granted;
+          } else {
+            permissions['Speicherzugriff'] = PermissionStatus.denied;
+          }
+        } else {
+          if (await ph.Permission.storage.isGranted) {
+            permissions['Speicherzugriff'] = PermissionStatus.granted;
+          } else {
+            permissions['Speicherzugriff'] = PermissionStatus.denied;
+          }
+        }
       } else if (Platform.isIOS) {
         permissions['Benachrichtigungen'] = PermissionStatus.granted;
       }
@@ -177,6 +196,36 @@ class PermissionService {
     return permissions;
   }
 
+  /// Prüft und fragt Storage Permission an
+  Future<bool> requestStoragePermission() async {
+    if (!Platform.isAndroid) return true;
+
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+
+      // Android 11+ (API 30+)
+      if (androidInfo.version.sdkInt >= 30) {
+        var status = await ph.Permission.manageExternalStorage.status;
+        if (status.isGranted) return true;
+
+        status = await ph.Permission.manageExternalStorage.request();
+        return status.isGranted;
+      }
+      // Android 10 (API 29) & darunter
+      else {
+        var status = await ph.Permission.storage.status;
+        if (status.isGranted) return true;
+
+        status = await ph.Permission.storage.request();
+        return status.isGranted;
+      }
+    } catch (e) {
+      if (kDebugMode) print('❌ Error requesting storage permission: $e');
+      return false;
+    }
+  }
+
   /// Gibt eine lesbare Beschreibung für jede Permission
   static Map<String, String> getPermissionDescriptions() => {
     'Benachrichtigungen': 'Benötigt um Push-Benachrichtigungen zu erhalten',
@@ -185,5 +234,6 @@ class PermissionService {
         'Benötigt für regelmäßige Benachrichtigungen im Hintergrund',
     'Akku-Optimierung':
         'Muss deaktiviert sein damit Hintergrund-Tasks funktionieren',
+    'Speicherzugriff': 'Benötigt für Backups (Android)',
   };
 }
