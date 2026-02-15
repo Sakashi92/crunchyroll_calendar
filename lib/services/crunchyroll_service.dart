@@ -2744,18 +2744,24 @@ class CrunchyrollService implements EpisodeProvider {
   }
 
   /// Checks if a title exists in the current cached calendar releases.
+  /// Checks if a title exists in the current cached calendar releases.
   bool isTitleInCalendar(String title) {
     if (title.isEmpty) return false;
 
     // Only consider releases from the last 2 weeks
     final cutoffDate = DateTime.now().subtract(const Duration(days: 14));
 
+    // Normalize user title by stripping potential suffixes
+    final cleanTitle = stripCrunchyrollSuffixes(title);
+
     // Look in cached releases from the last 2 weeks
     for (final r in _cachedReleases) {
       // Skip releases older than 2 weeks
       if (r.releaseTime.isBefore(cutoffDate)) continue;
 
-      if (isStrictMatch(title, r.title)) return true;
+      final cleanRTitle = stripCrunchyrollSuffixes(r.title);
+
+      if (isStrictMatch(cleanTitle, cleanRTitle)) return true;
     }
     return false;
   }

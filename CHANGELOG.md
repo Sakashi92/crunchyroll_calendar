@@ -2,6 +2,9 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [1.0.1+1] - 2026-02-15
+- **Fix**: Problem behoben, bei dem Anime mit abweichenden Titeln (z.B. "Oshi no Ko" vs. "Oshi no Ko (French Dub)") nicht als "Im Simulcast" erkannt wurden. Die Prüfung ignoriert nun Sprach-Suffixe.
+
 ## [1.0.1] - 2026-02-15
 - **Feat**: Anime per Long-Press im Kalender ausblenden – einzelne Sprachvarianten separat versteckbar.
 - **Feat**: Verwaltung versteckter Anime in den Einstellungen (Einblenden / Übersicht).
