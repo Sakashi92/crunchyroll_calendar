@@ -16,6 +16,7 @@ class AppSettingsService {
   static const String _autoMinimizeScrollThresholdKey =
       'auto_minimize_scroll_threshold';
   static const String _hideDuplicateReleasesKey = 'hide_duplicate_releases';
+  static const String _hiddenAnimeKey = 'hidden_anime';
   static const String _searchHistoryKey = 'search_history';
   static const String _watchlistSortModeKey = 'watchlist_sort_mode';
   static const String _episodeProviderKey = 'episode_provider';
@@ -194,6 +195,40 @@ class AppSettingsService {
   static Future<void> setHideDuplicateReleases(bool enabled) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_hideDuplicateReleasesKey, enabled);
+  }
+
+  // Hidden Anime Logic
+  static Future<List<String>> getHiddenAnime() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getStringList(_hiddenAnimeKey) ?? [];
+  }
+
+  static Future<void> setHiddenAnime(List<String> list) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList(_hiddenAnimeKey, list);
+  }
+
+  static Future<void> hideAnime(String normalizedTitle) async {
+    final list = await getHiddenAnime();
+    final lower = normalizedTitle.toLowerCase();
+    if (!list.contains(lower)) {
+      list.add(lower);
+      await setHiddenAnime(list);
+    }
+  }
+
+  static Future<void> unhideAnime(String normalizedTitle) async {
+    final list = await getHiddenAnime();
+    final lower = normalizedTitle.toLowerCase();
+    // Remove case-insensitively
+    list.removeWhere((item) => item.toLowerCase() == lower);
+    await setHiddenAnime(list);
+  }
+
+  static Future<bool> isHidden(String normalizedTitle) async {
+    final list = await getHiddenAnime();
+    final lower = normalizedTitle.toLowerCase();
+    return list.any((item) => item.toLowerCase() == lower);
   }
 
   static Future<List<String>> getSearchHistory() async {

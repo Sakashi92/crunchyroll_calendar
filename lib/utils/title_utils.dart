@@ -138,24 +138,15 @@ bool isStrictMatch(String query, String result) {
 
 String stripCrunchyrollSuffixes(String title) {
   var t = title;
-  // Remove (Simulcast), (Dub), (German Dub), (Deutsch Dub), (OmU) etc.
-  final suffixes = [
-    RegExp(r'\s*\(Simulcast\)', caseSensitive: false),
-    RegExp(r'\s*\(Dub\)', caseSensitive: false),
-    RegExp(r'\s*\(German\s+Dub\)', caseSensitive: false),
-    RegExp(r'\s*\(Deutsch\s+Dub\)', caseSensitive: false),
-    RegExp(r'\s*\(English\s+Dub\)', caseSensitive: false),
-    RegExp(r'\s*\(OmU\)', caseSensitive: false),
-    RegExp(r'\s*\(OmAV\)', caseSensitive: false),
-    RegExp(r'\s*\(S\d+\)', caseSensitive: false),
-    RegExp(r'\s*Season\s+\d+', caseSensitive: false),
-    RegExp(r'\s*Staffel\s+\d+', caseSensitive: false),
-  ];
+  // Normalize whitespace: replace non-breaking spaces (0xA0) and others with standard space
+  t = t.replaceAll(RegExp(r'\s+'), ' ');
 
-  for (final s in suffixes) {
-    t = t.replaceAll(s, '');
-  }
-
+  // Remove Season/Staffel suffixes first (not in parentheses)
+  t = t.replaceAll(RegExp(r'\s*Season\s+\d+', caseSensitive: false), '');
+  t = t.replaceAll(RegExp(r'\s*Staffel\s+\d+', caseSensitive: false), '');
+  t = t.replaceAll(RegExp(r'\s*S\d+', caseSensitive: false), '');
+  // Remove ALL parenthesized content, handling double closing parens: (Simulcast), (Dub), (Spanish))
+  t = t.replaceAll(RegExp(r'\s*\([^)]*\)+'), '');
   return t.trim();
 }
 

@@ -2,6 +2,13 @@
 
 Alle nennenswerten Änderungen an diesem Projekt werden in dieser Datei dokumentiert.
 
+## [1.0.1] - 2026-02-15
+- **Feat**: Anime per Long-Press im Kalender ausblenden – einzelne Sprachvarianten separat versteckbar.
+- **Feat**: Verwaltung versteckter Anime in den Einstellungen (Einblenden / Übersicht).
+- **Feat**: Versteckte Anime werden automatisch im Backup gesichert und können wiederhergestellt werden.
+- **Fix**: Versteckte Anime werden nun zuverlässig in allen Lade-Pfaden gefiltert (Vormonat, Nächster Monat, Cache).
+- **Fix**: Kalender aktualisiert sich sofort nach dem Ausblenden eines Anime (kein Neustart nötig).
+
 ## [1.0.0] - 2026-02-09
 - **Feat**: Umfassendes Backup- & Wiederherstellungssystem für Android und Windows.
 - **Feat**: Automatisches Backup im Hintergrund hinzugefügt (einstellbares Intervall).

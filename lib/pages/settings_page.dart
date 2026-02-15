@@ -24,6 +24,7 @@ import '../services/github_update_service.dart';
 import 'package:ota_update/ota_update.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../pages/hidden_anime_page.dart';
 
 /// Einstellungs-Seite
 class SettingsPage extends StatefulWidget {
@@ -1155,6 +1156,25 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
               value: _hideDuplicateReleases,
               onChanged: (v) => _saveHideDuplicateReleases(v),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ListTile(
+              leading: const Icon(Icons.visibility_off),
+              title: const Text('Versteckte Anime verwalten'),
+              subtitle: const Text(
+                'Liste aller ausgeblendeten Anime anzeigen und bearbeiten',
+              ),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const HiddenAnimePage(),
+                  ),
+                ).then((_) => widget.onSettingsChanged?.call());
+              },
             ),
           ),
           Padding(

@@ -20,6 +20,7 @@ import '../widgets/calendar_app_bar.dart';
 import '../widgets/calendar_display.dart';
 import '../widgets/calendar_release_list.dart';
 import '../repositories/custom_series_title_repository.dart';
+import '../utils/title_utils.dart';
 import 'settings_page.dart';
 
 class CalendarPage extends StatefulWidget {
@@ -61,6 +62,7 @@ class _CalendarPageState extends State<CalendarPage>
   // verhindern wir beim Drag-Ende ein zweites Commit.
   bool _committedDuringDrag = false;
   Map<DateTime, List<AnimeRelease>> _releases = {};
+  List<String> _hiddenAnimeList = [];
   final CrunchyrollService _crunchyrollService = CrunchyrollService();
   bool _isLoadingReleases = false;
   // Image loading state tracked via CrunchyrollService callbacks
@@ -438,6 +440,13 @@ class _CalendarPageState extends State<CalendarPage>
     await prefs.setInt('calendar_format', format.index);
   }
 
+  /// Checks if a release should be hidden based on the cached hidden anime list.
+  bool _isReleaseHidden(AnimeRelease release) {
+    if (_hiddenAnimeList.isEmpty) return false;
+    final lower = release.title.toLowerCase();
+    return _hiddenAnimeList.any((h) => h.toLowerCase() == lower);
+  }
+
   Future<void> _loadReleases({bool showMessage = false}) async {
     // Lade beim Start alle gecachten Daten (Bilder, verarbeitete Titel) - nur einmal
     if (mounted) {
@@ -526,39 +535,34 @@ class _CalendarPageState extends State<CalendarPage>
 
       // Optionally remove duplicate releases (same episode URL or same title+episode)
       final hideDup = await AppSettingsService.getHideDuplicateReleases();
-      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
-      if (hideDup) {
-        String normalizeUrl(String url) {
-          try {
-            final uri = Uri.parse(url);
-            // Keep scheme, host, port and path; remove query and fragment
-            final normalized = Uri(
-              scheme: uri.scheme,
-              host: uri.host,
-              port: uri.hasPort ? uri.port : null,
-              path: uri.path,
-            ).toString();
-            return normalized.toLowerCase();
-          } catch (_) {
-            return url.toLowerCase();
-          }
-        }
+      _hiddenAnimeList = await AppSettingsService.getHiddenAnime();
+      final hiddenList = _hiddenAnimeList;
 
+      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
+      if (hideDup || hiddenList.isNotEmpty) {
         final deduped = <DateTime, List<AnimeRelease>>{};
         releasesByDay.forEach((date, list) {
-          final seen = <String>{};
+          // 'seen' is no longer needed with _isDuplicate
           final out = <AnimeRelease>[];
           for (var r in list) {
-            final urlPart = (r.episodeUrl.isNotEmpty)
-                ? normalizeUrl(r.episodeUrl)
-                : '';
-            final titlePart =
-                '${r.title.trim().toLowerCase()}_${r.episodeNumber.trim().toLowerCase()}';
-            final id = urlPart.isNotEmpty ? urlPart : titlePart;
-            if (!seen.contains(id)) {
-              seen.add(id);
-              out.add(r);
+            // 1. Filter hidden anime
+            if (hiddenList.isNotEmpty) {
+              // Case-insensitive check using raw title for per-language hiding
+              if (hiddenList.any(
+                (h) => h.toLowerCase() == r.title.toLowerCase(),
+              )) {
+                continue;
+              }
             }
+
+            // 2. Filter duplicates
+            if (hideDup && _isDuplicate(r, out)) {
+              if (r.title.toLowerCase().contains('gnosia')) {
+                print('DEBUG_DEDUP_SKIP: "${r.title}"');
+              }
+              continue;
+            }
+            out.add(r);
           }
           deduped[date] = out;
         });
@@ -708,7 +712,9 @@ class _CalendarPageState extends State<CalendarPage>
                     r.title == release.title &&
                     r.episodeNumber == release.episodeNumber,
               )) {
-                _releases[date]!.add(release);
+                if (!_isReleaseHidden(release)) {
+                  _releases[date]!.add(release);
+                }
               }
             }
           }
@@ -737,7 +743,9 @@ class _CalendarPageState extends State<CalendarPage>
                     r.title == release.title &&
                     r.episodeNumber == release.episodeNumber,
               )) {
-                _releases[date]!.add(release);
+                if (!_isReleaseHidden(release)) {
+                  _releases[date]!.add(release);
+                }
               }
             }
           }
@@ -840,38 +848,34 @@ class _CalendarPageState extends State<CalendarPage>
 
       // Respect user setting: optionally hide duplicate releases
       final hideDup = await AppSettingsService.getHideDuplicateReleases();
-      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
-      if (hideDup) {
-        String normalizeUrl(String url) {
-          try {
-            final uri = Uri.parse(url);
-            final normalized = Uri(
-              scheme: uri.scheme,
-              host: uri.host,
-              port: uri.hasPort ? uri.port : null,
-              path: uri.path,
-            ).toString();
-            return normalized.toLowerCase();
-          } catch (_) {
-            return url.toLowerCase();
-          }
-        }
+      _hiddenAnimeList = await AppSettingsService.getHiddenAnime();
+      final hiddenList = _hiddenAnimeList;
 
+      Map<DateTime, List<AnimeRelease>> finalByDay = releasesByDay;
+      if (hideDup || hiddenList.isNotEmpty) {
         final deduped = <DateTime, List<AnimeRelease>>{};
         releasesByDay.forEach((date, list) {
-          final seen = <String>{};
           final out = <AnimeRelease>[];
           for (var r in list) {
-            final urlPart = (r.episodeUrl.isNotEmpty)
-                ? normalizeUrl(r.episodeUrl)
-                : '';
-            final titlePart =
-                '${r.title.trim().toLowerCase()}_${r.episodeNumber.trim().toLowerCase()}';
-            final id = urlPart.isNotEmpty ? urlPart : titlePart;
-            if (!seen.contains(id)) {
-              seen.add(id);
-              out.add(r);
+            // 1. Filter hidden anime
+            if (hiddenList.isNotEmpty) {
+              // Case-insensitive check using raw title for per-language hiding
+              if (hiddenList.any(
+                (h) => h.toLowerCase() == r.title.toLowerCase(),
+              )) {
+                continue;
+              }
             }
+
+            // 2. Filter duplicates
+            if (hideDup && _isDuplicate(r, out)) {
+              // Debug check for Gnosia
+              if (r.title.toLowerCase().contains('gnosia')) {
+                print('DEBUG_DEDUP_SKIP: "${r.title}" (Duplicate found)');
+              }
+              continue;
+            }
+            out.add(r);
           }
           deduped[date] = out;
         });
@@ -1032,7 +1036,9 @@ class _CalendarPageState extends State<CalendarPage>
                     r.title == release.title &&
                     r.episodeNumber == release.episodeNumber,
               )) {
-                _releases[date]!.add(release);
+                if (!_isReleaseHidden(release)) {
+                  _releases[date]!.add(release);
+                }
               }
             }
           }
@@ -1056,6 +1062,51 @@ class _CalendarPageState extends State<CalendarPage>
       }
     } catch (e) {
       if (kDebugMode) print('Error loading cached months: $e');
+    }
+  }
+
+  bool _isDuplicate(AnimeRelease candidate, List<AnimeRelease> existing) {
+    // 1. Check exact URL match
+    if (candidate.episodeUrl.isNotEmpty) {
+      final cUrl = _normalizeUrlString(candidate.episodeUrl);
+      for (final e in existing) {
+        if (e.episodeUrl.isNotEmpty &&
+            _normalizeUrlString(e.episodeUrl) == cUrl) {
+          return true;
+        }
+      }
+    }
+
+    // 2. Check title + episode match
+    final cTitle = stripCrunchyrollSuffixes(candidate.title);
+    final cEp = candidate.episodeNumber.trim().toLowerCase();
+
+    for (final e in existing) {
+      if (e.episodeNumber.trim().toLowerCase() != cEp) continue;
+
+      final eTitle = stripCrunchyrollSuffixes(e.title);
+
+      // Strict match logic (handles Dragon Ball vs Dragon Ball Z correctness)
+      if (isStrictMatch(cTitle, eTitle)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  String _normalizeUrlString(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final normalized = Uri(
+        scheme: uri.scheme,
+        host: uri.host,
+        port: uri.hasPort ? uri.port : null,
+        path: uri.path,
+      ).toString();
+      return normalized.toLowerCase();
+    } catch (_) {
+      return url.toLowerCase();
     }
   }
 
@@ -1485,6 +1536,7 @@ class _CalendarPageState extends State<CalendarPage>
             watchlistService: widget.watchlistService,
             contentPadding: contentPadding,
             header: header,
+            onHide: () => _loadReleases(),
           );
 
           if (!_isDragging && _dragOffset == 0.0) {
@@ -1541,6 +1593,7 @@ class _CalendarPageState extends State<CalendarPage>
             watchlistService: widget.watchlistService,
             contentPadding: contentPadding,
             header: header,
+            onHide: () => _loadReleases(),
           );
 
           return Stack(

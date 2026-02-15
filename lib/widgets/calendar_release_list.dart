@@ -9,6 +9,7 @@ class CalendarReleaseList extends StatelessWidget {
   final WatchlistService? watchlistService;
   final EdgeInsetsGeometry? contentPadding;
   final Widget? header;
+  final VoidCallback? onHide;
 
   const CalendarReleaseList({
     super.key,
@@ -17,6 +18,7 @@ class CalendarReleaseList extends StatelessWidget {
     this.watchlistService,
     this.contentPadding,
     this.header,
+    this.onHide,
   });
 
   @override
@@ -60,6 +62,7 @@ class CalendarReleaseList extends StatelessWidget {
                               ),
                               release: release,
                               watchlistService: watchlistService,
+                              onHide: onHide,
                             );
                           }, childCount: releases.length),
                         ),
@@ -90,6 +93,7 @@ class CalendarReleaseList extends StatelessWidget {
           key: ValueKey('${release.title}_${release.episodeInfo}'),
           release: release,
           watchlistService: watchlistService,
+          onHide: onHide,
         );
       }, childCount: releases.length),
     );

@@ -19,6 +19,7 @@ class _ImportSelectionDialogState extends State<ImportSelectionDialog> {
     BackupService.catSeenReleases: 'Gesehene Folgen',
     BackupService.catHistory: 'Suchverlauf',
     BackupService.catCalendarCache: 'Kalender-Cache (Offline Daten)',
+    BackupService.catHiddenAnime: 'Versteckte Anime',
   };
 
   @override

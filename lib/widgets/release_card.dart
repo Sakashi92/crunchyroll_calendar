@@ -15,13 +15,20 @@ import '../widgets/anime_details_dialog.dart';
 import '../utils/ui_utils.dart';
 import '../repositories/custom_series_title_repository.dart';
 import 'anime_pattern_painter.dart';
+import '../services/app_settings_service.dart';
 
 /// Widget für eine Release-Karte im Kalender
 class ReleaseCard extends StatefulWidget {
   final AnimeRelease release;
   final WatchlistService? watchlistService;
+  final VoidCallback? onHide;
 
-  const ReleaseCard({super.key, required this.release, this.watchlistService});
+  const ReleaseCard({
+    super.key,
+    required this.release,
+    this.watchlistService,
+    this.onHide,
+  });
 
   @override
   State<ReleaseCard> createState() => _ReleaseCardState();
@@ -173,6 +180,46 @@ class _ReleaseCardState extends State<ReleaseCard> {
     );
   }
 
+  Future<void> _showHideDialog() async {
+    final title = widget.release.title;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Anime verstecken?'),
+        content: Text(
+          'Möchtest du "$title" im Kalender ausblenden?\n\n'
+          'Du kannst dies in den Einstellungen rückgängig machen.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Abbrechen'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text(
+              'Verstecken',
+              style: TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await AppSettingsService.hideAnime(title);
+      if (mounted) {
+        UIUtils.showSnackBar(
+          context,
+          SnackBar(content: Text('"$title" ausgeblendet.')),
+        );
+      }
+      // Trigger calendar reload so the anime disappears immediately
+      widget.onHide?.call();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -181,6 +228,7 @@ class _ReleaseCardState extends State<ReleaseCard> {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: _showAnimeDetailsDialog,
+        onLongPress: _showHideDialog,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

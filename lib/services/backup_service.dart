@@ -19,6 +19,7 @@ class BackupService {
   static const String catSeenReleases = 'seenReleases';
   static const String catHistory = 'history';
   static const String catCalendarCache = 'calendarCache';
+  static const String catHiddenAnime = 'hiddenAnime';
 
   /// Generates the complete backup as a JSON string.
   /// [includeCache] - If true, includes the monthly calendar cache in the backup.
@@ -97,6 +98,9 @@ class BackupService {
           data[catCalendarCache] = cacheData;
         }
       }
+
+      // 7. Hidden Anime
+      data[catHiddenAnime] = prefs.getStringList('hidden_anime');
 
       Map<String, dynamic> backup = {
         'version': exportVersion,
@@ -264,6 +268,15 @@ class BackupService {
           if (kDebugMode) {
             print('✅ Restored ${cache.length} calendar months from backup.');
           }
+        }
+      }
+
+      // 7. Import Hidden Anime
+      if (categories.contains(catHiddenAnime) &&
+          data.containsKey(catHiddenAnime)) {
+        final hidden = (data[catHiddenAnime] as List?)?.cast<String>();
+        if (hidden != null) {
+          await prefs.setStringList('hidden_anime', hidden);
         }
       }
     } catch (e) {
