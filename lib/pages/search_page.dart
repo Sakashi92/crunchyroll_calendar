@@ -5,6 +5,7 @@ import 'dart:async';
 import '../models/anime_release.dart';
 import '../models/notification_log.dart';
 import '../repositories/seen_repository.dart';
+import '../repositories/custom_series_title_repository.dart';
 import '../services/crunchyroll_service.dart';
 import '../services/watchlist_service.dart';
 import '../services/app_settings_service.dart';
@@ -33,9 +34,11 @@ class _SearchPageState extends State<SearchPage> {
   @override
   void initState() {
     super.initState();
+    final repo = CustomSeriesTitleRepository();
     final titles = <String>{};
     widget.releases.values.expand((l) => l).forEach((r) {
-      titles.add(r.title);
+      final customTitle = repo.getTitleSync(r.seriesUrl);
+      titles.add(customTitle ?? r.title);
       if (r.episodeTitle.isNotEmpty) titles.add(r.episodeTitle);
     });
     _allSuggestions = titles.toList()..sort();
@@ -86,11 +89,14 @@ class _SearchPageState extends State<SearchPage> {
     }
 
     final q = query.toLowerCase();
+    final repo = CustomSeriesTitleRepository();
     final List<Map<String, dynamic>> matches = [];
 
     widget.releases.forEach((date, list) {
       for (var r in list) {
-        final hay = '${r.title} ${r.episodeTitle} ${r.episodeInfo}'
+        final customTitle = repo.getTitleSync(r.seriesUrl);
+        final displayTitle = customTitle ?? r.title;
+        final hay = '$displayTitle ${r.episodeTitle} ${r.episodeInfo}'
             .toLowerCase();
         if (hay.contains(q)) {
           matches.add({'release': r, 'date': date});
@@ -225,8 +231,10 @@ class _SearchPageState extends State<SearchPage> {
                         final entry = _results[index];
                         final AnimeRelease r = entry['release'] as AnimeRelease;
                         final DateTime date = entry['date'] as DateTime;
+                        final customTitle = CustomSeriesTitleRepository()
+                            .getTitleSync(r.seriesUrl);
                         return ListTile(
-                          title: Text(r.title),
+                          title: Text(customTitle ?? r.title),
                           subtitle: Text(
                             '${r.episodeInfo} — ${DateFormat('dd.MM.yyyy').format(date)}',
                           ),

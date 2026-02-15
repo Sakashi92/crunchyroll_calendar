@@ -66,9 +66,7 @@ class DetailsMetadataSection extends StatelessWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  hideTotalCount
-                      ? episodeInfo
-                      : '$episodeInfo${knownMaxEpisode != null ? ' / $knownMaxEpisode' : ''}',
+                  episodeInfo,
                   style: TextStyle(
                     color: theme.colorScheme.onPrimaryContainer,
                     fontWeight: FontWeight.bold,

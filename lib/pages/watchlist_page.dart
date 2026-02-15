@@ -165,7 +165,7 @@ class _WatchlistPageState extends State<WatchlistPage> {
 
   void _openDetailsDialog(WatchlistEntry entry) {
     final release = AnimeRelease(
-      title: entry.title,
+      title: entry.customTitle ?? entry.title,
       episodeNumber: entry.episodesWatched.toString(),
       episodeTitle: '',
       releaseTime: DateTime.now(),
